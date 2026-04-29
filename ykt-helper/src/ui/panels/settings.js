@@ -16,6 +16,13 @@ const AI_PRESETS = {
     visionModel: 'LongCat-Flash-Chat',
     apiKey: 'ak_2UE1Xk5Ac13X8sS1Ql1sE0DO6vG7C',
   },
+  'longcat-omni': {
+    name: 'LongCat Omni',
+    baseUrl: 'https://api.longcat.chat/openai',
+    model: 'LongCat-Flash-Omni-2603',
+    visionModel: 'LongCat-Flash-Omni-2603',
+    apiKey: 'ak_2UE1Xk5Ac13X8sS1Ql1sE0DO6vG7C',
+  },
   'longcat-thinking': {
     name: 'LongCat Thinking',
     baseUrl: 'https://api.longcat.chat/openai',
