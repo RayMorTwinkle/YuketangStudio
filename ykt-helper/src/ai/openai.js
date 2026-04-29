@@ -94,7 +94,24 @@ export async function queryAI(question, aiCfg) {
   }
 
   const url = makeChatUrl(profile);
-  const model = profile.model || 'gpt-4o-mini'; // 默认给一个合理值
+  const model = profile.model || 'gpt-4o-mini';
+
+  const userContent = [
+    '【文本模式说明】可能为题目文本，也可能为普通问答。请先执行决策闸，再回答。',
+    '【用户输入（优先级最高）】',
+    question || '（无）',
+  ].join('\n');
+
+  const payload = {
+    model,
+    messages: [
+      { role: 'system', content: BASE_SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    temperature: 0.6,
+  };
+
+  console.log('[雨课堂助手][AI OpenAI] Sending payload:', JSON.stringify(payload, null, 2));
 
   return new Promise((resolve, reject) => {
     gm.xhr({
@@ -104,44 +121,39 @@ export async function queryAI(question, aiCfg) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${profile.apiKey}`,
       },
-      data: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: BASE_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: [
-                  '【文本模式说明】可能为题目文本，也可能为普通问答。请先执行决策闸，再回答。',
-                  '【用户输入（优先级最高）】',
-                  question || '（无）',
-                ].join('\n'),
-              },
-            ],
-          },
-        ],
-        temperature: 0.6,
-      }),
+      data: JSON.stringify(payload),
       onload: (res) => {
         try {
           console.log('[雨课堂助手][AI OpenAI] Status:', res.status);
           console.log('[雨课堂助手][AI OpenAI] Response:', res.responseText);
 
           if (res.status !== 200) {
-            reject(new Error(`AI 接口请求失败: ${res.status}`));
+            let errorMsg = `AI 请求失败: HTTP ${res.status}`;
+            try {
+              const errorData = JSON.parse(res.responseText);
+              if (errorData.error) {
+                errorMsg += ` - ${JSON.stringify(errorData.error)}`;
+              } else {
+                errorMsg += ` - ${res.responseText.substring(0, 500)}`;
+              }
+            } catch {
+              errorMsg += ` - ${res.responseText.substring(0, 500)}`;
+            }
+            reject(new Error(errorMsg));
             return;
           }
           const data = JSON.parse(res.responseText);
           const content = data.choices?.[0]?.message?.content;
           if (content) resolve(content);
-          else reject(new Error('AI返回内容为空'));
+          else reject(new Error(`AI返回内容为空 - 原始响应: ${res.responseText.substring(0, 500)}`));
         } catch (e) {
-          reject(new Error(`解析API响应失败: ${e.message}`));
+          reject(new Error(`解析API响应失败: ${e.message} - 原始响应: ${res.responseText.substring(0, 500)}`));
         }
       },
-      onerror: () => reject(new Error('网络请求失败')),
+      onerror: (err) => {
+        console.error('[雨课堂助手][AI OpenAI] Network error:', err);
+        reject(new Error(`网络请求失败: ${err?.message || '未知错误'}`));
+      },
       timeout: 30000,
     });
   });
