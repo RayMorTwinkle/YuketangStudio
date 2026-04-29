@@ -44,9 +44,17 @@ function getActiveProfile(aiCfg) {
 }
 
 function makeChatUrl(profile) {
-//   const base = (profile.baseUrl || 'https://api.moonshot.cn').replace(/\/+$/,'');
-//   return `${base}/v1/chat/completions`;   
-    return profile.baseUrl;
+  let base = (profile.baseUrl || 'https://api.moonshot.cn/v1/chat/completions').replace(/\/+$/,'');
+  if (!base.includes('/chat/completions')) {
+    if (base.includes('/v1')) {
+      base = base + '/chat/completions';
+    } else if (base.includes('/openai')) {
+      base = base + '/v1/chat/completions';
+    } else {
+      base = base + '/v1/chat/completions';
+    }
+  }
+  return base;
 }
 
 // -----------------------------------------------
