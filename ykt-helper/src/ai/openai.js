@@ -96,17 +96,21 @@ export async function queryAI(question, aiCfg) {
   const url = makeChatUrl(profile);
   const model = profile.model || 'gpt-4o-mini';
 
-  const userContent = [
+  const userContentText = [
     '【文本模式说明】可能为题目文本，也可能为普通问答。请先执行决策闸，再回答。',
     '【用户输入（优先级最高）】',
     question || '（无）',
   ].join('\n');
 
+  // LongCat Omni 模型要求 content 必须是数组格式
   const payload = {
     model,
     messages: [
       { role: 'system', content: BASE_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
+      {
+        role: 'user',
+        content: [{ type: 'text', text: userContentText }],
+      },
     ],
     temperature: 0.6,
   };
