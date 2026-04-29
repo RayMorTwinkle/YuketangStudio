@@ -1114,6 +1114,10 @@ async function downloadPresentationPDF() {
     });
 
     for (let i = 0; i < slides.length; i++) {
+      const current = i + 1;
+      const total = slides.length;
+      ui.toast(`正在生成 PDF：${current}/${total}`, 2000);
+      
       const s = slides[i];
       const url = getSlideImageUrl(s);
       if (!url) {
@@ -1133,6 +1137,7 @@ async function downloadPresentationPDF() {
       doc.addImage(img, 'PNG', x, y, w, h);
     }
 
+    ui.toast('PDF 生成完成，正在保存...', 2000);
     const name = (pres.title || `课件-${pid}`).replace(/[\\/:*?"<>|]/g, '_');
     doc.save(`${name}.pdf`);
   } catch (e) {
