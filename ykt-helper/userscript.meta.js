@@ -30,6 +30,12 @@ export const meta = `
 // @grant        GM_getTabs
 // @grant        GM_saveTab
 // @grant        unsafeWindow
+// @connect      api.moonshot.cn
+// @connect      api.openai.com
+// @connect      api.deepseek.com
+// @connect      openrouter.ai
+// @connect      generativelanguage.googleapis.com
+// @connect      *
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
 // @require      https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js
