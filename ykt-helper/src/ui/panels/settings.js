@@ -13,21 +13,14 @@ const AI_PRESETS = {
     name: 'LongCat Flash',
     baseUrl: 'https://api.longcat.chat/openai',
     model: 'LongCat-Flash-Chat',
-    visionModel: 'LongCat-Flash-Omni-2603',
-    apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
-  },
-  'longcat-omni': {
-    name: 'LongCat Omni',
-    baseUrl: 'https://api.longcat.chat/openai',
-    model: 'LongCat-Flash-Omni-2603',
-    visionModel: 'LongCat-Flash-Omni-2603',
+    visionModel: 'LongCat-Flash-Chat',
     apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
   },
   'longcat-thinking': {
     name: 'LongCat Thinking',
     baseUrl: 'https://api.longcat.chat/openai',
     model: 'LongCat-Flash-Thinking-2601',
-    visionModel: 'LongCat-Flash-Omni-2603',
+    visionModel: 'LongCat-Flash-Thinking-2601',
     apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
   },
   'kimi': {
