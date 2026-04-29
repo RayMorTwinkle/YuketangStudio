@@ -8,6 +8,45 @@ let mounted = false;
 let root;
 
 // ---- AI Profile helpers ----
+const AI_PRESETS = {
+  'longcat-flash': {
+    name: 'LongCat Flash',
+    baseUrl: 'https://api.longcat.chat/openai/v1/chat/completions',
+    model: 'LongCat-Flash-Chat',
+    visionModel: 'LongCat-Flash-Omni-2603',
+  },
+  'longcat-omni': {
+    name: 'LongCat Omni',
+    baseUrl: 'https://api.longcat.chat/openai/v1/chat/completions',
+    model: 'LongCat-Flash-Omni-2603',
+    visionModel: 'LongCat-Flash-Omni-2603',
+  },
+  'longcat-thinking': {
+    name: 'LongCat Thinking',
+    baseUrl: 'https://api.longcat.chat/openai/v1/chat/completions',
+    model: 'LongCat-Flash-Thinking-2601',
+    visionModel: 'LongCat-Flash-Omni-2603',
+  },
+  'kimi': {
+    name: 'Kimi',
+    baseUrl: 'https://api.moonshot.cn/v1/chat/completions',
+    model: 'moonshot-v1-8k',
+    visionModel: 'moonshot-v1-8k-vision-preview',
+  },
+  'openai': {
+    name: 'OpenAI GPT-4o',
+    baseUrl: 'https://api.openai.com/v1/chat/completions',
+    model: 'gpt-4o-mini',
+    visionModel: 'gpt-4o',
+  },
+  'deepseek': {
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1/chat/completions',
+    model: 'deepseek-chat',
+    visionModel: 'deepseek-chat',
+  },
+};
+
 function ensureAIProfiles(configAI) {
   if (!configAI) return;
 
@@ -57,6 +96,7 @@ export function mountSettingsPanel() {
   const $profileSelect = root.querySelector('#ykt-ai-profile-select');
   const $profileAdd = root.querySelector('#ykt-ai-profile-add');
   const $profileDel = root.querySelector('#ykt-ai-profile-del');
+  const $presetSelect = root.querySelector('#ykt-ai-preset-select');
 
   const $profileName = root.querySelector('#ykt-ai-profile-name');
   const $baseUrl = root.querySelector('#ykt-ai-base-url');
@@ -126,6 +166,23 @@ export function mountSettingsPanel() {
   // 切换 profile
   $profileSelect.addEventListener('change', () => {
     loadProfileToForm($profileSelect.value);
+  });
+
+  // 预设选择
+  $presetSelect.addEventListener('change', () => {
+    const presetKey = $presetSelect.value;
+    if (!presetKey) return;
+    
+    const preset = AI_PRESETS[presetKey];
+    if (!preset) return;
+
+    $profileName.value = preset.name;
+    $baseUrl.value = preset.baseUrl;
+    $model.value = preset.model;
+    $visionModel.value = preset.visionModel;
+    
+    ui.toast(`已应用预设: ${preset.name}，请填写 API Key`, 3000);
+    $presetSelect.value = '';
   });
 
   // 添加 profile
