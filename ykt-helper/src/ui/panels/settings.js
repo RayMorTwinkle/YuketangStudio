@@ -14,18 +14,21 @@ const AI_PRESETS = {
     baseUrl: 'https://api.longcat.chat/openai',
     model: 'LongCat-Flash-Chat',
     visionModel: 'LongCat-Flash-Omni-2603',
+    apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
   },
   'longcat-omni': {
     name: 'LongCat Omni',
     baseUrl: 'https://api.longcat.chat/openai',
     model: 'LongCat-Flash-Omni-2603',
     visionModel: 'LongCat-Flash-Omni-2603',
+    apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
   },
   'longcat-thinking': {
     name: 'LongCat Thinking',
     baseUrl: 'https://api.longcat.chat/openai',
     model: 'LongCat-Flash-Thinking-2601',
     visionModel: 'LongCat-Flash-Omni-2603',
+    apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
   },
   'kimi': {
     name: 'Kimi',
@@ -181,7 +184,12 @@ export function mountSettingsPanel() {
     $model.value = preset.model;
     $visionModel.value = preset.visionModel;
     
-    ui.toast(`已应用预设: ${preset.name}，请填写 API Key`, 3000);
+    if (preset.apiKey) {
+      $api.value = preset.apiKey;
+      ui.toast(`已应用预设: ${preset.name}，API Key 已自动填充`, 3000);
+    } else {
+      ui.toast(`已应用预设: ${preset.name}，请填写 API Key`, 3000);
+    }
     $presetSelect.value = '';
   });
 
