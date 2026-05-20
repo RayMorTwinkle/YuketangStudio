@@ -21,6 +21,21 @@
           <button id="ykt-ai-profile-del" color="red">删除当前</button>
         </div>
 
+        <!-- 预设模板 -->
+        <div class="setting-item">
+          <label for="ykt-ai-preset-select">快速预设：</label>
+          <select id="ykt-ai-preset-select">
+            <option value="">-- 选择预设模板 --</option>
+            <option value="longcat-flash">LongCat Flash (通用对话)</option>
+            <option value="longcat-omni">LongCat Omni (多模态) [测试中]</option>
+            <option value="longcat-thinking">LongCat Thinking (深度思考)</option>
+            <option value="kimi">Kimi (Moonshot)</option>
+            <option value="openai">OpenAI GPT-4o</option>
+            <option value="deepseek">DeepSeek</option>
+          </select>
+          <small>选择预设后自动填充配置，仍需手动输入 API Key</small>
+        </div>
+
         <!-- 具体配置字段：针对当前 profile -->
         <div class="setting-item">
           <label for="ykt-ai-profile-name">名称:</label>
