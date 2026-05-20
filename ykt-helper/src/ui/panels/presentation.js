@@ -1099,11 +1099,7 @@ async function downloadPresentationPDF() {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) throw new Error('jsPDF 未加载成功');
 
-    const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
-    const pageW = 595, pageH = 842;
     const margin = 24;
-    const maxW = pageW - margin * 2;
-    const maxH = pageH - margin * 2;
 
     const loadImage = (src) => new Promise((resolve, reject) => {
       const img = new Image();
@@ -1113,11 +1109,13 @@ async function downloadPresentationPDF() {
       img.src = src;
     });
 
+    let doc = null;
+
     for (let i = 0; i < slides.length; i++) {
       const current = i + 1;
       const total = slides.length;
       ui.toast(`正在生成 PDF：${current}/${total}`, 2000);
-      
+
       const s = slides[i];
       const url = getSlideImageUrl(s);
       if (!url) {
@@ -1127,13 +1125,28 @@ async function downloadPresentationPDF() {
       const img = await loadImage(url);
       const iw = img.naturalWidth || img.width;
       const ih = img.naturalHeight || img.height;
+
+      // 根据图片宽高比自动选择页面方向
+      const isLandscape = iw >= ih;
+      const orientation = isLandscape ? 'landscape' : 'portrait';
+      const pageW = isLandscape ? 842 : 595;
+      const pageH = isLandscape ? 595 : 842;
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2;
+
+      // 首次初始化 doc，或方向变化时创建新页面
+      if (!doc) {
+        doc = new jsPDF({ unit: 'pt', format: 'a4', orientation });
+      } else if (i > 0) {
+        doc.addPage('a4', orientation);
+      }
+
       const r = Math.min(maxW / iw, maxH / ih);
       const w = Math.floor(iw * r);
       const h = Math.floor(ih * r);
       const x = Math.floor((pageW - w) / 2);
       const y = Math.floor((pageH - h) / 2);
 
-      if (i > 0) doc.addPage();
       doc.addImage(img, 'PNG', x, y, w, h);
     }
 
