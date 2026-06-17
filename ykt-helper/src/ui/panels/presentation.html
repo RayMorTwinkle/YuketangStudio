@@ -4,6 +4,36 @@
       outline: 2px solid #3b82f6;
       outline-offset: 2px;
     }
+    .pdf-progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      background: #f0f4ff;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+    .pdf-progress-bar {
+      flex: 1;
+      height: 8px;
+      background: #dbeafe;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .pdf-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3b82f6, #6366f1);
+      border-radius: 4px;
+      transition: width 0.2s ease;
+    }
+    .pdf-progress-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: #3b82f6;
+      min-width: 36px;
+      text-align: right;
+    }
   </style>
   <div class="panel-header">
     <h3>课件查看</h3>
@@ -17,6 +47,12 @@
       <button id="ykt-download-current">截图下载</button>
       <button id="ykt-download-pdf">整册下载(PDF)</button>
       <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>
+    </div>
+    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">
+      <div class="pdf-progress-bar">
+        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>
+      </div>
+      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>
     </div>
   </div>
 
