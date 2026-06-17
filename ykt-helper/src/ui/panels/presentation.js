@@ -1118,6 +1118,7 @@ async function downloadPresentationPDF() {
     const margin = 24;
     const maxW = pageW - margin * 2;
     const maxH = pageH - margin * 2;
+    const landscapeFormat = [pageW, pageH];
 
     const loadImage = (src) => new Promise((resolve, reject) => {
       const img = new Image();
@@ -1139,9 +1140,9 @@ async function downloadPresentationPDF() {
       const url = getSlideImageUrl(s);
       if (!url) {
         if (!doc) {
-          doc = new jsPDF({ unit: 'pt', format: [pageW, pageH] });
+          doc = new jsPDF({ unit: 'pt', format: landscapeFormat, orientation: 'landscape' });
         } else if (i > 0) {
-          doc.addPage([pageW, pageH]);
+          doc.addPage(landscapeFormat, 'landscape');
         }
         continue;
       }
@@ -1150,9 +1151,9 @@ async function downloadPresentationPDF() {
       const ih = img.naturalHeight || img.height;
 
       if (!doc) {
-        doc = new jsPDF({ unit: 'pt', format: [pageW, pageH] });
+        doc = new jsPDF({ unit: 'pt', format: landscapeFormat, orientation: 'landscape' });
       } else if (i > 0) {
-        doc.addPage([pageW, pageH]);
+        doc.addPage(landscapeFormat, 'landscape');
       }
 
       const r = Math.min(maxW / iw, maxH / ih);
