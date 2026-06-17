@@ -1094,12 +1094,30 @@ async function downloadPresentationPDF() {
   const slides = pres.slides.filter(s => showAll || s.problem);
   if (slides.length === 0) return ui.toast('当前筛选下没有可导出的页面');
 
+  // 进度条元素
+  const progressEl = document.getElementById('ykt-pdf-progress');
+  const progressFill = document.getElementById('ykt-pdf-progress-fill');
+  const progressText = document.getElementById('ykt-pdf-progress-text');
+  const showProgress = (pct, text) => {
+    if (progressEl) progressEl.style.display = 'flex';
+    if (progressFill) progressFill.style.width = `${pct}%`;
+    if (progressText) progressText.textContent = text || `${pct}%`;
+  };
+  const hideProgress = () => {
+    if (progressEl) progressEl.style.display = 'none';
+  };
+
   try {
     await ensureJsPDF();
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) throw new Error('jsPDF 未加载成功');
 
+    // 默认横屏 A4 尺寸
+    const pageW = 842;
+    const pageH = 595;
     const margin = 24;
+    const maxW = pageW - margin * 2;
+    const maxH = pageH - margin * 2;
 
     const loadImage = (src) => new Promise((resolve, reject) => {
       const img = new Image();
@@ -1110,35 +1128,31 @@ async function downloadPresentationPDF() {
     });
 
     let doc = null;
+    const total = slides.length;
 
     for (let i = 0; i < slides.length; i++) {
       const current = i + 1;
-      const total = slides.length;
-      ui.toast(`正在生成 PDF：${current}/${total}`, 2000);
+      const pct = Math.round((current / total) * 100);
+      showProgress(pct, `${current}/${total}`);
 
       const s = slides[i];
       const url = getSlideImageUrl(s);
       if (!url) {
-        if (i > 0) doc.addPage();
+        if (!doc) {
+          doc = new jsPDF({ unit: 'pt', format: [pageW, pageH] });
+        } else if (i > 0) {
+          doc.addPage([pageW, pageH]);
+        }
         continue;
       }
       const img = await loadImage(url);
       const iw = img.naturalWidth || img.width;
       const ih = img.naturalHeight || img.height;
 
-      // 根据图片宽高比自动选择页面方向
-      const isLandscape = iw >= ih;
-      const orientation = isLandscape ? 'landscape' : 'portrait';
-      const pageW = isLandscape ? 842 : 595;
-      const pageH = isLandscape ? 595 : 842;
-      const maxW = pageW - margin * 2;
-      const maxH = pageH - margin * 2;
-
-      // 首次初始化 doc，或方向变化时创建新页面
       if (!doc) {
-        doc = new jsPDF({ unit: 'pt', format: 'a4', orientation });
+        doc = new jsPDF({ unit: 'pt', format: [pageW, pageH] });
       } else if (i > 0) {
-        doc.addPage('a4', orientation);
+        doc.addPage([pageW, pageH]);
       }
 
       const r = Math.min(maxW / iw, maxH / ih);
@@ -1150,10 +1164,13 @@ async function downloadPresentationPDF() {
       doc.addImage(img, 'PNG', x, y, w, h);
     }
 
-    ui.toast('PDF 生成完成，正在保存...', 2000);
+    showProgress(100, '保存中...');
     const name = (pres.title || `课件-${pid}`).replace(/[\\/:*?"<>|]/g, '_');
     doc.save(`${name}.pdf`);
+    ui.toast('PDF 生成完成', 2000);
   } catch (e) {
     ui.toast(`导出 PDF 失败：${e.message || e}`);
+  } finally {
+    setTimeout(hideProgress, 1500);
   }
 }
