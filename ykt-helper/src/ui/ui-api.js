@@ -10,7 +10,7 @@ import * as PresPanel from './panels/presentation.js';
 import * as ProbListPanel from './panels/problem-list.js';
 import * as ActivePanel from './panels/active-problems.js';
 import * as TutorialPanel from './panels/tutorial.js';
-import * as ChatPanel from './panels/chat.js';
+import * as Shell from './panels/shell.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
 
 const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
@@ -111,68 +111,40 @@ export const ui = {
     }
   },
 
-  // 修改后的面板显示函数，添加z-index管理
+  // 面板显示函数：统一走主面板 Shell 的 tab 切换（visible=false 关闭整个主面板）
   showPresentationPanel(visible = true) {
-    PresPanel.showPresentationPanel(visible);
-    if (visible) {
-      const panel = document.getElementById('ykt-presentation-panel');
-      this._bringToFront(panel);
-    }
+    Shell.openTab('pres', visible);
   },
 
   showProblemListPanel(visible = true) {
-    ProbListPanel.showProblemListPanel(visible);
-    if (visible) {
-      const panel = document.getElementById('ykt-problem-list-panel');
-      this._bringToFront(panel);
-    }
+    Shell.openTab('problems', visible);
   },
 
   showAIPanel(visible = true) {
-    AIPanel.showAIPanel(visible);
-    if (visible) {
-      const panel = document.getElementById('ykt-ai-answer-panel');
-      this._bringToFront(panel);
-    }
+    Shell.openTab('ai', visible);
   },
 
   showChatPanel(visible = true) {
-    ChatPanel.showChatPanel(visible);
-    if (visible) {
-      const panel = document.getElementById('ykt-chat-panel');
-      this._bringToFront(panel);
-    }
+    Shell.openTab('chat', visible);
   },
 
   toggleSettingsPanel() {
-    SettingsPanel.toggleSettingsPanel();
-    // 检查面板是否变为可见状态
-    const panel = document.getElementById('ykt-settings-panel');
-    if (panel && panel.classList.contains('visible')) {
-      this._bringToFront(panel);
-    }
+    Shell.toggleTab('settings');
   },
 
   toggleTutorialPanel() {
-    TutorialPanel.toggleTutorialPanel();
-    // 检查面板是否变为可见状态
-    const panel = document.getElementById('ykt-tutorial-panel');
-    if (panel && panel.classList.contains('visible')) {
-      this._bringToFront(panel);
-    }
+    Shell.toggleTab('tutorial');
   },
 
   // 在 index.js 初始化时挂载一次
   _mountAll() {
-    SettingsPanel.mountSettingsPanel();
-    AIPanel.mountAIPanel();
-    PresPanel.mountPresentationPanel();
-    ProbListPanel.mountProblemListPanel();
+    // 独立弹层（不进主面板）
     ActivePanel.mountActiveProblemsPanel();
-    TutorialPanel.mountTutorialPanel();
-    ChatPanel.mountChatPanel();
+    // Shell 会依次 mount 全部功能面板并把它们的 DOM 迁入 tab 内容区
+    Shell.mountShell();
     window.addEventListener('ykt:open-ai', () => this.showAIPanel(true));
     window.addEventListener('ykt:open-chat', () => this.showChatPanel(true));
+    window.addEventListener('ykt:open-problem-list', () => this.showProblemListPanel(true));
   },
 
   // 题目提醒
@@ -373,6 +345,11 @@ export const ui = {
 
   toast,
   nativeNotify: gm.notify,
+
+  // 主面板
+  showShellPanel(visible = true) {
+    Shell.showShell(visible);
+  },
 
   // Buttons 状态
   updateAutoAnswerBtn() {

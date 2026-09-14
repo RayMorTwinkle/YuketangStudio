@@ -5,7 +5,8 @@ import  './net/fetch-interceptor.js';
 import { injectStyles } from './ui/styles.js';
 import { installToolbar } from './ui/toolbar.js';
 import { actions } from './state/actions.js';
-import { ui } from './ui/ui-api.js'; 
+import { ui } from './ui/ui-api.js';
+import { isStudentV3Page, runHistoryCapture } from './core/history-capture.js'; 
 
 (function loadFA() {
   const link = document.createElement('link');
@@ -89,5 +90,10 @@ function startPeriodicReload(opts = {}) {
 
   // 更新课件加载
   actions.launchLessonHelper();
+
+  // 历史课件收集器：student-v3 报告页自动执行（配合课件面板的「历史课件」导入）
+  if (isStudentV3Page()) {
+    runHistoryCapture().catch(e => console.error('[YKS-History] 启动失败', e));
+  }
 })();
 
