@@ -21,8 +21,7 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
   let doc = null;
   let pages = 0;
   let skipped = 0;
-  const seenHashes = [];        // 已收录页的感知哈希
-  const seenHashKey = new Set(); // 完全相同的哈希快速判重
+  const greys = [];             // 已收录页的 256x144 灰度缩略（Uint8Array）
   const CONCURRENCY = 5;
 
   // 阶段1：并发预下载全部图片（带进度），避免逐张串行等待
@@ -52,17 +51,18 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
     const img = imgs[i];
     if (!img) { skipped++; continue; }
 
-    // 内容级去重：感知哈希（dHash 8x8 差分）
-    // 阈值实测校准（真实 PPT 样本）：同页重采样变体距离 7、亮度变化变体 11，
-    // 不同页两两距离 14~22 → 取 12 居中（同页 7-11 判重，异页 ≥14 保留）
+    // 内容级去重：256x144 灰度缩略 + 平均绝对差（MAE）
+    // 阈值实测校准（真实 slide 样本）：同页 JPEG 重压缩变体 MAE 0.35~0.73（q=0.5 仍 <0.8），
+    // 不同页两两 MAE 7.5~12.5 → 取 3：同页 4 倍余量，异页 2.5 倍余量，实测倍数 10.3x
     if (opts.dedupHash) {
       let dup = false;
       try {
-        const h = dHash(img);
-        if (seenHashKey.has(h)) dup = true;
-        else if (seenHashes.some(x => hamming(x, h) <= 12)) dup = true;
-        if (!dup) { seenHashes.push(h); seenHashKey.add(h); }
-      } catch { /* 哈希失败不阻断 */ }
+        const g = toGrey256(img);
+        for (const prev of greys) {
+          if (mae(prev, g) <= 3) { dup = true; break; }
+        }
+        if (!dup) greys.push(g);
+      } catch { /* 去重失败不阻断 */ }
       if (dup) {
         skipped++;
         onProgress({ cur: i + 1, total, pct: 60 + Math.round(((i + 1) / total) * 38), skipped, text: `第${i + 1}/${total}页重复，已跳过` });
@@ -87,29 +87,27 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
   return { pages, skipped };
 }
 
-/** 8x8 差分哈希（dHash）：缩到 9x8 灰度，横向比较亮度 */
-function dHash(img) {
+/** 256×144 灰度缩略（Uint8Array，36KB/张，用于内容级去重） */
+function toGrey256(img) {
+  const W = 256, H = 144;
   const c = document.createElement('canvas');
-  c.width = 9; c.height = 8;
+  c.width = W; c.height = H;
   const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, 9, 8);
-  const d = ctx.getImageData(0, 0, 9, 8).data;
-  const lum = [];
-  for (let p = 0; p < 72; p++) {
+  ctx.drawImage(img, 0, 0, W, H);
+  const d = ctx.getImageData(0, 0, W, H).data;
+  const g = new Uint8Array(W * H);
+  for (let p = 0; p < W * H; p++) {
     const i = p * 4;
-    lum.push(d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
+    g[p] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
   }
-  let bits = '';
-  for (let y = 0; y < 8; y++)
-    for (let x = 0; x < 8; x++)
-      bits += lum[y * 9 + x] > lum[y * 9 + x + 1] ? '1' : '0';
-  return bits;
+  return g;
 }
 
-function hamming(a, b) {
-  let n = 0;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) n++;
-  return n;
+/** 平均绝对差（0~255 尺度） */
+function mae(a, b) {
+  let s = 0;
+  for (let p = 0; p < a.length; p++) s += Math.abs(a[p] - b[p]);
+  return s / a.length;
 }
 
 /** GM_xhr 转 dataURL 后加载 Image（绕开 OSS CORS 限制） */
