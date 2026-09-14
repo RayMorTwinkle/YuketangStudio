@@ -11,18 +11,6 @@
   <div class="panel-body">
     <div class="settings-content">
       <div class="setting-group">
-        <h4>开发者模式</h4>
-        <div class="setting-item">
-          <label for="ykt-devmode-pass">解锁密码:</label>
-          <input type="password" id="ykt-devmode-pass" placeholder="输入开发者密码">
-          <button id="ykt-btn-devmode-unlock">解锁</button>
-          <button id="ykt-btn-devmode-clear" color="red">清除</button>
-        </div>
-        <small id="ykt-devmode-status">状态检测中…</small>
-        <small>解锁后自动启用内置加密 LLM 配置（配置密文随脚本分发，换浏览器输密码即可，无需重新填写）。</small>
-      </div>
-
-      <div class="setting-group">
       <h4>AI配置</h4>
 
         <!-- 当前 profile 选择 -->
@@ -190,6 +178,14 @@
           </div>
           <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>
           <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-item" style="display:flex;align-items:center;gap:8px">
+          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">
+          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>
+          <small id="ykt-devmode-hint" style="opacity:.55"></small>
         </div>
       </div>
     </div>

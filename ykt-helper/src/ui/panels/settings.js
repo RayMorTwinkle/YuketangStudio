@@ -3,7 +3,7 @@ import tpl from './settings.html';
 import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
-import { unlockDevMode, isDevUnlocked, getDevConfig, clearDevUnlock } from '../../core/devmode.js';
+import { unlockDevMode, isDevUnlocked, getDevConfig } from '../../core/devmode.js';
 
 let mounted = false;
 let root;
@@ -167,18 +167,25 @@ export function mountSettingsPanel() {
   refreshProfileSelect();
   loadProfileToForm(ui.config.ai.activeProfileId);
 
-  // === 开发者模式 ===
+  // === 解锁入口（低调：仅一行，位于设置最底部） ===
   const DEV_PROFILE_ID = 'agnes-dev';
   const $devPass = root.querySelector('#ykt-devmode-pass');
-  const $devUnlock = root.querySelector('#ykt-btn-devmode-unlock');
-  const $devClear = root.querySelector('#ykt-btn-devmode-clear');
-  const $devStatus = root.querySelector('#ykt-devmode-status');
+  const $devBtn = root.querySelector('#ykt-devmode-btn');
+  const $devHint = root.querySelector('#ykt-devmode-hint');
 
-  function refreshDevStatus() {
+  function refreshDevHint() {
     const cfg = getDevConfig();
-    $devStatus.textContent = cfg
-      ? `已解锁 ✅（${cfg.name || '内置配置'} · ${cfg.model || ''}，已写入 AI 配置）`
-      : '未解锁：解锁后自动启用内置 LLM 配置';
+    if (cfg) {
+      $devPass.placeholder = '已解锁';
+      $devHint.textContent = '';
+      $devBtn.textContent = '已解锁';
+      $devBtn.disabled = true;
+    } else {
+      $devPass.placeholder = '解锁码';
+      $devHint.textContent = '';
+      $devBtn.textContent = '解锁';
+      $devBtn.disabled = false;
+    }
   }
 
   function applyDevProfile(devCfg) {
@@ -200,30 +207,28 @@ export function mountSettingsPanel() {
     loadProfileToForm(DEV_PROFILE_ID);
   }
 
-  $devUnlock?.addEventListener('click', async () => {
+  $devBtn?.addEventListener('click', async () => {
     const pass = ($devPass?.value || '').trim();
-    if (!pass) { ui.toast?.('请输入密码'); return; }
-    $devUnlock.disabled = true;
+    if (!pass) { ui.toast?.('请输入解锁码'); return; }
+    $devBtn.disabled = true;
     try {
       const devCfg = await unlockDevMode(pass);
       applyDevProfile(devCfg);
       $devPass.value = '';
-      refreshDevStatus();
-      ui.toast?.(`开发者模式已解锁：${devCfg.name || '内置配置'} 已启用`);
+      refreshDevHint();
+      ui.toast?.(`解锁成功：${devCfg.name || '内置配置'} 已启用`);
     } catch (e) {
       ui.toast?.('解锁失败：' + (e?.message || e));
     } finally {
-      $devUnlock.disabled = false;
+      refreshDevHint();
     }
   });
 
-  $devClear?.addEventListener('click', () => {
-    clearDevUnlock();
-    refreshDevStatus();
-    ui.toast?.('已清除开发者模式解锁状态');
+  $devPass?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $devBtn?.click();
   });
 
-  refreshDevStatus();
+  refreshDevHint();
 
   // 切换 profile
   $profileSelect.addEventListener('change', () => {
