@@ -24,7 +24,7 @@
 
 ## 安装
 
-> 本脚本不上架任何脚本市场，通过本仓库直接分发，`dist/YuketangStudio-latest.user.js` 始终指向最新构建。
+> 本脚本不上架任何脚本市场，通过本仓库直接分发，`ykt-helper/dist/YuketangStudio-latest.user.js` 始终指向最新构建。
 
 **方式一：一键安装（推荐）**
 
