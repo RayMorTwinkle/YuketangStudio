@@ -8,6 +8,20 @@ import { gm } from './env.js';
 const RESULT_KEY_PREFIX = 'ykt-history-result:';
 const PROGRESS_KEY_PREFIX = 'ykt-history-progress:';
 
+/** 收集页内的可见状态条（进度对本页用户可见） */
+function statusEl(text, pct) {
+  let el = document.getElementById('yks-history-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'yks-history-status';
+    el.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;background:#1d63df;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:420px;font-family:system-ui,sans-serif;';
+    document.body?.appendChild(el);
+  }
+  el.innerHTML = `<b>📥 YuketangStudio 收集器</b><div style="margin-top:4px">${text || ''}</div>` +
+    (pct != null ? `<div style="margin-top:6px;background:rgba(255,255,255,.25);border-radius:4px;overflow:hidden"><div style="height:6px;width:${pct}%;background:#fff;border-radius:4px;transition:width .3s"></div></div>` : '');
+  return el;
+}
+
 /** 是否处于 student-v3 报告页（收集器的工作现场） */
 export function isStudentV3Page() {
   return /\/v2\/web\/student-v3\//.test(window.location.pathname);
@@ -31,6 +45,7 @@ export async function runHistoryCapture() {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   try {
+    statusEl('等待课件卡片渲染…');
     // 1. 等待课件卡片渲染（最长 30s）
     let card = null;
     for (let i = 0; i < 30; i++) {
@@ -42,6 +57,7 @@ export async function runHistoryCapture() {
 
     // 2. 取标题
     const title = (document.querySelector('.ppt_name')?.textContent || '历史课件').trim();
+    statusEl(`已找到课件「${title}」，打开全页预览…`);
 
     // 3. 点击缩略图打开全页预览（lightbox 会把所有页渲染进 DOM）
     const thumb = document.querySelector('.module_ppt .swiper_box img') || document.querySelector('.module_ppt img');
@@ -66,6 +82,7 @@ export async function runHistoryCapture() {
     // 按 DOM 出现顺序排序（lightbox 顺序即页序）
     const urls = [...uniq.values()].sort((a, b) => a.order - b.order).map(x => x.url);
     console.log('[YKS-History] 收集到', urls.length, '页');
+    statusEl(`已收集 ${urls.length} 页图片，开始下载并生成 PDF…`, 2);
 
     if (!urls.length) throw new Error('未收集到任何 slide 图片');
 
@@ -75,6 +92,7 @@ export async function runHistoryCapture() {
         if (typeof GM_setValue === 'function')
           GM_setValue(PROGRESS_KEY_PREFIX + lessonId, { ...info, title, phase: 'pdf', ts: Date.now() });
       } catch {}
+      statusEl(`下载并生成 PDF：${info.text || ''}${info.skipped ? ` · 已去重 ${info.skipped} 页` : ''}`, info.pct);
       console.log('[YKS-History] PDF', info.pct + '%', info.text);
     };
     const { pages, skipped } = await exportImagesToPdf(urls, title, { dedupHash: true, onProgress: report });
@@ -82,12 +100,14 @@ export async function runHistoryCapture() {
     // 6. 通知主页面（结果存 GM 存储，主页面轮询读取）
     const result = { ok: true, lessonId, title, pages, skipped, total: urls.length, ts: Date.now() };
     if (typeof GM_setValue === 'function') GM_setValue(RESULT_KEY_PREFIX + lessonId, result);
+    statusEl(`✅ 完成！${pages} 页 PDF 已开始下载（去重 ${skipped} 页），本页稍后可关闭`);
     console.log('[YKS-History] 完成:', result);
 
     // 7. 关闭收集页（若是脚本开的 tab；用户手动打开则保留）
-    setTimeout(() => { try { window.close(); } catch {} }, 1500);
+    setTimeout(() => { try { window.close(); } catch {} }, 4000);
   } catch (e) {
     console.error('[YKS-History] 失败:', e);
+    statusEl(`❌ 收集失败：${String(e?.message || e).slice(0, 120)}`, 100);
     const result = { ok: false, lessonId, error: String(e?.message || e), ts: Date.now() };
     if (typeof GM_setValue === 'function') {
       GM_setValue(RESULT_KEY_PREFIX + lessonId, result);
