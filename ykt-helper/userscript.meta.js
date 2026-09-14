@@ -1,11 +1,10 @@
 // userscript.meta.js
-// userscript.meta.js
 export const meta = `
 // ==UserScript==
-// @name         AI雨课堂助手（JS版）
-// @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.30.1
-// @description  课堂习题提示，AI解答习题
+// @name         YuketangStudio 雨课堂助手
+// @namespace    https://github.com/RayMorTwinkle/YuketangStudio
+// @version      1.31.0
+// @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
 // @match        https://pro.yuketang.cn/web/*
@@ -36,6 +35,7 @@ export const meta = `
 // @connect      openrouter.ai
 // @connect      generativelanguage.googleapis.com
 // @connect      api.longcat.chat
+// @connect      api.agnes-ai.cn
 // @connect      *
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
