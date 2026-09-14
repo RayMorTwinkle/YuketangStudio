@@ -36,6 +36,7 @@ export const meta = `
 // @connect      generativelanguage.googleapis.com
 // @connect      api.longcat.chat
 // @connect      api.agnes-ai.cn
+// @connect      *.yuketang.cn
 // @connect      *
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
