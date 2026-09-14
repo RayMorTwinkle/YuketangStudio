@@ -52,13 +52,15 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
     const img = imgs[i];
     if (!img) { skipped++; continue; }
 
-    // 内容级去重：感知哈希（dHash 8x8 差分，汉明距离阈值 5）
+    // 内容级去重：感知哈希（dHash 8x8 差分）
+    // 阈值实测校准（真实 PPT 样本）：同页重采样变体距离 7、亮度变化变体 11，
+    // 不同页两两距离 14~22 → 取 12 居中（同页 7-11 判重，异页 ≥14 保留）
     if (opts.dedupHash) {
       let dup = false;
       try {
         const h = dHash(img);
         if (seenHashKey.has(h)) dup = true;
-        else if (seenHashes.some(x => hamming(x, h) <= 5)) dup = true;
+        else if (seenHashes.some(x => hamming(x, h) <= 12)) dup = true;
         if (!dup) { seenHashes.push(h); seenHashKey.add(h); }
       } catch { /* 哈希失败不阻断 */ }
       if (dup) {
