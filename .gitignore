@@ -24,4 +24,4 @@ dist-ssr
 
 # Temporary files
 temp/
-dist/
+# dist/YuketangStudio-latest.user.js 随版本提交，作为 README 的固定安装地址

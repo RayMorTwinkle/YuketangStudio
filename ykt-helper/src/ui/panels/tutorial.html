@@ -1,52 +1,49 @@
 <div id="ykt-tutorial-panel" class="ykt-panel">
   <div class="panel-header">
-    <h3>雨课堂助手使用教程</h3>
+    <h3>YuketangStudio 使用教程</h3>
     <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>
   </div>
 
   <div class="panel-body">
     <div class="tutorial-content">
-      <h4>工具版本</h4>
-      <p>1.21.1</p>
+      <h4>版本</h4>
+      <p>0.1.0</p>
 
-      <h4>功能介绍</h4>
-      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>
-      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>
-      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>
+      <h4>项目介绍</h4>
+      <p>YuketangStudio 是一个为雨课堂提供辅助功能的工具：PPT 提取导出、答题提醒、AI 解答、PPT 多轮对话。</p>
+      <p>项目仓库：<a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">GitHub</a></p>
+      <p>安装：本脚本通过源码构建分发，未上架任何脚本市场，安装方式见仓库 README。</p>
 
-      <h4>工具栏按钮说明</h4>
+      <h4>主面板</h4>
+      <p>点击工具栏左侧第一个按钮（<i class="fas fa-briefcase"></i>）打开主面板，左侧标签切换功能：</p>
       <ul>
-        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>
-        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>
-        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>
+        <li><b>💬 PPT对话</b>：截取当前 PPT 页与 AI 多轮连续追问（思考链可折叠，流式输出）。</li>
+        <li><b>🤖 AI解答</b>：对当前题目提取文字/选项，可选附图询问 AI。</li>
+        <li><b>📑 课件</b>：浏览课堂幻灯片；「📥 历史课件」可从往期课堂报告一键导出横屏 PDF（自动去重）。</li>
+        <li><b>📋 题目列表</b>：查看本课所有题目与状态。</li>
+        <li><b>⚙️ 设置</b>：AI 配置、开发者模式、自动作答与提醒参数。</li>
+        <li><b>❓ 教程</b>：本页。</li>
+      </ul>
+
+      <h4>工具栏快捷开关</h4>
+      <ul>
+        <li><i class="fas fa-briefcase"></i> <b>主面板</b>：打开/关闭主面板。</li>
+        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：新习题出现时弹窗+提示音（蓝色=开启）。</li>
         <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>
-        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>
-        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>
       </ul>
 
-      <h4>自动作答</h4>
-      <ul>
-        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>
-        <li>需要配置 LLM API 密钥。</li>
-        <li>答案来自 AI，结果仅供参考。</li>
-      </ul>
-
-      <h4>AI 解答</h4>
-      <ol>
-        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>
-        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>
-      </ol>
+      <h4>开发者模式</h4>
+      <p>设置 → 开发者模式：输入密码解锁内置加密 LLM 配置（配置密文随脚本分发，换浏览器输密码即可，无需重新填写）。解锁后自动写入 AI 配置并激活。</p>
 
       <h4>注意事项</h4>
       <p>1) 仅供学习参考，请独立思考；</p>
-      <p>2) 合理使用 API 额度；</p>
-      <p>3) 答案不保证 100% 正确；</p>
-      <p>4) 自动作答有一定风险，谨慎开启。</p>
+      <p>2) AI 解答需要调用 LLM API，注意费用；</p>
+      <p>3) AI 答案不保证正确；</p>
+      <p>4) 自动作答有风险，谨慎开启。</p>
 
-      <h4>联系方式</h4>
-      <ul>
-        <li>请在<a href="https://github.com/ZaytsevZY/yuketang-helper-auto/issues" target="_blank" rel="noopener">GitHub Issues</a>提出问题</li>
-      </ul>
+      <h4>致谢与反馈</h4>
+      <p>本项目基于 <a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">ZaytsevZY/yuketang-helper-auto</a> 重构而来。</p>
+      <p>问题反馈：<a href="https://github.com/RayMorTwinkle/YuketangStudio/issues" target="_blank" rel="noopener">GitHub Issues</a></p>
     </div>
   </div>
 </div>
