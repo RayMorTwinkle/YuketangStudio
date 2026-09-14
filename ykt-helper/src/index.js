@@ -46,8 +46,13 @@ function startPeriodicReload(opts = {}) {
         hidden: document.hidden
       });
 
-      if (skipLessonPages && /\/lesson\//.test(window.location.pathname)) {
-        console.log('[雨课堂助手][DEBUG] skip reload: lesson page');
+      if (skipLessonPages && /\/lesson\/|\/student-lesson-report\//.test(window.location.pathname)) {
+        console.log('[雨课堂助手][DEBUG] skip reload: lesson/report page');
+        return;
+      }
+      // 任意助手面板打开时不刷新，避免打断用户操作（PDF导出、AI对话等）
+      if (document.querySelector('.ykt-panel.visible')) {
+        console.log('[雨课堂助手][DEBUG] skip reload: panel open');
         return;
       }
       if (onlyWhenHidden && !document.hidden) {

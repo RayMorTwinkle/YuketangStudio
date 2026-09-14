@@ -185,7 +185,7 @@ async function sendCurrent() {
   const attach = $sel('#ykt-chat-attach')?.checked;
 
   streaming = true;
-  $send.disabled = true;
+  $sel('#ykt-chat-send').disabled = true;
   try {
     const content = [{ type: 'text', text }];
     if (attach) {
@@ -241,7 +241,7 @@ async function sendCurrent() {
   } finally {
     streaming = false;
     abortCtrl = null;
-    $send.disabled = false;
+    $sel('#ykt-chat-send').disabled = false;
     $sel('#ykt-chat-log').scrollTop = $sel('#ykt-chat-log').scrollHeight;
   }
 }
