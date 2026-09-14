@@ -3,7 +3,7 @@ export const meta = `
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      1.31.0
+// @version      0.1.0
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn

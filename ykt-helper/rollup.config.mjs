@@ -6,7 +6,7 @@ import terser from '@rollup/plugin-terser';
 import { meta } from './userscript.meta.js';
 
 /** 产物文件名 */
-const OUT_FILE = 'dist/YuketangStudio-1.31.0.user.js';
+const OUT_FILE = 'dist/YuketangStudio-0.1.0.user.js';
 
 export default {
   input: 'src/index.js',

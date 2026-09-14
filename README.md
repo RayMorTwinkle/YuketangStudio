@@ -2,7 +2,7 @@
   <a href="https://github.com/RayMorTwinkle/YuketangStudio/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/>
   </a>
-  <img src="https://img.shields.io/badge/version-1.31.0-blue.svg" alt="版本">
+  <img src="https://img.shields.io/badge/version-0.1.0-blue.svg" alt="版本">
   <img src="https://img.shields.io/badge/platform-Tampermonkey-green.svg" alt="平台">
   <img src="https://img.shields.io/badge/学校-长江雨课堂%20%7C%20通用-orange.svg" alt="适配">
 </p>
@@ -21,26 +21,54 @@
 | 🤖 **AI 解答** | 提取题干与选项，可选附带 PPT 截图调用视觉模型；支持思考模式（默认开启）、流式输出 |
 | 💬 **PPT 多轮对话** | 不是题目也能问：截当前 PPT 与 AI 连续追问，思考链可折叠查看 |
 | 🔐 **开发者模式** | 内置加密 LLM 配置，输入解锁密码即可使用——换浏览器只需装同一份脚本，无需重新填配置 |
-| 📚 **历史课件归档** | 不上课时也能把之前上过课的 PPT 一键导出（按 slide URL/页码去重） |
+| 📚 **历史课件归档** | 不上课时也能把之前上过课的 PPT 一键导出（内容级去重，同页多讲只保留一份） |
 
 ## 安装
 
-1. 浏览器安装 [篡改猴 (Tampermonkey)](https://www.tampermonkey.net/)，并开启**开发者模式**与「允许运行用户脚本」
-2. 从 [Releases](https://github.com/RayMorTwinkle/YuketangStudio/releases) 下载最新的 `YuketangStudio-*.user.js`，在篡改猴中新建脚本粘贴导入
-3. 打开雨课堂网页版确认左下角出现工具栏
+> 本脚本不上架任何脚本市场，通过本仓库直接分发，`dist/YuketangStudio-latest.user.js` 始终指向最新构建。
 
-## 本地构建
+**方式一：一键安装（推荐）**
+
+1. 浏览器安装 [篡改猴 (Tampermonkey)](https://www.tampermonkey.net/)，并开启**开发者模式**与「允许运行用户脚本」
+2. 在篡改猴图标菜单里选择「添加新脚本」→ 全选替换为本文件内容；或直接浏览器打开下方链接，按提示安装：
+
+   **安装地址（始终最新）**：
+   ```
+   https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/dist/YuketangStudio-latest.user.js
+   ```
+
+**方式二：手动导入**
+
+下载 [`dist/YuketangStudio-latest.user.js`](https://github.com/RayMorTwinkle/YuketangStudio/blob/main/dist/YuketangStudio-latest.user.js)，在篡改猴「实用工具 → 导入」或新建脚本粘贴。
+
+**方式三：从源码构建**
 
 ```bash
-cd ykt-helper
+git clone https://github.com/RayMorTwinkle/YuketangStudio.git
+cd YuketangStudio/ykt-helper
 npm i
-npm run build      # 产物：dist/YuketangStudio-<版本>.user.js
-npm run dev        # 开发模式（监听文件变化）
+npm run build      # 产物：dist/YuketangStudio-<版本>.user.js + YuketangStudio-latest.user.js
 ```
 
-## 开发者模式
+构建后按方式一/二安装 `dist/` 下的产物。
 
-脚本内置了加密的 LLM 配置（AES-GCM，密钥由密码派生）。在设置面板点击「开发者模式」输入密码解锁后即可使用；解锁结果会缓存到脚本存储，同一浏览器无需重复输入。
+## 使用说明
+
+登录雨课堂网页版后，页面左下角会出现工具栏：
+
+- **💼 主面板**：打开主面板，左侧标签切换全部功能（PPT对话 / AI解答 / 课件 / 题目列表 / 设置 / 教程）
+- **🔔 习题提醒**：新习题出现时弹窗 + 提示音
+- **✨ 自动作答**：切换自动作答（默认关闭）
+
+### 历史课件导出
+
+主面板 → 课件 → 「📥 历史课件」：自动列出该班级的全部往期课堂，选择后自动收集全部幻灯片并生成**横屏 PDF**（页面比例与原图一致，无白边；内容级去重，老师回跳重讲的页面只保留一份）。
+
+> 提示：图片走 `*.yuketang.cn` CDN 下载，若开启全局代理建议将其加入直连规则，速度可提升 10 倍以上。
+
+### 开发者模式
+
+脚本内置了加密的 LLM 配置（AES-GCM，密钥由密码派生）。设置 → 开发者模式，输入密码解锁后自动启用；解锁状态缓存在本浏览器，换浏览器只需重新输一次密码。
 
 > 安全说明：配置为可逆混淆，用于防止配置被偶然泄露，不抵御有意的逆向分析。
 
@@ -48,22 +76,28 @@ npm run dev        # 开发模式（监听文件变化）
 
 ```
 YuketangStudio/
-├── ykt-helper/          # 脚本源码（唯一源码目录）
+├── ykt-helper/              # 脚本源码（唯一源码目录）
 │   ├── src/
-│   │   ├── index.js     # 入口
-│   │   ├── ai/          # LLM 适配器（agnes / kimi / deepseek / openrouter…）
-│   │   ├── capture/     # 截图（html2canvas）
-│   │   ├── core/        # 环境、存储、类型
-│   │   ├── net/         # WS / XHR / fetch 拦截
-│   │   ├── state/       # 数据仓库与动作（答题循环）
-│   │   ├── tsm/         # 雨课堂业务（题目格式化、提交）
-│   │   └── ui/          # 工具栏、面板、样式
+│   │   ├── index.js         # 入口
+│   │   ├── ai/              # LLM 适配器（agnes / kimi / deepseek / openrouter…）
+│   │   ├── capture/         # 截图（html2canvas）
+│   │   ├── core/            # 环境、存储、加密配置、PDF 导出、历史收集
+│   │   ├── net/             # WS / XHR / fetch 拦截
+│   │   ├── state/           # 数据仓库与动作（答题循环）
+│   │   ├── tsm/             # 雨课堂业务（题目格式化、提交）
+│   │   └── ui/              # 主面板壳、工具栏、各功能面板
+│   ├── scripts/             # 构建辅助（加密配置生成、测试）
 │   ├── rollup.config.mjs
 │   └── userscript.meta.js
-├── static/              # README 截图
-├── CODE_WIKI.md         # 代码结构 Wiki（上游遗留，部分描述基于旧版本）
+├── dist/                    # 构建产物（YuketangStudio-latest.user.js 随版本提交）
+├── static/                  # README 截图
+├── CODE_WIKI.md             # 代码结构 Wiki（上游遗留，部分描述基于旧版本）
 └── changelog.md
 ```
+
+## 版本说明
+
+版本号自 `0.1.0` 起独立计数。当前基于上游 `ykt-helper v1.30.1` 重构：重命名项目、清理结构、新增开发者模式（加密配置）、PPT 多轮对话、历史课件收集导出（横屏 PDF + 内容去重）、统一主面板 UI。
 
 ## 致谢
 

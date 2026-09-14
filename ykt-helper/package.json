@@ -1,12 +1,12 @@
 {
   "name": "yuketangstudio-userscript",
-  "version": "1.31.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
-    "postbuild": "node -e \"console.log('\\n✅ Build done: dist/YuketangStudio-1.31.0.user.js')\""
+    "postbuild": "node -e \"const fs=require('fs');const f=fs.readdirSync('dist').find(f=>/^YuketangStudio-[0-9]/.test(f));fs.copyFileSync('dist/'+f,'dist/YuketangStudio-latest.user.js');console.log('✅ Build done: dist/'+f+' (+ YuketangStudio-latest.user.js)')\""
   },
   "devDependencies": {
     "@bkuri/rollup-plugin-string": "^1.0.0",
