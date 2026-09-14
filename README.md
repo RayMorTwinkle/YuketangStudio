@@ -31,13 +31,13 @@
 1. 浏览器安装 [篡改猴 (Tampermonkey)](https://www.tampermonkey.net/)，并开启**开发者模式**与「允许运行用户脚本」
 2. 点击下面的按钮，浏览器打开 raw 文件后油猴会自动弹出安装界面：
 
-   **[📥 点此一键安装](https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/dist/YuketangStudio-latest.user.js)**
+   **[📥 点此一键安装](https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js)**
 
    （链接始终指向最新构建）
 
 **方式二：手动导入**
 
-下载 [`dist/YuketangStudio-latest.user.js`](https://github.com/RayMorTwinkle/YuketangStudio/blob/main/dist/YuketangStudio-latest.user.js)，在篡改猴「实用工具 → 导入」或新建脚本粘贴。
+下载 [`ykt-helper/dist/YuketangStudio-latest.user.js`](https://github.com/RayMorTwinkle/YuketangStudio/blob/main/ykt-helper/dist/YuketangStudio-latest.user.js)，在篡改猴「实用工具 → 导入」或新建脚本粘贴。
 
 **方式三：从源码构建**
 
@@ -80,8 +80,8 @@ YuketangStudio/
 │   │   └── ui/              # 主面板壳、工具栏、各功能面板
 │   ├── scripts/             # 构建辅助（加密配置生成、测试）
 │   ├── rollup.config.mjs
-│   └── userscript.meta.js
-├── dist/                    # 构建产物（YuketangStudio-latest.user.js 随版本提交）
+│   ├── userscript.meta.js
+│   └── dist/                # 构建产物（YuketangStudio-latest.user.js 随版本提交）
 ├── static/                  # README 截图
 ├── CODE_WIKI.md             # 代码结构 Wiki（上游遗留，部分描述基于旧版本）
 └── changelog.md
