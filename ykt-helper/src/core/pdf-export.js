@@ -21,20 +21,36 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
   let doc = null;
   let pages = 0;
   let skipped = 0;
-  const seenHashes = [];   // 已收录页的感知哈希
+  const seenHashes = [];        // 已收录页的感知哈希
   const seenHashKey = new Set(); // 完全相同的哈希快速判重
+  const CONCURRENCY = 5;
 
+  // 阶段1：并发预下载全部图片（带进度），避免逐张串行等待
+  onProgress({ cur: 0, total, pct: 0, skipped: 0, text: '并发下载图片中…' });
+  const imgs = new Array(total).fill(null);
+  let doneCount = 0;
+  let nextIdx = 0;
+  async function worker() {
+    for (;;) {
+      const i = nextIdx++;
+      if (i >= total) return;
+      try {
+        imgs[i] = await loadImageViaGM(urls[i]);
+      } catch (e) {
+        console.warn('[PDF] 第', i + 1, '页图片加载失败，跳过:', e?.message);
+        imgs[i] = null;
+      }
+      doneCount++;
+      onProgress({ cur: doneCount, total, pct: Math.round((doneCount / total) * 60), skipped, text: `已下载 ${doneCount}/${total} 张` });
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, worker));
+
+  // 阶段2：顺序去重 + 生成 PDF
   for (let i = 0; i < total; i++) {
     if (opts.signal?.aborted) throw new Error('已取消');
-    let img;
-    try {
-      img = await loadImageViaGM(urls[i]);
-    } catch (e) {
-      console.warn('[PDF] 第', i + 1, '页图片加载失败，跳过:', e?.message);
-      skipped++;
-      onProgress({ cur: i + 1, total, pct: Math.round(((i + 1) / total) * 100), skipped, text: `第${i + 1}/${total}页加载失败` });
-      continue;
-    }
+    const img = imgs[i];
+    if (!img) { skipped++; continue; }
 
     // 内容级去重：感知哈希（dHash 8x8 差分，汉明距离阈值 5）
     if (opts.dedupHash) {
@@ -47,7 +63,7 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
       } catch { /* 哈希失败不阻断 */ }
       if (dup) {
         skipped++;
-        onProgress({ cur: i + 1, total, pct: Math.round(((i + 1) / total) * 100), skipped, text: `第${i + 1}/${total}页重复，已跳过` });
+        onProgress({ cur: i + 1, total, pct: 60 + Math.round(((i + 1) / total) * 38), skipped, text: `第${i + 1}/${total}页重复，已跳过` });
         continue;
       }
     }
@@ -60,7 +76,7 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
     else doc.addPage(fmt, orient);
     doc.addImage(img, 'PNG', 0, 0, iw, ih);
     pages++;
-    onProgress({ cur: i + 1, total, pct: Math.round(((i + 1) / total) * 100), skipped, text: `${pages} 页已收录` });
+    onProgress({ cur: i + 1, total, pct: 60 + Math.round(((i + 1) / total) * 38), skipped, text: `${pages} 页已收录` });
   }
 
   onProgress({ cur: total, total, pct: 100, skipped, text: '保存中...' });

@@ -47,7 +47,7 @@ function startPeriodicReload(opts = {}) {
         hidden: document.hidden
       });
 
-      if (skipLessonPages && /\/lesson\/|\/student-lesson-report\//.test(window.location.pathname)) {
+      if (skipLessonPages && /\/lesson\/|\/student-lesson-report\/|\/student-v3\//.test(window.location.pathname)) {
         console.log('[雨课堂助手][DEBUG] skip reload: lesson/report page');
         return;
       }
