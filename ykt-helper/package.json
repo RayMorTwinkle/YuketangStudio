@@ -1,6 +1,6 @@
 {
-  "name": "ykt-helper-userscript",
-  "version": "1.0.0",
+  "name": "yuketangstudio-userscript",
+  "version": "1.31.0",
   "private": true,
   "type": "module",
   "scripts": {
