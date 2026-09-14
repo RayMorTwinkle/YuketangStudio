@@ -6,6 +6,7 @@ import { exportImagesToPdf } from './pdf-export.js';
 import { gm } from './env.js';
 
 const RESULT_KEY_PREFIX = 'ykt-history-result:';
+const PROGRESS_KEY_PREFIX = 'ykt-history-progress:';
 
 /** 是否处于 student-v3 报告页（收集器的工作现场） */
 export function isStudentV3Page() {
@@ -68,13 +69,18 @@ export async function runHistoryCapture() {
 
     if (!urls.length) throw new Error('未收集到任何 slide 图片');
 
-    // 5. 直接生成 PDF 下载（复用横屏逻辑）
-    const pages = await exportImagesToPdf(urls, title, {
-      onProgress: (pct, text) => console.log('[YKS-History] PDF', pct + '%', text),
-    });
+    // 5. 逐张下载 + 内容级去重（dHash）+ 生成横屏 PDF；进度实时上报主页面
+    const report = (info) => {
+      try {
+        if (typeof GM_setValue === 'function')
+          GM_setValue(PROGRESS_KEY_PREFIX + lessonId, { ...info, title, phase: 'pdf', ts: Date.now() });
+      } catch {}
+      console.log('[YKS-History] PDF', info.pct + '%', info.text);
+    };
+    const { pages, skipped } = await exportImagesToPdf(urls, title, { dedupHash: true, onProgress: report });
 
     // 6. 通知主页面（结果存 GM 存储，主页面轮询读取）
-    const result = { ok: true, lessonId, title, pages, ts: Date.now() };
+    const result = { ok: true, lessonId, title, pages, skipped, total: urls.length, ts: Date.now() };
     if (typeof GM_setValue === 'function') GM_setValue(RESULT_KEY_PREFIX + lessonId, result);
     console.log('[YKS-History] 完成:', result);
 
@@ -83,7 +89,10 @@ export async function runHistoryCapture() {
   } catch (e) {
     console.error('[YKS-History] 失败:', e);
     const result = { ok: false, lessonId, error: String(e?.message || e), ts: Date.now() };
-    if (typeof GM_setValue === 'function') GM_setValue(RESULT_KEY_PREFIX + lessonId, result);
+    if (typeof GM_setValue === 'function') {
+      GM_setValue(RESULT_KEY_PREFIX + lessonId, result);
+      GM_setValue(PROGRESS_KEY_PREFIX + lessonId, { phase: 'error', text: String(e?.message || e).slice(0, 80), ts: Date.now() });
+    }
   }
 }
 
@@ -93,25 +102,40 @@ export async function runHistoryCapture() {
  * @param {Object} activity  logs API 的条目 { id: activityId, courseware_id: lessonId, title }
  * @returns {Promise<{ok, title, pages}>}
  */
-export async function importHistoryLesson(classId, activity) {
+export async function importHistoryLesson(classId, activity, opts = {}) {
   const lessonId = String(activity.courseware_id);
   const activityId = String(activity.id);
   const resultKey = RESULT_KEY_PREFIX + lessonId;
-  // 清旧结果
-  if (typeof GM_setValue === 'function') GM_setValue(resultKey, null);
+  const progressKey = PROGRESS_KEY_PREFIX + lessonId;
+  // 清旧结果与进度
+  if (typeof GM_setValue === 'function') { GM_setValue(resultKey, null); GM_setValue(progressKey, null); }
 
   const url = `${location.origin}/v2/web/student-v3/${classId}/${lessonId}/${activityId}`;
   if (typeof GM_openInTab !== 'function') throw new Error('GM_openInTab 不可用');
-  GM_openInTab(url, { active: true, insert: true });
+  const collectTab = GM_openInTab(url, { active: true, insert: true });
 
-  // 轮询结果（最长 180s：109 页下载+PDF 需要时间）
+  // 轮询：读进度（回调给 UI）+ 读结果；最长 180s
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  for (let i = 0; i < 90; i++) {
-    await sleep(2000);
-    const r = (typeof GM_getValue === 'function') ? GM_getValue(resultKey) : null;
-    if (r && r.ts) return r;
+  let lastProgressTs = -1;
+  try {
+    for (let i = 0; i < 90; i++) {
+      await sleep(2000);
+      if (typeof GM_getValue === 'function') {
+        const p = GM_getValue(progressKey);
+        if (p && p.ts !== lastProgressTs) {
+          lastProgressTs = p.ts;
+          opts.onProgress?.(p);
+        }
+        const r = GM_getValue(resultKey);
+        if (r && r.ts) return r;
+      }
+    }
+    throw new Error('收集超时（180s）——请确认打开的页面里课件正常显示');
+  } finally {
+    // 完成/失败后关闭收集页（GM_openInTab 返回的 tab 对象支持 close）
+    try { collectTab?.close?.(); } catch {}
+    setTimeout(() => { try { collectTab?.close?.(); } catch {} }, 1500);
   }
-  throw new Error('收集超时（180s）——请确认打开的页面里课件正常显示');
 }
 
 /**

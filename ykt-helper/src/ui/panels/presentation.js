@@ -1114,13 +1114,22 @@ async function openHistoryImporter() {
     row.addEventListener('mouseleave', () => row.style.background = '');
     row.addEventListener('click', () => {
       mask.remove();
-      ui.toast(`已打开收集页：${a.title}（完成后自动下载 PDF，可能需要 1~3 分钟）`);
-      importHistoryLesson(classId, a)
+      const bar = showImportProgressBar(a.title || '未命名课堂');
+      importHistoryLesson(classId, a, {
+        onProgress: (p) => {
+          if (p.phase === 'error') { bar.fail(p.text || '失败'); return; }
+          bar.update(p.pct, `${a.title || ''} ${p.pct}% · ${p.text || ''}${p.skipped ? `（已去重 ${p.skipped} 页）` : ''}`);
+        },
+      })
         .then(r => {
-          if (r?.ok) ui.toast(`✅「${r.title}」导出成功：${r.pages} 页 PDF 已下载`);
-          else ui.toast('❌ 收集失败：' + (r?.error || '未知错误'));
+          if (r?.ok) {
+            bar.done(`✅「${r.title}」完成：${r.pages} 页（去重 ${r.skipped ?? 0} 页）PDF 已下载`);
+            ui.toast(`✅「${r.title}」导出成功：${r.pages} 页（去重 ${r.skipped ?? 0} 页）`);
+          } else {
+            bar.fail(r?.error || '未知错误');
+          }
         })
-        .catch(e => ui.toast('❌ ' + (e?.message || e)));
+        .catch(e => { bar.fail(e?.message || e); ui.toast('❌ ' + (e?.message || e)); });
     });
     box.appendChild(row);
   }
@@ -1131,6 +1140,40 @@ async function openHistoryImporter() {
   box.appendChild(closeBtn);
   mask.appendChild(box);
   document.body.appendChild(mask);
+}
+
+/** 全局导入进度条（固定左下角工具栏上方，独立于面板生命周期） */
+function showImportProgressBar(title) {
+  document.getElementById('ykt-import-progress')?.remove();
+  const bar = document.createElement('div');
+  bar.id = 'ykt-import-progress';
+  bar.style.cssText = 'position:fixed;left:15px;bottom:60px;z-index:99999998;background:#fff;border:1px solid #c7d2fe;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:10px 14px;width:340px;font-size:13px;';
+  bar.innerHTML = `
+    <div style="font-weight:600;margin-bottom:6px;color:#1d63df">📥 正在导入「${title}」</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;height:8px;background:#dbeafe;border-radius:4px;overflow:hidden">
+        <div class="ip-fill" style="height:100%;width:0%;background:#1d63df;border-radius:4px;transition:width .3s"></div>
+      </div>
+      <span class="ip-pct" style="min-width:36px;text-align:right;color:#607190">0%</span>
+    </div>
+    <div class="ip-text" style="margin-top:5px;color:#607190;font-size:12px">正在打开收集页…</div>`;
+  document.body.appendChild(bar);
+  return {
+    update(pct, text) {
+      const f = bar.querySelector('.ip-fill'); if (f) f.style.width = `${pct}%`;
+      const p = bar.querySelector('.ip-pct'); if (p) p.textContent = `${pct}%`;
+      const t = bar.querySelector('.ip-text'); if (t) t.textContent = text;
+    },
+    done(text) {
+      const f = bar.querySelector('.ip-fill'); if (f) f.style.width = '100%';
+      const t = bar.querySelector('.ip-text'); if (t) { t.textContent = text; t.style.color = '#059669'; }
+      setTimeout(() => bar.remove(), 8000);
+    },
+    fail(text) {
+      const t = bar.querySelector('.ip-text'); if (t) { t.textContent = '❌ ' + text; t.style.color = '#c0392b'; }
+      setTimeout(() => bar.remove(), 12000);
+    },
+  };
 }
 
 async function downloadPresentationPDF() {  const pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
