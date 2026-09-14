@@ -89,7 +89,7 @@ function safeLink(url = '') {
   return null; // 非 http/https 直接丢弃，避免 javascript: 等协议
 }
 
-function mdToHtml(mdRaw = '') {
+export function mdToHtml(mdRaw = '') {
   // 先整体转义，确保默认无 HTML 注入
   let md = escapeHtml(mdRaw).replace(/\r\n?/g, '\n');
 

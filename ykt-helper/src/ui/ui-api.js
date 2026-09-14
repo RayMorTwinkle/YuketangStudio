@@ -10,6 +10,7 @@ import * as PresPanel from './panels/presentation.js';
 import * as ProbListPanel from './panels/problem-list.js';
 import * as ActivePanel from './panels/active-problems.js';
 import * as TutorialPanel from './panels/tutorial.js';
+import * as ChatPanel from './panels/chat.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
 
 const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
@@ -135,6 +136,14 @@ export const ui = {
     }
   },
 
+  showChatPanel(visible = true) {
+    ChatPanel.showChatPanel(visible);
+    if (visible) {
+      const panel = document.getElementById('ykt-chat-panel');
+      this._bringToFront(panel);
+    }
+  },
+
   toggleSettingsPanel() {
     SettingsPanel.toggleSettingsPanel();
     // 检查面板是否变为可见状态
@@ -160,8 +169,10 @@ export const ui = {
     PresPanel.mountPresentationPanel();
     ProbListPanel.mountProblemListPanel();
     ActivePanel.mountActiveProblemsPanel();
-    TutorialPanel.mountTutorialPanel(); 
+    TutorialPanel.mountTutorialPanel();
+    ChatPanel.mountChatPanel();
     window.addEventListener('ykt:open-ai', () => this.showAIPanel(true));
+    window.addEventListener('ykt:open-chat', () => this.showChatPanel(true));
   },
 
   // 题目提醒

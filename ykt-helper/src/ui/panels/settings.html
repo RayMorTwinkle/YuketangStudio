@@ -1,6 +1,6 @@
 <div id="ykt-settings-panel" class="ykt-panel">
   <div class="panel-header">
-    <h3>AI雨课堂助手设置</h3>
+    <h3>YuketangStudio 设置</h3>
     <div class="setting-actions">
         <button id="ykt-btn-settings-save">保存设置</button>
         <button id="ykt-btn-settings-reset" color="red">重置为默认</button>
@@ -10,6 +10,18 @@
 
   <div class="panel-body">
     <div class="settings-content">
+      <div class="setting-group">
+        <h4>开发者模式</h4>
+        <div class="setting-item">
+          <label for="ykt-devmode-pass">解锁密码:</label>
+          <input type="password" id="ykt-devmode-pass" placeholder="输入开发者密码">
+          <button id="ykt-btn-devmode-unlock">解锁</button>
+          <button id="ykt-btn-devmode-clear" color="red">清除</button>
+        </div>
+        <small id="ykt-devmode-status">状态检测中…</small>
+        <small>解锁后自动启用内置加密 LLM 配置（配置密文随脚本分发，换浏览器输密码即可，无需重新填写）。</small>
+      </div>
+
       <div class="setting-group">
       <h4>AI配置</h4>
 

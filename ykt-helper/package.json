@@ -6,7 +6,7 @@
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
-    "postbuild": "node -e \"console.log('\\n✅ Build done: dist/ykt-helper.user.js')\""
+    "postbuild": "node -e \"console.log('\\n✅ Build done: dist/YuketangStudio-1.31.0.user.js')\""
   },
   "devDependencies": {
     "@bkuri/rollup-plugin-string": "^1.0.0",

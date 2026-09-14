@@ -3,6 +3,7 @@ import tpl from './settings.html';
 import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
+import { unlockDevMode, isDevUnlocked, getDevConfig, clearDevUnlock } from '../../core/devmode.js';
 
 let mounted = false;
 let root;
@@ -165,6 +166,64 @@ export function mountSettingsPanel() {
   // 初始化 Profile 下拉框
   refreshProfileSelect();
   loadProfileToForm(ui.config.ai.activeProfileId);
+
+  // === 开发者模式 ===
+  const DEV_PROFILE_ID = 'agnes-dev';
+  const $devPass = root.querySelector('#ykt-devmode-pass');
+  const $devUnlock = root.querySelector('#ykt-btn-devmode-unlock');
+  const $devClear = root.querySelector('#ykt-btn-devmode-clear');
+  const $devStatus = root.querySelector('#ykt-devmode-status');
+
+  function refreshDevStatus() {
+    const cfg = getDevConfig();
+    $devStatus.textContent = cfg
+      ? `已解锁 ✅（${cfg.name || '内置配置'} · ${cfg.model || ''}，已写入 AI 配置）`
+      : '未解锁：解锁后自动启用内置 LLM 配置';
+  }
+
+  function applyDevProfile(devCfg) {
+    const ai = ui.config.ai;
+    ensureAIProfiles(ai);
+    let p = ai.profiles.find(x => x.id === DEV_PROFILE_ID);
+    if (!p) { p = { id: DEV_PROFILE_ID }; ai.profiles.push(p); }
+    Object.assign(p, {
+      name: devCfg.name || 'Agnes Dev',
+      baseUrl: devCfg.baseUrl,
+      apiKey: devCfg.apiKey,
+      model: devCfg.model,
+      visionModel: devCfg.visionModel || devCfg.model,
+    });
+    if (devCfg.reasoningEffort) p.reasoningEffort = devCfg.reasoningEffort;
+    ai.activeProfileId = DEV_PROFILE_ID;
+    ui.saveConfig();
+    refreshProfileSelect();
+    loadProfileToForm(DEV_PROFILE_ID);
+  }
+
+  $devUnlock?.addEventListener('click', async () => {
+    const pass = ($devPass?.value || '').trim();
+    if (!pass) { ui.toast?.('请输入密码'); return; }
+    $devUnlock.disabled = true;
+    try {
+      const devCfg = await unlockDevMode(pass);
+      applyDevProfile(devCfg);
+      $devPass.value = '';
+      refreshDevStatus();
+      ui.toast?.(`开发者模式已解锁：${devCfg.name || '内置配置'} 已启用`);
+    } catch (e) {
+      ui.toast?.('解锁失败：' + (e?.message || e));
+    } finally {
+      $devUnlock.disabled = false;
+    }
+  });
+
+  $devClear?.addEventListener('click', () => {
+    clearDevUnlock();
+    refreshDevStatus();
+    ui.toast?.('已清除开发者模式解锁状态');
+  });
+
+  refreshDevStatus();
 
   // 切换 profile
   $profileSelect.addEventListener('change', () => {

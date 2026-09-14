@@ -2,7 +2,7 @@ import tpl from './presentation.html';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
-import { ensureHtml2Canvas, ensureJsPDF } from '../../core/env.js';
+import { ensureHtml2Canvas, ensureJsPDF, fetchAsDataURL } from '../../core/env.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { queryOCRVision, queryTranslationText } from '../../ai/openai.js';
 
@@ -1112,21 +1112,21 @@ async function downloadPresentationPDF() {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) throw new Error('jsPDF 未加载成功');
 
-    // 默认横屏 A4 尺寸
-    const pageW = 842;
-    const pageH = 595;
-    const margin = 24;
-    const maxW = pageW - margin * 2;
-    const maxH = pageH - margin * 2;
-    const landscapeFormat = [pageW, pageH];
-
-    const loadImage = (src) => new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = src;
-    });
+    // 关键：页面尺寸跟随每张图片的原始宽高比 → 零白边（横屏 PPT 出横屏页）
+    const loadImage = async (src) => {
+      // 优先 GM_xhr 转 dataURL，避免 OSS 无 CORS 头导致 Image 加载/污染失败
+      let url = src;
+      if (!src.startsWith('data:')) {
+        try { url = await fetchAsDataURL(src); }
+        catch (e) { L('fetchAsDataURL 降级直载:', e?.message); }
+      }
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = url;
+      });
+    };
 
     let doc = null;
     const total = slides.length;
@@ -1140,29 +1140,26 @@ async function downloadPresentationPDF() {
       const url = getSlideImageUrl(s);
       if (!url) {
         if (!doc) {
-          doc = new jsPDF({ unit: 'pt', format: landscapeFormat, orientation: 'landscape' });
-        } else if (i > 0) {
-          doc.addPage(landscapeFormat, 'landscape');
+          doc = new jsPDF({ unit: 'pt', format: [960, 540], orientation: 'landscape' });
+        } else {
+          doc.addPage([960, 540], 'landscape');
         }
         continue;
       }
       const img = await loadImage(url);
       const iw = img.naturalWidth || img.width;
       const ih = img.naturalHeight || img.height;
+      const fmt = [iw, ih];
+      const orient = iw >= ih ? 'landscape' : 'portrait';
 
       if (!doc) {
-        doc = new jsPDF({ unit: 'pt', format: landscapeFormat, orientation: 'landscape' });
-      } else if (i > 0) {
-        doc.addPage(landscapeFormat, 'landscape');
+        doc = new jsPDF({ unit: 'pt', format: fmt, orientation: orient });
+      } else {
+        doc.addPage(fmt, orient);
       }
 
-      const r = Math.min(maxW / iw, maxH / ih);
-      const w = Math.floor(iw * r);
-      const h = Math.floor(ih * r);
-      const x = Math.floor((pageW - w) / 2);
-      const y = Math.floor((pageH - h) / 2);
-
-      doc.addImage(img, 'PNG', x, y, w, h);
+      // 整页铺满：页面比例 == 图片比例，无需缩放留白
+      doc.addImage(img, 'PNG', 0, 0, iw, ih);
     }
 
     showProgress(100, '保存中...');
