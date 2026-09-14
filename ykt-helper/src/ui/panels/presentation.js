@@ -5,6 +5,7 @@ import { actions } from '../../state/actions.js';
 import { ensureHtml2Canvas, ensureJsPDF, fetchAsDataURL } from '../../core/env.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { queryOCRVision, queryTranslationText } from '../../ai/openai.js';
+import { importHistoryLesson, fetchClassActivities, currentClassId } from '../../core/history-capture.js';
 
 let mounted = false;
 let host;
@@ -731,6 +732,7 @@ export function mountPresentationPanel() {
   $('#ykt-ocr-current')?.addEventListener('click', recognizeCurrentSlideText);
   $('#ykt-translate-toggle')?.addEventListener('click', translateCurrentOCRText);
   $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
+  $('#ykt-import-history')?.addEventListener('click', openHistoryImporter);
 
   const translateTargetInput = getTranslateTargetInput();
   if (translateTargetInput && !translateTargetInput.value.trim()) {
@@ -1081,8 +1083,57 @@ async function downloadCurrentSlide() {
   }
 }
 
-async function downloadPresentationPDF() {
-  const pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
+/** 历史课件导入：列出该班级全部课堂 → 选择 → 开收集页自动导出 PDF */
+async function openHistoryImporter() {
+  const classId = currentClassId();
+  if (!classId) {
+    return ui.toast('请先进入课程的「学习日志」页（含班级 ID），再使用历史课件导入');
+  }
+  ui.toast('正在获取课堂列表…');
+  let activities;
+  try {
+    activities = await fetchClassActivities(classId);
+  } catch (e) {
+    return ui.toast('获取课堂列表失败：' + (e?.message || e));
+  }
+  if (!activities.length) return ui.toast('该班级没有可导入的课堂');
+
+  // 构建选择浮层
+  const mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:10px;max-width:520px;max-height:70vh;overflow:auto;padding:16px 20px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);';
+  box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂</div>`;
+  for (const a of activities) {
+    const d = new Date(a.create_time || 0);
+    const t = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:9px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;';
+    row.innerHTML = `<span style="flex:1">${a.title || '未命名课堂'}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? ' ✅' : ''}</span>`;
+    row.addEventListener('mouseenter', () => row.style.background = '#f0f4ff');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+    row.addEventListener('click', () => {
+      mask.remove();
+      ui.toast(`已打开收集页：${a.title}（完成后自动下载 PDF，可能需要 1~3 分钟）`);
+      importHistoryLesson(classId, a)
+        .then(r => {
+          if (r?.ok) ui.toast(`✅「${r.title}」导出成功：${r.pages} 页 PDF 已下载`);
+          else ui.toast('❌ 收集失败：' + (r?.error || '未知错误'));
+        })
+        .catch(e => ui.toast('❌ ' + (e?.message || e)));
+    });
+    box.appendChild(row);
+  }
+  const closeBtn = document.createElement('div');
+  closeBtn.textContent = '取消';
+  closeBtn.style.cssText = 'text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;';
+  closeBtn.addEventListener('click', () => mask.remove());
+  box.appendChild(closeBtn);
+  mask.appendChild(box);
+  document.body.appendChild(mask);
+}
+
+async function downloadPresentationPDF() {  const pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
   L('downloadPresentationPDF', { pid, hasPres: pid ? repo.presentations.has(pid) : false });
   if (!pid) return ui.toast('请先在左侧选择一份课件');
   const pres = repo.presentations.get(pid);
