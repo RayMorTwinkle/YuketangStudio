@@ -29,6 +29,24 @@ export function loadScriptOnce(src) {
   });
 }
 
+/** GM_xhr 下载任意图片转 dataURL（绕开 CORS；OSS 无跨域头也能拿） */
+export function fetchAsDataURL(url, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    gm.xhr({
+      method: 'GET', url, responseType: 'blob', timeout: timeoutMs,
+      onload: (res) => {
+        if (res.status !== 200) return reject(new Error(`图片下载 HTTP ${res.status}`));
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('图片读取失败'));
+        reader.readAsDataURL(res.response);
+      },
+      onerror: () => reject(new Error('图片下载失败')),
+      ontimeout: () => reject(new Error('图片下载超时')),
+    });
+  });
+}
+
 export async function ensureHtml2Canvas() {
   const w = gm.uw || window;                         
   if (typeof w.html2canvas === 'function') return w.html2canvas;

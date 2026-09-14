@@ -9,6 +9,7 @@ export function installToolbar() {
     <span id="ykt-btn-bell" class="btn" title="习题提醒"><i class="fas fa-bell"></i></span>
     <span id="ykt-btn-pres" class="btn" title="课件浏览"><i class="fas fa-file-powerpoint"></i></span>
     <span id="ykt-btn-ai" class="btn" title="AI解答"><i class="fas fa-robot"></i></span>
+    <span id="ykt-btn-chat" class="btn" title="PPT对话"><i class="fas fa-comments"></i></span>
     <span id="ykt-btn-auto-answer" class="btn" title="自动作答"><i class="fas fa-magic-wand-sparkles"></i></span>
     <span id="ykt-btn-settings" class="btn" title="设置"><i class="fas fa-cog"></i></span>
     <span id="ykt-btn-help" class="btn" title="使用教程"><i class="fas fa-question-circle"></i></span>
@@ -40,6 +41,14 @@ export function installToolbar() {
     const btn = bar.querySelector('#ykt-btn-ai');
     const isActive = btn.classList.contains('active');
     ui.showAIPanel?.(!isActive);
+    btn.classList.toggle('active', !isActive);
+  });
+
+  // PPT对话按钮
+  bar.querySelector('#ykt-btn-chat')?.addEventListener('click', () => {
+    const btn = bar.querySelector('#ykt-btn-chat');
+    const isActive = btn.classList.contains('active');
+    ui.showChatPanel?.(!isActive);
     btn.classList.toggle('active', !isActive);
   });
 
