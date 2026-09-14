@@ -1,30 +1,30 @@
 // src/core/devmode.js
 // 开发者模式：解锁内置的加密 LLM 配置
 // 加密：AES-256-GCM，密钥由密码 PBKDF2 派生（与 scripts/gen-devmode.js 配套）
+// 校验：pwHash = SHA-256(PBKDF2 派生密钥原始字节) —— 校验也挂在慢哈希后，
+//       攻击者离线爆破每个候选密码都要跑完全部迭代
 // 解锁后配置缓存到 localStorage（同浏览器免重复输入）；换浏览器重新输密码即可
 import { DEV_BLOB } from './devmode-blob.js';
 import { storage } from './storage.js';
 
-const PW_HASH_PREFIX = 'yks-dm-v1:';
 const enc = new TextEncoder();
 
 const b64ToU8 = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-const u8ToB64 = (u8) => btoa(String.fromCharCode(...u8));
 
-async function sha256Hex(str) {
-  const h = await crypto.subtle.digest('SHA-256', enc.encode(str));
+async function sha256HexBytes(bytes) {
+  const h = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function deriveKey(password, saltBytes, iterations) {
-  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
+async function deriveBitsAndKey(password, saltBytes, iterations) {
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const rawBits = new Uint8Array(await crypto.subtle.deriveBits(
     { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
     keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['decrypt']
-  );
+    256
+  ));
+  const key = await crypto.subtle.importKey('raw', rawBits, { name: 'AES-GCM' }, false, ['decrypt']);
+  return { rawBits, key };
 }
 
 /**
@@ -34,12 +34,12 @@ async function deriveKey(password, saltBytes, iterations) {
  */
 export async function unlockDevMode(password) {
   const pw = String(password || '');
-  if (!pw) throw new Error('请输入密码');
+  if (!pw) throw new Error('请输入解锁码');
 
-  const hash = await sha256Hex(PW_HASH_PREFIX + pw);
-  if (hash !== DEV_BLOB.pwHash) throw new Error('密码错误');
+  const { rawBits, key } = await deriveBitsAndKey(pw, b64ToU8(DEV_BLOB.saltB64), DEV_BLOB.iterations);
+  const hash = await sha256HexBytes(rawBits);
+  if (hash !== DEV_BLOB.pwHash) throw new Error('解锁码错误');
 
-  const key = await deriveKey(pw, b64ToU8(DEV_BLOB.saltB64), DEV_BLOB.iterations);
   let plain;
   try {
     plain = await crypto.subtle.decrypt(
@@ -48,7 +48,7 @@ export async function unlockDevMode(password) {
       b64ToU8(DEV_BLOB.ctB64)
     );
   } catch {
-    throw new Error('解密失败（blob 与密码不匹配，请重新生成）');
+    throw new Error('解密失败（blob 与解锁码不匹配，请重新生成）');
   }
 
   const cfg = JSON.parse(new TextDecoder().decode(plain));
