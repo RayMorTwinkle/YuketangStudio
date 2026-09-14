@@ -25,6 +25,6 @@ dist-ssr
 # Temporary files
 temp/
 # dist/YuketangStudio-latest.user.js 随版本提交，作为 README 的固定安装地址
-scripts/gen-devmode.js
+ykt-helper/scripts/gen-devmode.js
 scripts/dev-password.txt
 ykt-helper/scripts/test-devmode.mjs
