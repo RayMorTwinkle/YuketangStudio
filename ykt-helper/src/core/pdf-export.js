@@ -1,14 +1,19 @@
 // src/core/pdf-export.js
 // 公共 PDF 导出：页面尺寸跟随图片实际宽高比（零白边），GM_xhr 下载图片绕 CORS
 import { ensureJsPDF, fetchAsDataURL } from './env.js';
+import { log } from './log.js';
 
 /**
  * 从图片列表构建并下载 PDF（横屏 PPT 出横屏页，页面比例=图片比例）
  * @param {string[]} urls   图片 URL（支持带签名的 CDN 链接 / dataURL）
  * @param {string} title    文件名（自动清理非法字符）
  * @param {Object} [opts]   { onProgress(info), dedupHash: boolean, signal: {aborted} }
- *                          onProgress 收到 { cur, total, pct, skipped, text }
- * @returns {Promise<{pages:number, skipped:number}>}
+ *                          onProgress 收到 { cur, total, pct, skipped, failed, text }
+ * @returns {Promise<{pages:number, skipped:number, failed:number}>}
+ *          pages   = 实际写入 PDF 的页数
+ *          skipped = 内容级重复被跳过的页数
+ *          failed  = 图片下载/加载失败被跳过的页数
+ *          （两者分开统计——此前混在一起导致"去重 n 页"数字不可信）
  */
 export async function exportImagesToPdf(urls, title, opts = {}) {
   if (!urls || !urls.length) throw new Error('没有可导出的页面');
@@ -21,11 +26,12 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
   let doc = null;
   let pages = 0;
   let skipped = 0;
+  let failed = 0;
   const greys = [];             // 已收录页的 256x144 灰度缩略（Uint8Array）
   const CONCURRENCY = 5;
 
   // 阶段1：并发预下载全部图片（带进度），避免逐张串行等待
-  onProgress({ cur: 0, total, pct: 0, skipped: 0, text: '并发下载图片中…' });
+  onProgress({ cur: 0, total, pct: 0, skipped: 0, failed: 0, text: '并发下载图片中…' });
   const imgs = new Array(total).fill(null);
   let doneCount = 0;
   let nextIdx = 0;
@@ -36,11 +42,11 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
       try {
         imgs[i] = await loadImageViaGM(urls[i]);
       } catch (e) {
-        console.warn('[PDF] 第', i + 1, '页图片加载失败，跳过:', e?.message);
+        log.warn('[PDF] 第', i + 1, '页图片加载失败，跳过:', e?.message);
         imgs[i] = null;
       }
       doneCount++;
-      onProgress({ cur: doneCount, total, pct: Math.round((doneCount / total) * 60), skipped, text: `已下载 ${doneCount}/${total} 张` });
+      onProgress({ cur: doneCount, total, pct: Math.round((doneCount / total) * 60), skipped, failed, text: `已下载 ${doneCount}/${total} 张` });
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, worker));
@@ -49,7 +55,11 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
   for (let i = 0; i < total; i++) {
     if (opts.signal?.aborted) throw new Error('已取消');
     const img = imgs[i];
-    if (!img) { skipped++; continue; }
+    if (!img) {
+      failed++;   // 下载/解码失败，与"内容重复"区分开
+      onProgress({ cur: i + 1, total, pct: 60 + Math.round(((i + 1) / total) * 38), skipped, failed, text: `第${i + 1}/${total}页下载失败，已跳过` });
+      continue;
+    }
 
     // 内容级去重：256x144 灰度缩略 + 平均绝对差（MAE）
     // 阈值实测校准（真实 slide 样本）：同页 JPEG 重压缩变体 MAE 0.35~0.73（q=0.5 仍 <0.8），
@@ -65,7 +75,7 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
       } catch { /* 去重失败不阻断 */ }
       if (dup) {
         skipped++;
-        onProgress({ cur: i + 1, total, pct: 60 + Math.round(((i + 1) / total) * 38), skipped, text: `第${i + 1}/${total}页重复，已跳过` });
+        onProgress({ cur: i + 1, total, pct: 60 + Math.round(((i + 1) / total) * 38), skipped, failed, text: `第${i + 1}/${total}页重复，已跳过` });
         continue;
       }
     }
@@ -78,13 +88,13 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
     else doc.addPage(fmt, orient);
     doc.addImage(img, 'PNG', 0, 0, iw, ih);
     pages++;
-    onProgress({ cur: i + 1, total, pct: 60 + Math.round(((i + 1) / total) * 38), skipped, text: `${pages} 页已收录` });
+    onProgress({ cur: i + 1, total, pct: 60 + Math.round(((i + 1) / total) * 38), skipped, failed, text: `${pages} 页已收录` });
   }
 
-  onProgress({ cur: total, total, pct: 100, skipped, text: '保存中...' });
+  onProgress({ cur: total, total, pct: 100, skipped, failed, text: '保存中...' });
   const safe = String(title || '课件').replace(/[\\/:*?"<>|]/g, '_');
   doc.save(`${safe}.pdf`);
-  return { pages, skipped };
+  return { pages, skipped, failed };
 }
 
 /** 256×144 灰度缩略（Uint8Array，36KB/张，用于内容级去重） */
@@ -115,7 +125,7 @@ async function loadImageViaGM(src) {
   let url = src;
   if (!src.startsWith('data:')) {
     try { url = await fetchAsDataURL(src); }
-    catch (e) { console.warn('[PDF] dataURL 转换失败，直载:', e?.message); }
+    catch (e) { log.warn('[PDF] dataURL 转换失败，直载:', e?.message); }
   }
   return new Promise((resolve, reject) => {
     const img = new Image();

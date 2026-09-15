@@ -3,7 +3,7 @@
 // 流程：等课件卡片渲染 → 点击缩略图打开全页预览 → DOM 收集全部 slide 图 URL
 //      → 去重排序 → 直接生成横屏 PDF 下载 → 通过 GM_setValue 通知主页面 → 关闭标签页
 import { exportImagesToPdf } from './pdf-export.js';
-import { gm } from './env.js';
+import { log } from './log.js';
 
 const RESULT_KEY_PREFIX = 'ykt-history-result:';
 const PROGRESS_KEY_PREFIX = 'ykt-history-progress:';
@@ -40,7 +40,7 @@ export async function runHistoryCapture() {
   const ids = parseStudentV3Ids();
   if (!ids) return;
   const { lessonId } = ids;
-  console.log('[YKS-History] 开始收集历史课件:', ids);
+  log.dbg('[YKS-History] 开始收集历史课件:', ids);
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -81,32 +81,38 @@ export async function runHistoryCapture() {
     }
     // 按 DOM 出现顺序排序（lightbox 顺序即页序）
     const urls = [...uniq.values()].sort((a, b) => a.order - b.order).map(x => x.url);
-    console.log('[YKS-History] 收集到', urls.length, '页');
+    log.dbg('[YKS-History] 收集到', urls.length, '页');
     statusEl(`已收集 ${urls.length} 页图片，开始下载并生成 PDF…`, 2);
 
     if (!urls.length) throw new Error('未收集到任何 slide 图片');
 
-    // 5. 逐张下载 + 内容级去重（dHash）+ 生成横屏 PDF；进度实时上报主页面
+    // 5. 逐张下载 + 内容级去重 + 生成横屏 PDF；进度实时上报主页面
     const report = (info) => {
       try {
         if (typeof GM_setValue === 'function')
           GM_setValue(PROGRESS_KEY_PREFIX + lessonId, { ...info, title, phase: 'pdf', ts: Date.now() });
       } catch {}
-      statusEl(`下载并生成 PDF：${info.text || ''}${info.skipped ? ` · 已去重 ${info.skipped} 页` : ''}`, info.pct);
-      console.log('[YKS-History] PDF', info.pct + '%', info.text);
+      const bits = [];
+      if (info.skipped) bits.push(`去重 ${info.skipped} 页`);
+      if (info.failed) bits.push(`失败 ${info.failed} 页`);
+      statusEl(`下载并生成 PDF：${info.text || ''}${bits.length ? ` · ${bits.join(' · ')}` : ''}`, info.pct);
+      log.dbg('[YKS-History] PDF', info.pct + '%', info.text, bits.join(' '));
     };
-    const { pages, skipped } = await exportImagesToPdf(urls, title, { dedupHash: true, onProgress: report });
+    const { pages, skipped, failed } = await exportImagesToPdf(urls, title, { dedupHash: true, onProgress: report });
 
-    // 6. 通知主页面（结果存 GM 存储，主页面轮询读取）
-    const result = { ok: true, lessonId, title, pages, skipped, total: urls.length, ts: Date.now() };
+    // 6. 通知主页面（结果存 GM 存储，主页面监听变更）
+    const result = { ok: true, lessonId, title, pages, skipped, failed, total: urls.length, ts: Date.now() };
     if (typeof GM_setValue === 'function') GM_setValue(RESULT_KEY_PREFIX + lessonId, result);
-    statusEl(`✅ 完成！${pages} 页 PDF 已开始下载（去重 ${skipped} 页），本页稍后可关闭`);
-    console.log('[YKS-History] 完成:', result);
+    const tail = [`${pages} 页`];
+    if (skipped) tail.push(`去重 ${skipped} 页`);
+    if (failed) tail.push(`失败 ${failed} 页`);
+    statusEl(`✅ 完成！PDF 已开始下载（${tail.join('，')}）`, 100);
+    log.dbg('[YKS-History] 完成:', result);
 
     // 7. 关闭收集页（若是脚本开的 tab；用户手动打开则保留）
     setTimeout(() => { try { window.close(); } catch {} }, 4000);
   } catch (e) {
-    console.error('[YKS-History] 失败:', e);
+    log.err('[YKS-History] 失败:', e);
     statusEl(`❌ 收集失败：${String(e?.message || e).slice(0, 120)}`, 100);
     const result = { ok: false, lessonId, error: String(e?.message || e), ts: Date.now() };
     if (typeof GM_setValue === 'function') {
@@ -134,24 +140,56 @@ export async function importHistoryLesson(classId, activity, opts = {}) {
   if (typeof GM_openInTab !== 'function') throw new Error('GM_openInTab 不可用');
   const collectTab = GM_openInTab(url, { active: true, insert: true });
 
-  // 轮询：读进度（回调给 UI）+ 读结果；最长 180s
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // 优先走 GM_addValueChangeListener 实时推送（收集页写值即回调），
+  // 拿到进度不再依赖轮询间隔，快速下载时不会丢帧。
+  // 监听不可用时退化为轮询（下面的 for 循环）。
+  let done = null;
   let lastProgressTs = -1;
+  const listenerIds = [];
+
+  const handleProgress = (p) => {
+    if (!p || p.ts === lastProgressTs) return;
+    lastProgressTs = p.ts;
+    opts.onProgress?.(p);
+  };
+  const handleResult = (r) => {
+    if (!r || !r.ts) return;
+    if (!done) done = r;
+  };
+
+  if (typeof GM_addValueChangeListener === 'function') {
+    try {
+      const id1 = GM_addValueChangeListener(progressKey, (_n, _o, nv) => handleProgress(nv));
+      const id2 = GM_addValueChangeListener(resultKey, (_n, _o, nv) => handleResult(nv));
+      if (id1 != null) listenerIds.push(id1);
+      if (id2 != null) listenerIds.push(id2);
+    } catch (e) {
+      log.warn('[History] 变更监听不可用，退回轮询:', e?.message);
+      listenerIds.length = 0;
+    }
+  }
+
   try {
-    for (let i = 0; i < 90; i++) {
-      await sleep(2000);
+    // 兜底轮询：即使监听可用，也定期确认（防止监听漏事件），间隔 1s，最长 180s
+    for (let i = 0; i < 180 && !done; i++) {
+      await sleep(1000);
       if (typeof GM_getValue === 'function') {
-        const p = GM_getValue(progressKey);
-        if (p && p.ts !== lastProgressTs) {
-          lastProgressTs = p.ts;
-          opts.onProgress?.(p);
-        }
-        const r = GM_getValue(resultKey);
-        if (r && r.ts) return r;
+        handleProgress(GM_getValue(progressKey));
+        handleResult(GM_getValue(resultKey));
+      }
+      if (done) break;
+    }
+    if (!done) throw new Error('收集超时（180s）——请确认打开的页面里课件正常显示');
+    return done;
+  } finally {
+    // 释放监听器，避免同一页面多次导入后回调累积
+    if (typeof GM_removeValueChangeListener === 'function') {
+      for (const id of listenerIds) {
+        try { GM_removeValueChangeListener(id); } catch {}
       }
     }
-    throw new Error('收集超时（180s）——请确认打开的页面里课件正常显示');
-  } finally {
     // 完成/失败后关闭收集页（GM_openInTab 返回的 tab 对象支持 close）
     try { collectTab?.close?.(); } catch {}
     setTimeout(() => { try { collectTab?.close?.(); } catch {} }, 1500);
@@ -159,15 +197,39 @@ export async function importHistoryLesson(classId, activity, opts = {}) {
 }
 
 /**
- * 主页面调用：拉取某班级的全部课堂列表
+ * 主页面调用：拉取某班级的全部课堂列表（自动翻页，不再局限于前 50 条）
  * @param {string} classId
  * @returns {Promise<Array>} [{ id, courseware_id, title, attend_status, create_time }]
  */
 export async function fetchClassActivities(classId) {
-  const res = await fetch(`/v2/api/web/logs/learn/${classId}?actype=-1&page=0&offset=50&sort=-1`, { credentials: 'include' });
-  const j = await res.json();
-  const acts = j?.data?.activities || [];
-  return acts.filter(a => a.type === 14 && a.courseware_id); // 14 = 课堂
+  const PAGE_SIZE = 50;
+  const MAX_PAGES = 20;         // 上限 1000 条，防死循环
+  const all = [];
+  const seen = new Set();
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await fetch(
+      `/v2/api/web/logs/learn/${classId}?actype=-1&page=${page}&offset=${PAGE_SIZE}&sort=-1`,
+      { credentials: 'include' }
+    );
+    if (!res.ok) throw new Error(`课堂列表请求失败：HTTP ${res.status}`);
+    const j = await res.json();
+    const acts = j?.data?.activities || [];
+    if (!acts.length) break;
+
+    let added = 0;
+    for (const a of acts) {
+      if (a.type !== 14 || !a.courseware_id) continue;   // 14 = 课堂
+      const key = `${a.id}:${a.courseware_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(a);
+      added++;
+    }
+    // 本页没有新增（或不足一页）说明已到末尾
+    if (added === 0 || acts.length < PAGE_SIZE) break;
+  }
+  return all;
 }
 
 /** 从当前页面路径提取 classId（studentLog/{classId} 或其它含班级 id 的页面） */

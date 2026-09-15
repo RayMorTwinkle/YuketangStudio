@@ -1,5 +1,6 @@
 // src/capture/screenshot.js
 import { ensureHtml2Canvas } from '../core/env.js';
+import { log } from '../core/log.js';
 import { repo } from '../state/repo.js';
 
 export async function captureProblemScreenshot() {
@@ -20,7 +21,7 @@ export async function captureProblemScreenshot() {
       height: Math.min(el.scrollHeight, 800)
     });
   } catch (e) {
-    console.error('[captureProblemScreenshot] failed', e);
+    log.err('[captureProblemScreenshot] failed', e);
     return null;
   }
 }
@@ -32,36 +33,36 @@ export async function captureProblemScreenshot() {
  */
 export async function captureSlideImage(slideId) {
   try {
-    console.log('[captureSlideImage] 获取幻灯片图片:', slideId);
+    log.dbg('[captureSlideImage] 获取幻灯片图片:', slideId);
     
     const slide = repo.slides.get(slideId);
     if (!slide) {
-      console.error('[captureSlideImage] 找不到幻灯片:', slideId);
+      log.err('[captureSlideImage] 找不到幻灯片:', slideId);
       return null;
     }
     
     // 使用 cover 或 coverAlt 图片URL
     const imageUrl = slide.coverAlt || slide.cover || slide.image || slide.thumbnail;
     if (!imageUrl) {
-      console.error('[captureSlideImage] 幻灯片没有图片URL');
+      log.err('[captureSlideImage] 幻灯片没有图片URL');
       return null;
     }
     
-    console.log('[captureSlideImage] 图片URL:', imageUrl);
+    log.dbg('[captureSlideImage] 图片URL:', imageUrl);
     
     // 下载图片并转换为base64
     const base64 = await downloadImageAsBase64(imageUrl);
     
     if (!base64) {
-      console.error('[captureSlideImage] 下载图片失败');
+      log.err('[captureSlideImage] 下载图片失败');
       return null;
     }
     
-    console.log('[captureSlideImage] ✅ 成功获取图片, 大小:', Math.round(base64.length / 1024), 'KB');
+    log.dbg('[captureSlideImage] ✅ 成功获取图片, 大小:', Math.round(base64.length / 1024), 'KB');
     return base64;
     
   } catch (e) {
-    console.error('[captureSlideImage] 失败:', e);
+    log.err('[captureSlideImage] 失败:', e);
     return null;
   }
 }
@@ -88,28 +89,28 @@ async function downloadImageAsBase64(url) {
           const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
           
           if (base64.length > 1000000) {
-            console.log('[雨课堂助手][INFO][downloadImageAsBase64] 图片过大，进行压缩...');
+            log.dbg('[雨课堂助手][INFO][downloadImageAsBase64] 图片过大，进行压缩...');
             const compressed = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-            console.log('[雨课堂助手][INFO][downloadImageAsBase64] 压缩后大小:', Math.round(compressed.length / 1024), 'KB');
+            log.dbg('[雨课堂助手][INFO][downloadImageAsBase64] 压缩后大小:', Math.round(compressed.length / 1024), 'KB');
             resolve(compressed);
           } else {
             resolve(base64);
           }
         } catch (e) {
-          console.error('[雨课堂助手][ERR][downloadImageAsBase64] Canvas处理失败:', e);
+          log.err('[雨课堂助手][ERR][downloadImageAsBase64] Canvas处理失败:', e);
           resolve(null);
         }
       };
       
       img.onerror = (e) => {
-        console.error('[雨课堂助手][ERR][downloadImageAsBase64] 图片加载失败:', e);
+        log.err('[雨课堂助手][ERR][downloadImageAsBase64] 图片加载失败:', e);
         resolve(null);
       };
       
       img.src = url;
       
     } catch (e) {
-      console.error('[雨课堂助手][ERR][downloadImageAsBase64] 失败:', e);
+      log.err('[雨课堂助手][ERR][downloadImageAsBase64] 失败:', e);
       resolve(null);
     }
   });
@@ -118,29 +119,29 @@ async function downloadImageAsBase64(url) {
 // 原有的 captureProblemForVision
 export async function captureProblemForVision() {
   try {
-    console.log('[captureProblemForVision] 开始截图...');
+    log.dbg('[captureProblemForVision] 开始截图...');
     const canvas = await captureProblemScreenshot();
     if (!canvas) {
-      console.error('[captureProblemForVision] 截图失败');
+      log.err('[captureProblemForVision] 截图失败');
       return null;
     }
     
-    console.log('[captureProblemForVision] 截图成功，转换为base64...');
+    log.dbg('[captureProblemForVision] 截图成功，转换为base64...');
     
     const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
     
-    console.log('[captureProblemForVision] base64 长度:', base64.length);
+    log.dbg('[captureProblemForVision] base64 长度:', base64.length);
     
     if (base64.length > 1000000) {
-      console.log('[captureProblemForVision] 图片过大，进行压缩...');
+      log.dbg('[captureProblemForVision] 图片过大，进行压缩...');
       const smallerBase64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-      console.log('[captureProblemForVision] 压缩后长度:', smallerBase64.length);
+      log.dbg('[captureProblemForVision] 压缩后长度:', smallerBase64.length);
       return smallerBase64;
     }
     
     return base64;
   } catch (e) {
-    console.error('[captureProblemForVision] failed', e);
+    log.err('[captureProblemForVision] failed', e);
     return null;
   }
 }

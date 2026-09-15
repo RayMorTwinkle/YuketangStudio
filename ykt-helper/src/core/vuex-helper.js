@@ -1,6 +1,7 @@
-const L = (...a) => console.log('[雨课堂助手][DBG][vuex-helper]', ...a);
-const W = (...a) => console.warn('[雨课堂助手][WARN][vuex-helper]', ...a);
-const E = (...a) => console.error('[雨课堂助手][ERR][vuex-helper]', ...a);
+import { log } from './log.js';
+const L = (...a) => log.dbg('[雨课堂助手][DBG][vuex-helper]', ...a);
+const W = (...a) => log.warn('[雨课堂助手][WARN][vuex-helper]', ...a);
+const E = (...a) => log.err('[雨课堂助手][ERR][vuex-helper]', ...a);
 
 export function getVueApp() {
   try {
@@ -29,7 +30,7 @@ export function getCurrentMainPageSlideId() {
     const rawSid = currSlide.sid;
     const sidStr = rawSid == null ? null : String(rawSid);
 
-    console.log(
+    log.dbg(
       '[getCurrentMainPageSlideId] 获取到 slideId:',
       sidStr,
       '{type:', currSlide.type, ', problemID:', currSlide.problemID, ', index:', currSlide.index, '}',

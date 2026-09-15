@@ -2,6 +2,7 @@
 // 主面板壳：把原先各自独立的功能面板统一迁入 tab 化布局
 // 面板 DOM 迁移（appendChild 移动）保留其内部事件与逻辑，只重置外观样式
 import tpl from './shell.html';
+import { log } from '../../core/log.js';
 import * as ChatPanel from './chat.js';
 import * as AIPanel from './ai.js';
 import * as PresPanel from './presentation.js';
@@ -33,7 +34,7 @@ export function mountShell() {
   const content = root.querySelector('#ykt-shell-content');
   const tabsEl = root.querySelector('#ykt-shell-tabs');
   for (const t of TABS) {
-    try { t.mount(); } catch (e) { console.warn('[Shell] mount fail', t.id, e); }
+    try { t.mount(); } catch (e) { log.warn('[Shell] mount fail', t.id, e); }
     const panel = document.getElementById(t.panelId);
     if (panel) content.appendChild(panel); // DOM 移动，事件保留
     const tab = document.createElement('div');
@@ -75,6 +76,9 @@ export function switchTo(tabId) {
     panel.classList.toggle('active-tab', isActive);
     panel.classList.toggle('visible', isActive);
   }
+  // 面板被激活时允许它从 config 重新同步（设置面板据此刷新表单）
+  const activePanel = content.querySelector(`:scope > #${t.panelId}`);
+  activePanel?.__yksSyncForm?.();
 }
 
 /** ui-api 统一入口：visible=true 打开主面板并切到 tab；false 关闭主面板 */

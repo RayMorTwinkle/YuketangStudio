@@ -1,5 +1,6 @@
 // src/ai/kimi.js
 import { gm } from '../core/env.js';
+import { log } from '../core/log.js';
 
 // -----------------------------------------------
 // Unified Prompt blocks for Text & Vision
@@ -74,8 +75,8 @@ export async function queryKimi(question, aiCfg) {
             }),
             onload: (res) => {
                 try {
-                    console.log('[Kimi API] Status:', res.status);
-                    console.log('[Kimi API] Response:', res.responseText);
+                    log.dbg('[Kimi API] Status:', res.status);
+                    log.dbg('[Kimi API] Response:', res.responseText);
                     
                     if (res.status !== 200) {
                         reject(new Error(`Kimi API 请求失败: ${res.status}`));
@@ -153,9 +154,9 @@ export async function queryKimiVision(imageBase64, textPrompt, aiCfg) {
     ];
 
     return new Promise((resolve, reject) => {
-        console.log('[Kimi Vision] 发送请求...');
-        console.log('[Kimi Vision] 模型: moonshot-v1-8k-vision-preview');
-        console.log('[Kimi Vision] 图片数据长度:', cleanBase64.length);
+        log.dbg('[Kimi Vision] 发送请求...');
+        log.dbg('[Kimi Vision] 模型: moonshot-v1-8k-vision-preview');
+        log.dbg('[Kimi Vision] 图片数据长度:', cleanBase64.length);
         
         gm.xhr({
             method: 'POST',
@@ -172,8 +173,8 @@ export async function queryKimiVision(imageBase64, textPrompt, aiCfg) {
             }),
             onload: (res) => {
                 try {
-                    console.log('[Kimi Vision] Status:', res.status);
-                    console.log('[Kimi Vision] Response:', res.responseText);
+                    log.dbg('[Kimi Vision] Status:', res.status);
+                    log.dbg('[Kimi Vision] Response:', res.responseText);
                     
                     if (res.status !== 200) {
                         // ✅ 提供更详细的错误信息
@@ -196,18 +197,18 @@ export async function queryKimiVision(imageBase64, textPrompt, aiCfg) {
                     const data = JSON.parse(res.responseText);
                     const content = data.choices?.[0]?.message?.content;
                     if (content) {
-                        console.log('[Kimi Vision] 成功获取回答');
+                        log.dbg('[Kimi Vision] 成功获取回答');
                         resolve(content);
                     } else {
                         reject(new Error('AI返回内容为空'));
                     }
                 } catch (e) {
-                    console.error('[Kimi Vision] 解析响应失败:', e);
+                    log.err('[Kimi Vision] 解析响应失败:', e);
                     reject(new Error(`解析API响应失败: ${e.message}`));
                 }
             },
             onerror: (err) => {
-                console.error('[Kimi Vision] 网络请求失败:', err);
+                log.err('[Kimi Vision] 网络请求失败:', err);
                 reject(new Error('网络请求失败'));
             },
             timeout: 60000 // ✅ Vision 请求可能需要更长时间

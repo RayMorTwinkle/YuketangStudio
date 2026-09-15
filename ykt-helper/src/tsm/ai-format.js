@@ -1,3 +1,4 @@
+import { log } from '../core/log.js';
 function cleanProblemBody(body, problemType, TYPE_MAP) {
   if (!body) return '';
   
@@ -182,7 +183,7 @@ export function parseAIAnswer(problem, aiAnswer) {
       answerLine = (lines[0] || '').trim();
     }
 
-    console.log(
+    log.dbg(
       '[雨课堂助手][INFO][parseAIAnswer] 题目类型:',
       problem.problemType,
       '原始答案行:',
@@ -194,17 +195,17 @@ export function parseAIAnswer(problem, aiAnswer) {
       case 3: { // 投票题
         let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
         if (m) {
-          console.log('[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:', [m[0]]);
+          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:', [m[0]]);
           return [m[0]];
         }
         
         const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
         if (chineseMatch) {
-          console.log('[雨课堂助手][INFO][parseAIAnswer] 单选/投票中文解析结果:', [chineseMatch[1]]);
+          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 单选/投票中文解析结果:', [chineseMatch[1]]);
           return [chineseMatch[1]];
         }
         
-        console.log('[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析失败');
+        log.dbg('[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析失败');
         return null;
       }
       
@@ -216,7 +217,7 @@ export function parseAIAnswer(problem, aiAnswer) {
             .map(m => m[0]);
           if (options.length > 0) {
             const result = [...new Set(options)].sort();
-            console.log('[雨课堂助手][INFO][parseAIAnswer] 多选顿号解析结果:', result);
+            log.dbg('[雨课堂助手][INFO][parseAIAnswer] 多选顿号解析结果:', result);
             return result;
           }
         }
@@ -228,7 +229,7 @@ export function parseAIAnswer(problem, aiAnswer) {
             .map(m => m[0]);
           if (options.length > 0) {
             const result = [...new Set(options)].sort();
-            console.log('[雨课堂助手][INFO][parseAIAnswer] 多选逗号解析结果:', result);
+            log.dbg('[雨课堂助手][INFO][parseAIAnswer] 多选逗号解析结果:', result);
             return result;
           }
         }
@@ -236,16 +237,16 @@ export function parseAIAnswer(problem, aiAnswer) {
         const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
         if (letters && letters.length > 1) {
           const result = [...new Set(letters)].sort();
-          console.log('[雨课堂助手][INFO][parseAIAnswer] 多选连续解析结果:', result);
+          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 多选连续解析结果:', result);
           return result;
         }
         
         if (letters && letters.length === 1) {
-          console.log('[雨课堂助手][INFO][parseAIAnswer] 多选单个解析结果:', letters);
+          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 多选单个解析结果:', letters);
           return letters;
         }
         
-        console.log('[雨课堂助手][INFO][parseAIAnswer] 多选解析失败');
+        log.dbg('[雨课堂助手][INFO][parseAIAnswer] 多选解析失败');
         return null;
       }
       
@@ -255,12 +256,12 @@ export function parseAIAnswer(problem, aiAnswer) {
           .replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, '')
           .trim();
         
-        console.log('[雨课堂助手][INFO][parseAIAnswer] 清理后答案:', cleanAnswer);
+        log.dbg('[雨课堂助手][INFO][parseAIAnswer] 清理后答案:', cleanAnswer);
         
         // 如果清理后还包含这些词，继续清理
         if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
           cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, '').trim();
-          console.log('[雨课堂助手][INFO][parseAIAnswer] 二次清理后:', cleanAnswer);
+          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 二次清理后:', cleanAnswer);
         }
         
         const answerLength = cleanAnswer.length;
@@ -270,18 +271,18 @@ export function parseAIAnswer(problem, aiAnswer) {
           
           const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
           if (blanks.length > 0) {
-            console.log('[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:', blanks);
+            log.dbg('[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:', blanks);
             return blanks;
           }
         }
         
         if (cleanAnswer) {
           const result = { content: cleanAnswer, pics: [] };
-          console.log('[雨课堂助手][INFO][parseAIAnswer] 简答题解析结果:', result);
+          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 简答题解析结果:', result);
           return result;
         }
         
-        console.log('[雨课堂助手][INFO][parseAIAnswer] 填空/简答解析失败');
+        log.dbg('[雨课堂助手][INFO][parseAIAnswer] 填空/简答解析失败');
         return null;
       }
       
@@ -292,20 +293,20 @@ export function parseAIAnswer(problem, aiAnswer) {
           
         if (content) {
           const result = { content, pics: [] };
-          console.log('[雨课堂助手][INFO][parseAIAnswer] 主观题解析结果:', result);
+          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 主观题解析结果:', result);
           return result;
         }
         
-        console.log('[雨课堂助手][INFO][parseAIAnswer] 主观题解析失败');
+        log.dbg('[雨课堂助手][INFO][parseAIAnswer] 主观题解析失败');
         return null;
       }
       
       default:
-        console.log('[雨课堂助手][INFO][parseAIAnswer] 未知题目类型:', problem.problemType);
+        log.dbg('[雨课堂助手][INFO][parseAIAnswer] 未知题目类型:', problem.problemType);
         return null;
     }
   } catch (e) {
-    console.error('[雨课堂助手][ERR][parseAIAnswer] 解析失败', e);
+    log.err('[雨课堂助手][ERR][parseAIAnswer] 解析失败', e);
     return null;
   }
 }

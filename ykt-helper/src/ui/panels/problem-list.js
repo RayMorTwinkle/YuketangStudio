@@ -1,11 +1,12 @@
 import tpl from './problem-list.html';
+import { log } from '../../core/log.js';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 import { submitAnswer } from '../../tsm/answer.js';
 
-const L = (...a) => console.log('[雨课堂助手][DBG][problem-list]', ...a);
-const W = (...a) => console.warn('[雨课堂助手][WARN][problem-list]', ...a);
+const L = (...a) => log.dbg('[雨课堂助手][DBG][problem-list]', ...a);
+const W = (...a) => log.warn('[雨课堂助手][WARN][problem-list]', ...a);
 
 function $(sel) { return document.querySelector(sel); }
 function create(tag, cls){ const n=document.createElement(tag); if(cls) n.className=cls; return n; }
@@ -180,7 +181,6 @@ function bindRowActions(row, e, prob){
   // AI 解答：打开 AI 面板并优先使用该题所在页（若拿得到）
   const btnAI = create('button'); btnAI.textContent = 'AI解答';
   btnAI.onclick = () => {
-    const presId = e.presentationId || prob?.presentationId;
     const slideId = (e.slide?.id || e.slideId || prob?.slideId);
     if (slideId) {
       // 派发“提问当前PPT”以便 AI 面板优先识别该页

@@ -1,4 +1,5 @@
 import tpl from './active-problems.html';
+import { log } from '../../core/log.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 
@@ -35,7 +36,7 @@ export function updateActiveProblems() {
 
     const remain = Math.max(0, Math.floor((status.endTime - now) / 1000));
     if (remain <= 0) {
-      console.log(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
+      log.dbg(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
       return;
     }
 

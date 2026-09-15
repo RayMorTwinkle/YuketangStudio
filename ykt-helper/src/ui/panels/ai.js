@@ -1,14 +1,15 @@
 import tpl from './ai.html';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
-import { queryAI, queryAIVision} from '../../ai/openai.js';
+import { queryAIVision} from '../../ai/openai.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { parseAIAnswer } from '../../tsm/ai-format.js';
 import { hasActiveAIProfile} from '../../state/actions.js'
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
+import { log } from '../../core/log.js';
 
-const L = (...a) => console.log('[雨课堂助手][DBG][ai]', ...a);
-const W = (...a) => console.warn('[雨课堂助手][WARN][ai]', ...a);
+const L = (...a) => log.dbg('[ai]', ...a);
+const W = (...a) => log.warn('[ai]', ...a);
 
 let mounted = false;
 let root;
@@ -60,7 +61,7 @@ function renderSelectedPPTPreview() {
 function ensureMathJax() {
   const mj = window.MathJax;
   const ok = !!(mj && mj.typesetPromise);
-  if (!ok) console.warn('[雨课堂助手][WARN][ai] MathJax 未就绪（未通过 @require 预置？）');
+  if (!ok) log.warn('[雨课堂助手][WARN][ai] MathJax 未就绪（未通过 @require 预置？）');
   return Promise.resolve(ok);
 }
 
@@ -362,9 +363,9 @@ export function setAIAnswer(content = '') {
   try {
     if (ui?.config?.iftex) {
       ensureMathJax().then((ok) => {
-        if (!ok) { console.warn('[雨课堂助手][WARN][ai] MathJax 未就绪，跳过 typeset'); return; } 
+        if (!ok) { log.warn('[雨课堂助手][WARN][ai] MathJax 未就绪，跳过 typeset'); return; } 
         el.classList.add('tex-enabled');
-        typesetTexIn(el).then(() => console.log('[雨课堂助手][DBG][ai] MathJax typeset 完成'));
+        typesetTexIn(el).then(() => log.dbg('[雨课堂助手][DBG][ai] MathJax typeset 完成'));
       });
     } else {
       el.classList.remove('tex-enabled');

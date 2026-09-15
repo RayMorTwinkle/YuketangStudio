@@ -1,10 +1,11 @@
 // src/state/actions.js
 import { PROBLEM_TYPE_MAP } from '../core/types.js';
+import { log } from '../core/log.js';
 import { randInt, gm } from '../core/env.js'
 import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
-import { submitAnswer, retryAnswer } from '../tsm/answer.js';;
-import { queryAI, queryAIVision} from '../ai/openai.js';
+import { submitAnswer } from '../tsm/answer.js';
+import { queryAIVision } from '../ai/openai.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
 import { formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  
@@ -51,7 +52,7 @@ export function hasActiveAIProfile(aiCfg) {
 async function handleAutoAnswerInternal(problem) {
   const status = repo.problemStatus.get(problem.problemId);
   if (!status || status.answering || problem.result) {
-    console.log('[AutoAnswer] 跳过：', {
+    log.dbg('[AutoAnswer] 跳过：', {
       hasStatus: !!status,
       answering: status?.answering,
       hasResult: !!problem.result
@@ -60,24 +61,24 @@ async function handleAutoAnswerInternal(problem) {
   }
   
   if (Date.now() >= status.endTime) {
-    console.log('[雨课堂助手][WARN][AutoAnswer] 跳过：已超时');
+    log.dbg('[雨课堂助手][WARN][AutoAnswer] 跳过：已超时');
     return;
   }
 
   status.answering = true;
 
   try {
-    console.log('[雨课堂助手][INFO][AutoAnswer] =================================');
-    console.log('[雨课堂助手][INFO][AutoAnswer] 开始自动答题');
-    console.log('[雨课堂助手][INFO][AutoAnswer] 题目ID:', problem.problemId);
-    console.log('[雨课堂助手][INFO][AutoAnswer] 题目类型:', PROBLEM_TYPE_MAP[problem.problemType]);
-    console.log('[雨课堂助手][INFO][AutoAnswer] 题目内容:', problem.body?.slice(0, 50) + '...');
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] =================================');
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 开始自动答题');
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目ID:', problem.problemId);
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目类型:', PROBLEM_TYPE_MAP[problem.problemType]);
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目内容:', problem.body?.slice(0, 50) + '...');
     
     if (!hasActiveAIProfile(ui.config.ai)) {
     // ✅ 无 API Key：使用本地默认答案直接提交，确保流程不中断
     // 
       const parsed = makeDefaultAnswer(problem);
-      console.log('[雨课堂助手][WARN][AutoAnswer] 无 API Key，使用本地默认答案:', JSON.stringify(parsed));
+      log.dbg('[雨课堂助手][WARN][AutoAnswer] 无 API Key，使用本地默认答案:', JSON.stringify(parsed));
 
       // 提交答案（根据时限自动选择 answer/retry 逻辑）
       await submitAnswer(problem, parsed, {
@@ -95,32 +96,32 @@ async function handleAutoAnswerInternal(problem) {
       ui.toast('使用默认答案完成作答（未配置 API Key）', 3000);
       showAutoAnswerPopup(problem, '（本地默认答案：无 API Key）');
 
-      console.log('[雨课堂助手][INFO][AutoAnswer] 默认答案提交流程结束');
+      log.dbg('[雨课堂助手][INFO][AutoAnswer] 默认答案提交流程结束');
       return; // 提前返回，避免继续走图像+AI流程
     }
 
     const slideId = status.slideId;
-    console.log('[雨课堂助手][INFO][AutoAnswer] 题目所在幻灯片:', slideId);
-    console.log('[雨课堂助手][INFO][AutoAnswer] =================================');
-    console.log('[雨课堂助手][INFO][AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...');
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目所在幻灯片:', slideId);
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] =================================');
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...');
     
     let imageBase64 = await captureSlideImage(slideId);
     
     // 如果获取幻灯片图片失败，回退到DOM截图
     if (!imageBase64) {
-      console.log('[雨课堂助手][WARN][AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...');
+      log.dbg('[雨课堂助手][WARN][AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...');
       const fallbackImage = await captureProblemForVision();
       
       if (!fallbackImage) {
         status.answering = false;
-        console.error('[雨课堂助手][ERR][AutoAnswer] 所有截图方法都失败');
+        log.err('[雨课堂助手][ERR][AutoAnswer] 所有截图方法都失败');
         return ui.toast('无法获取题目图像，跳过自动作答', 3000);
       }
       
       imageBase64 = fallbackImage;
-      console.log('[雨课堂助手][INFO][AutoAnswer] DOM截图成功');
+      log.dbg('[雨课堂助手][INFO][AutoAnswer] DOM截图成功');
     } else {
-      console.log('[雨课堂助手][INFO][AutoAnswer] 幻灯片图片获取成功');
+      log.dbg('[雨课堂助手][INFO][AutoAnswer] 幻灯片图片获取成功');
     }
     
     // 构建提示
@@ -130,19 +131,19 @@ async function handleAutoAnswerInternal(problem) {
     // 调用 AI
     ui.toast('AI 正在分析题目...', 2000);
     const aiAnswer = await queryAIVision(imageBase64, textPrompt, ui.config.ai);
-    console.log('[雨课堂助手][INFO][AutoAnswer] AI回答:', aiAnswer);
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] AI回答:', aiAnswer);
     
     // 解析答案
     const parsed = parseAIAnswer(problem, aiAnswer);
-    console.log('[雨课堂助手][INFO][AutoAnswer] 解析结果:', parsed);
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 解析结果:', parsed);
     
     if (!parsed) {
       status.answering = false;
-      console.error('[雨课堂助手][ERR][AutoAnswer] 解析失败，AI回答格式不正确');
+      log.err('[雨课堂助手][ERR][AutoAnswer] 解析失败，AI回答格式不正确');
       return ui.toast('无法解析AI答案，请检查格式', 3000);
     }
 
-    console.log('[雨课堂助手][INFO][AutoAnswer] 准备提交答案:', JSON.stringify(parsed));
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 准备提交答案:', JSON.stringify(parsed));
     
     // 提交答案
     await submitAnswer(problem, parsed, {
@@ -152,7 +153,7 @@ async function handleAutoAnswerInternal(problem) {
       lessonId: repo.currentLessonId
     });
     
-    console.log('[雨课堂助手][INFO][AutoAnswer] 提交成功');
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 提交成功');
     
     // 更新状态
     actions.onAnswerProblem(problem.problemId, parsed);
@@ -163,8 +164,8 @@ async function handleAutoAnswerInternal(problem) {
     showAutoAnswerPopup(problem, aiAnswer);
     
   } catch (e) {
-    console.error('[雨课堂助手][ERR][AutoAnswer] 失败:', e);
-    console.error('[雨课堂助手][ERR][AutoAnswer] 错误堆栈:', e.stack);
+    log.err('[雨课堂助手][ERR][AutoAnswer] 失败:', e);
+    log.err('[雨课堂助手][ERR][AutoAnswer] 错误堆栈:', e.stack);
     status.answering = false;
     ui.toast(`自动作答失败: ${e.message}`, 4000);
   }
@@ -210,14 +211,14 @@ export const actions = {
     const problem = repo.problems.get(data.prob);
     const slide = repo.slides.get(data.sid);
     if (!problem || !slide) {
-      console.log('[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在');
+      log.dbg('[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在');
       return;
     }
 
-    console.log('[雨课堂助手][DBG][onUnlockProblem] 题目解锁');
-    console.log('[雨课堂助手][DBG][onUnlockProblem] 题目ID:', data.prob);
-    console.log('[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:', data.sid);
-    console.log('[雨课堂助手][DBG][onUnlockProblem] 课件ID:', data.pres);
+    log.dbg('[雨课堂助手][DBG][onUnlockProblem] 题目解锁');
+    log.dbg('[雨课堂助手][DBG][onUnlockProblem] 题目ID:', data.prob);
+    log.dbg('[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:', data.sid);
+    log.dbg('[雨课堂助手][DBG][onUnlockProblem] 课件ID:', data.pres);
 
     const status = {
       presentationId: data.pres,
@@ -231,7 +232,7 @@ export const actions = {
     repo.problemStatus.set(data.prob, status);
 
     if (Date.now() > status.endTime || problem.result) {
-      console.log('[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过');
+      log.dbg('[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过');
       return;
     }
 
@@ -243,7 +244,7 @@ export const actions = {
       const delay = ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
       status.autoAnswerTime = Date.now() + delay;
       
-      console.log(`[雨课堂助手][INFO][onUnlockProblem] 将在 ${Math.floor(delay / 1000)} 秒后自动作答`);
+      log.dbg(`[雨课堂助手][INFO][onUnlockProblem] 将在 ${Math.floor(delay / 1000)} 秒后自动作答`);
       ui.toast(`将在 ${Math.floor(delay / 1000)} 秒后使用融合模式自动作答`, 3000);
     }
     
@@ -311,7 +312,7 @@ export const actions = {
     const m = path.match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
     repo.currentLessonId = m ? m[1] : null;
     if (repo.currentLessonId) {
-      console.log(`[雨课堂助手][DBG] 检测到课堂页面 lessonId: ${repo.currentLessonId}`);
+      log.dbg(`[雨课堂助手][DBG] 检测到课堂页面 lessonId: ${repo.currentLessonId}`);
     }
 
     if (typeof window.GM_getTab === 'function' && typeof window.GM_saveTab === 'function' && repo.currentLessonId) {
@@ -361,11 +362,11 @@ export const actions = {
           if (!lessonId || status !== 1) continue;
           if (repo.isLessonConnected(lessonId)) continue; // 已有连接
 
-          console.log('[雨课堂助手][INFO][AutoJoin] 检测到正在上课的课堂，准备进入:', lessonId);
+          log.dbg('[雨课堂助手][INFO][AutoJoin] 检测到正在上课的课堂，准备进入:', lessonId);
           try {
-            const { token, setAuth } = await checkinClass(lessonId);
+            const { token } = await checkinClass(lessonId);
             if (!token) {
-              console.warn('[雨课堂助手][WARN][AutoJoin] 未获取到 lessonToken，跳过:', lessonId);
+              log.warn('[雨课堂助手][WARN][AutoJoin] 未获取到 lessonToken，跳过:', lessonId);
               continue;
             }
             connectOrAttachLessonWS({ lessonId, auth: token });
@@ -375,11 +376,11 @@ export const actions = {
               repo.forceAutoAnswerLessons.add(lessonId);
             }
           } catch (e) {
-            console.error('[雨课堂助手][ERR][AutoJoin] 进入课堂失败:', lessonId, e);
+            log.err('[雨课堂助手][ERR][AutoJoin] 进入课堂失败:', lessonId, e);
           }
         }
       } catch (e) {
-          console.error('[雨课堂助手][ERR][AutoJoin] 拉取正在上课失败:', e);
+          log.err('[雨课堂助手][ERR][AutoJoin] 拉取正在上课失败:', e);
       } finally {
         setTimeout(loop, 5000);
       }
@@ -445,7 +446,7 @@ export const actions = {
         if (!on) {
           const withId = arr.find(x => (x && (x.lessonId || x.lesson_id || x.id)));
           if (withId) {
-            console.warn('[雨课堂助手][WARN][AutoJoin][API] 没有 status===1，但存在 lessonId，使用回退项：', {
+            log.warn('[雨课堂助手][WARN][AutoJoin][API] 没有 status===1，但存在 lessonId，使用回退项：', {
               status: withId.status,
               keys: Object.keys(withId || {}),
               sample: withId
@@ -456,7 +457,7 @@ export const actions = {
         if (!on) {
           // 详细日志：环境、主机、列表长度与前 3 项
           try {
-            console.warn('[雨课堂助手][ERR][AutoJoin][API] EMPTY on-lesson list', {
+            log.warn('[雨课堂助手][ERR][AutoJoin][API] EMPTY on-lesson list', {
               host: location.hostname,
               path: location.pathname,
               length: Array.isArray(list) ? list.length : -1,
@@ -478,7 +479,7 @@ export const actions = {
         location.assign(target);
         return true;
       } catch (e) {
-        console.warn('[雨课堂助手][ERR][AutoJoin][API] 跳转失败：', e, {
+        log.warn('[雨课堂助手][ERR][AutoJoin][API] 跳转失败：', e, {
           host: location.hostname,
           path: location.pathname
         });
@@ -493,7 +494,7 @@ export const actions = {
       if (_autoOnLessonClickInProgress) return false;
 
       bar.__ykt_guard_bound__ = true;
-      console.log('[雨课堂助手][INFO][AutoJoin][DOM] 发现 onlesson 条，接管点击（捕获阶段）');
+      log.dbg('[雨课堂助手][INFO][AutoJoin][DOM] 发现 onlesson 条，接管点击（捕获阶段）');
 
       const handler = async (ev) => {
         ev.preventDefault();
@@ -507,13 +508,13 @@ export const actions = {
           if (d) await new Promise(r => setTimeout(r, d));
           if (await tryApiJumpFirst()) return;
         }
-        console.warn('[雨课堂助手][WARN][AutoJoin][DOM] on-lesson 接口仍为空，放弃本次点击');
+        log.warn('[雨课堂助手][WARN][AutoJoin][DOM] on-lesson 接口仍为空，放弃本次点击');
         try {
-          console.group('%c[AutoJoin][DOM] on-lesson 仍为空，放弃本次点击', 'color:#f60');
-          console.log('env:', { host: location.hostname, path: location.pathname, href: location.href });
-          console.log('retryDelays(ms):', delays);
-          console.log('hint:', '可能是域/路径不匹配、会话未带上、或 WS/接口不同步导致。请展开上方 [getOnLesson] 折叠日志查看每个候选 URL 的状态与响应片段。');
-          console.groupEnd();
+          log.dbg('%c[AutoJoin][DOM] on-lesson 仍为空，放弃本次点击', 'color:#f60');
+          log.dbg('env:', { host: location.hostname, path: location.pathname, href: location.href });
+          log.dbg('retryDelays(ms):', delays);
+          log.dbg('hint:', '可能是域/路径不匹配、会话未带上、或 WS/接口不同步导致。请展开上方 [getOnLesson] 折叠日志查看每个候选 URL 的状态与响应片段。');
+
         } catch {}
       };
 

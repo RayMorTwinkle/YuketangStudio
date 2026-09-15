@@ -1,5 +1,6 @@
 // src/ai/kimi.js
 import { gm } from '../core/env.js';
+import { log } from '../core/log.js';
 
 // 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
 // 约定：
@@ -115,7 +116,7 @@ export async function queryAI(question, aiCfg) {
     temperature: 0.6,
   };
 
-  console.log('[雨课堂助手][AI OpenAI] Sending payload:', JSON.stringify(payload, null, 2));
+  log.dbg('[雨课堂助手][AI OpenAI] Sending payload:', JSON.stringify(payload, null, 2));
 
   return new Promise((resolve, reject) => {
     gm.xhr({
@@ -128,8 +129,8 @@ export async function queryAI(question, aiCfg) {
       data: JSON.stringify(payload),
       onload: (res) => {
         try {
-          console.log('[雨课堂助手][AI OpenAI] Status:', res.status);
-          console.log('[雨课堂助手][AI OpenAI] Response:', res.responseText);
+          log.dbg('[雨课堂助手][AI OpenAI] Status:', res.status);
+          log.dbg('[雨课堂助手][AI OpenAI] Response:', res.responseText);
 
           if (res.status !== 200) {
             let errorMsg = `AI 请求失败: HTTP ${res.status}`;
@@ -155,7 +156,7 @@ export async function queryAI(question, aiCfg) {
         }
       },
       onerror: (err) => {
-        console.error('[雨课堂助手][AI OpenAI] Network error:', err);
+        log.err('[雨课堂助手][AI OpenAI] Network error:', err);
         reject(new Error(`网络请求失败: ${err?.message || '未知错误'}`));
       },
       timeout: 30000,
@@ -179,8 +180,8 @@ function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs 
       timeout: timeoutMs,
       onload: (res) => {
         try {
-          console.log(`[雨课堂助手]${debugLabel} Status:`, res.status);
-          console.log(`[雨课堂助手]${debugLabel} Response:`, res.responseText);
+          log.dbg(`[雨课堂助手]${debugLabel} Status:`, res.status);
+          log.dbg(`[雨课堂助手]${debugLabel} Response:`, res.responseText);
 
           if (res.status !== 200) {
             let errorMessage = `AI 请求失败: ${res.status}`;
@@ -202,12 +203,12 @@ function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs 
           const data = JSON.parse(res.responseText);
           resolve(data);
         } catch (e) {
-          console.error(`[雨课堂助手]${debugLabel} 解析响应失败:`, e);
+          log.err(`[雨课堂助手]${debugLabel} 解析响应失败:`, e);
           reject(new Error(`解析API响应失败: ${e.message}`));
         }
       },
       onerror: (err) => {
-        console.error(`[雨课堂助手]${debugLabel} 网络请求失败:`, err);
+        log.err(`[雨课堂助手]${debugLabel} 网络请求失败:`, err);
         reject(new Error('网络请求失败'));
       },
     });
@@ -264,7 +265,7 @@ async function singleStepVisionCall(profile, cleanBase64List, textPrompt, option
   if (!content) {
     throw new Error('AI返回内容为空');
   }
-  console.log('[AI OpenAI Vision] 成功获取回答(单步)');
+  log.dbg('[AI OpenAI Vision] 成功获取回答(单步)');
   return content;
 }
 
@@ -300,7 +301,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   // -------- 0. 如果只有 VLM（或者显式关闭两步），回退到单步逻辑 --------
   if (!hasSeparateTextModel || disableTwoStep) {
     if (twoStepDebug) {
-      console.log('[雨课堂助手][INFO][vision] use single-step vision', {
+      log.dbg('[雨课堂助手][INFO][vision] use single-step vision', {
         hasSeparateTextModel,
         disableTwoStep,
       });
@@ -309,7 +310,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   }
 
   if (twoStepDebug) {
-    console.log('[雨课堂助手][INFO][vision] use TWO-STEP pipeline', {
+    log.dbg('[雨课堂助手][INFO][vision] use TWO-STEP pipeline', {
       visionModel,
       textModel,
     });
@@ -399,7 +400,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
 
     const content1 = data1.choices?.[0]?.message?.content || '';
     if (twoStepDebug) {
-      console.log('[雨课堂助手][DEBUG][vision-step1] raw content:', content1);
+      log.dbg('[雨课堂助手][DEBUG][vision-step1] raw content:', content1);
     }
 
     const jsonMatch = content1.match(/\{[\s\S]*\}/);
@@ -407,17 +408,17 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
 
     structuredQuestion = JSON.parse(jsonMatch[0]);
   } catch (err) {
-    console.warn('[雨课堂助手][WARN][vision-step1] failed, fallback to single-step', err);
+    log.warn('[雨课堂助手][WARN][vision-step1] failed, fallback to single-step', err);
     return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 
   if (!structuredQuestion || !structuredQuestion.stem) {
-    console.warn('[雨课堂助手][WARN][vision-step1] invalid structuredQuestion, fallback');
+    log.warn('[雨课堂助手][WARN][vision-step1] invalid structuredQuestion, fallback');
     return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 
   if (twoStepDebug) {
-    console.log('[雨课堂助手][INFO][vision-step1] structuredQuestion:', structuredQuestion);
+    log.dbg('[雨课堂助手][INFO][vision-step1] structuredQuestion:', structuredQuestion);
   }
 
   // ========= 题型合并逻辑：后端 problemType 优先，其次 VLM 推断，全部缺失则回退 subjective =========
@@ -437,7 +438,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   }
 
   if (twoStepDebug) {
-    console.log('[雨课堂助手][INFO][vision-step1] questionType merged:', {
+    log.dbg('[雨课堂助手][INFO][vision-step1] questionType merged:', {
       problemType,
       backendQuestionType,
       vlmQuestionType,
@@ -447,13 +448,12 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
 
   // 如果模型明确表示“必须依赖原始图像才能解题”，则回退到单步 Vision，避免纯文本推理丢失关键信息
   if (structuredQuestion.requires_image_for_solution === true) {
-    console.warn('[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step');
+    log.warn('[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step');
     return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 
   // ===================== Step 2: Text 模型纯文本推理解题 =====================
   const {
-    question_type,
     stem,
     options: sqOptions = {},
     image_facts = [],
@@ -529,11 +529,11 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
       throw new Error('AI返回内容为空');
     }
     if (twoStepDebug) {
-      console.log('[雨课堂助手][INFO][vision-step2] final content:', content2);
+      log.dbg('[雨课堂助手][INFO][vision-step2] final content:', content2);
     }
     return content2;
   } catch (err) {
-    console.warn('[雨课堂助手][WARN][vision-step2] failed, fallback to single-step', err);
+    log.warn('[雨课堂助手][WARN][vision-step2] failed, fallback to single-step', err);
     return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 }

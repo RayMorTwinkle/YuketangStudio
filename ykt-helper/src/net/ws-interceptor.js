@@ -1,5 +1,6 @@
 // src/net/ws-interceptor.js
 import { gm } from '../core/env.js';
+import { log } from '../core/log.js';
 import { actions } from '../state/actions.js';
 import { repo } from '../state/repo.js';
 
@@ -11,15 +12,15 @@ export function installWSInterceptor() {
     let envType = 'unknown';
     if (hostname === 'www.yuketang.cn') {
       envType = 'standard';
-      console.log('[雨课堂助手][INFO] 检测到标准雨课堂环境');
+      log.dbg('[雨课堂助手][INFO] 检测到标准雨课堂环境');
     } else if (hostname === 'pro.yuketang.cn') {
       envType = 'pro';
-      console.log('[雨课堂助手][INFO] 检测到荷塘雨课堂环境');
+      log.dbg('[雨课堂助手][INFO] 检测到荷塘雨课堂环境');
     } else if (hostname === 'changjiang.yuketang.cn'){
       envType = 'changjiang';
-      console.log('[雨课堂助手][INFO] 检测到长江雨课堂环境');
+      log.dbg('[雨课堂助手][INFO] 检测到长江雨课堂环境');
     } else {
-      console.log('[雨课堂助手][INFO] 未知环境:', hostname);
+      log.dbg('[雨课堂助手][INFO] 未知环境:', hostname);
     }
     return envType;
   }
@@ -41,8 +42,8 @@ export function installWSInterceptor() {
 
 MyWebSocket.addHandler((ws, url) => {
     const envType = detectEnvironmentAndAdaptAPI();
-    console.log('[雨课堂助手][INFO] 拦截WebSocket通信 - 环境:', envType);
-    console.log('[雨课堂助手][INFO] WebSocket连接尝试:', url.href);
+    log.dbg('[雨课堂助手][INFO] 拦截WebSocket通信 - 环境:', envType);
+    log.dbg('[雨课堂助手][INFO] WebSocket连接尝试:', url.href);
 
     // 更宽松的路径匹配
     const wsPath = url.pathname || '';
@@ -53,35 +54,35 @@ MyWebSocket.addHandler((ws, url) => {
       url.href.includes('websocket');
 
     if (!isRainClassroomWS) {
-      console.log('[雨课堂助手][ERR] 非雨课堂WebSocket:', wsPath);
+      log.dbg('[雨课堂助手][ERR] 非雨课堂WebSocket:', wsPath);
       return;
     }
-    console.log('[雨课堂助手][INFO] 检测到雨课堂WebSocket连接:', wsPath);
+    log.dbg('[雨课堂助手][INFO] 检测到雨课堂WebSocket连接:', wsPath);
 
     // 发送侧拦截（可用于调试）
     ws.intercept((message) => {
-      console.log('[雨课堂助手][INFO] WebSocket发送:', message);
+      log.dbg('[雨课堂助手][INFO] WebSocket发送:', message);
     });
 
     // 接收侧统一分发
     ws.listen((message) => {
       try {
-        console.log('[雨课堂助手][INFO] WebSocket接收:', message);
+        log.dbg('[雨课堂助手][INFO] WebSocket接收:', message);
         switch (message.op) {
           case 'fetchtimeline':
-            console.log('[雨课堂助手][INFO] 收到时间线:', message.timeline);
+            log.dbg('[雨课堂助手][INFO] 收到时间线:', message.timeline);
             actions.onFetchTimeline(message.timeline);
             break;
           case 'unlockproblem':
-            console.log('[雨课堂助手][INFO] 收到解锁问题:', message.problem);
+            log.dbg('[雨课堂助手][INFO] 收到解锁问题:', message.problem);
             actions.onUnlockProblem(message.problem);
             break;
           case 'lessonfinished':
-            console.log('[雨课堂助手][INFO] 课程结束');
+            log.dbg('[雨课堂助手][INFO] 课程结束');
             actions.onLessonFinished();
             break;
           default:
-            console.log('[雨课堂助手][WARN] 未知WebSocket操作:', message.op, message);
+            log.dbg('[雨课堂助手][WARN] 未知WebSocket操作:', message.op, message);
         }
         // 监听后端传递的url
         const url = (function findUrl(obj){
@@ -95,10 +96,10 @@ MyWebSocket.addHandler((ws, url) => {
         window.dispatchEvent(new CustomEvent('ykt:url-change', { detail: { url, raw: message } }));
         // 如需持久化到 repo，请取消下一行注释（确保已在 repo 定义该字段）
         repo.currentSelectedUrl = url;
-        console.debug('[雨课堂助手][INFO] 当前选择 URL:', url);
+        log.dbg('[雨课堂助手][INFO] 当前选择 URL:', url);
       }
       } catch (e) {
-        console.debug('[雨课堂助手][ERR] 解析WebSocket消息失败', e, message);
+        log.dbg('[雨课堂助手][ERR] 解析WebSocket消息失败', e, message);
       }
     });
   });
@@ -109,7 +110,7 @@ MyWebSocket.addHandler((ws, url) => {
 // ===== 主动为某个课堂建立/复用 WebSocket 连接 =====
 export function connectOrAttachLessonWS({ lessonId, auth }) {
   if (!lessonId || !auth) {
-    console.warn('[雨课堂助手][WARN] 缺少 lessonId 或 auth，放弃建链');
+    log.warn('[雨课堂助手][WARN] 缺少 lessonId 或 auth，放弃建链');
     return null;
   }
   if (repo.isLessonConnected(lessonId)) {
@@ -134,17 +135,17 @@ export function connectOrAttachLessonWS({ lessonId, auth }) {
         lessonid: lessonId // 关键：目标课堂
       };
       ws.send(JSON.stringify(hello));
-      console.log('[雨课堂助手][INFO][AutoJoin] 已发送 hello 握手:', hello);
+      log.dbg('[雨课堂助手][INFO][AutoJoin] 已发送 hello 握手:', hello);
     } catch (e) {
-      console.error('[雨课堂助手][INFO][AutoJoin] 发送 hello 失败:', e);
+      log.err('[雨课堂助手][INFO][AutoJoin] 发送 hello 失败:', e);
     }
   });
 
   ws.addEventListener('close', () => {
-    console.log('[雨课堂助手][WARN][AutoJoin] 课堂 WS 关闭:', lessonId);
+    log.dbg('[雨课堂助手][WARN][AutoJoin] 课堂 WS 关闭:', lessonId);
   });
   ws.addEventListener('error', (e) => {
-    console.error('[雨课堂助手][ERR][AutoJoin] 课堂 WS 错误:', lessonId, e);
+    log.err('[雨课堂助手][ERR][AutoJoin] 课堂 WS 错误:', lessonId, e);
   });
 
   repo.markLessonConnected(lessonId, ws, auth);

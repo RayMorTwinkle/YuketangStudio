@@ -1,9 +1,10 @@
 // src/ui/panels/chat.js
 // PPT 多轮对话面板：截取/读取当前 PPT 页 + 连续追问，思考链折叠显示，流式输出
 import tpl from './chat.html';
+import { log } from '../../core/log.js';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
-import { gm, ensureHtml2Canvas, fetchAsDataURL } from '../../core/env.js';
+import { fetchAsDataURL } from '../../core/env.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { mdToHtml } from './ai.js';
 
@@ -34,6 +35,7 @@ export function mountChatPanel() {
 
   $sel('#ykt-chat-close').addEventListener('click', () => showChatPanel(false));
   $sel('#ykt-chat-clear').addEventListener('click', () => {
+    abortStreaming('清空会话');
     history = [];
     renderHistory();
     addBubble('ai', mdToHtml('会话已清空。可以重新开始提问（如需新 PPT 上下文，直接发送即可）。'));
@@ -52,6 +54,8 @@ export function mountChatPanel() {
 
 export function showChatPanel(visible = true) {
   if (!mounted) mountChatPanel();
+  // 关闭面板时终止仍在进行的流式请求，避免后台继续消耗 token
+  if (!visible) abortStreaming('面板已关闭');
   root.classList.toggle('visible', visible);
   if (visible) {
     refreshCtxThumb();
@@ -66,6 +70,7 @@ export function toggleChatPanel() {
 
 // ---------------- 当前 PPT 页获取 ----------------
 
+/** 在 repo 中定位当前 slide（课堂内主路径） */
 function findCurrentSlide() {
   try {
     const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
@@ -78,7 +83,7 @@ function findCurrentSlide() {
     for (const [, pres] of repo.presentations) {
       if (pres?.slides?.length) return pres.slides[0];
     }
-  } catch (e) { console.warn('[Chat] findCurrentSlide', e); }
+  } catch (e) { log.warn('[Chat] findCurrentSlide', e); }
   return null;
 }
 
@@ -86,59 +91,95 @@ function slideImageUrl(slide) {
   return slide?.coverAlt || slide?.cover || slide?.image || slide?.thumbnail || '';
 }
 
-/** html2canvas 兜底截图 */
-async function captureFallback() {
-  const html2canvas = await ensureHtml2Canvas();
-  const el = document.querySelector('.ppt-inner')
-    || document.querySelector('.ppt-courseware-inner')
-    || document.querySelector('.problem-body')
-    || document.body;
-  const canvas = await html2canvas(el, { scale: 1.5, useCORS: true, logging: false });
-  return canvas.toDataURL('image/jpeg', 0.85);
-}
-
-/** 获取当前 PPT 页 dataURL；失败返回 null 并 toast */
-async function getCurrentSlideDataURL() {
+/**
+ * 解析当前 PPT 页，返回 { dataUrl, source, reason }
+ * source: 'repo'        = 命中 repo 里的 slide 图（最可信）
+ *         'dom'         = 从页面 DOM 里找到的 slide 图
+ *         'failed'      = 拿不到，reason 说明原因
+ * 注意：**不再用整页 html2canvas 兜底**——那会悄悄把「整个页面截图」当成 PPT 发给 AI，
+ *      导致回答质量崩坏且用户毫不知情。宁可明确失败，也不给假上下文。
+ */
+async function resolveCurrentSlideImage() {
+  // 1) repo 中的 slide（课堂内正常路径）
   const slide = findCurrentSlide();
   const url = slideImageUrl(slide);
   if (url) {
-    try { return await fetchAsDataURL(url); }
-    catch (e) { console.warn('[Chat] slide 图下载失败，降级截图:', e?.message); }
+    try {
+      const dataUrl = await fetchAsDataURL(url);
+      if (dataUrl) return { dataUrl, source: 'repo' };
+    } catch (e) {
+      log.warn('[Chat] repo slide 图下载失败，尝试 DOM 兜底:', e?.message);
+    }
   }
-  try { return await captureFallback(); }
-  catch (e) { console.warn('[Chat] 截图也失败:', e?.message); return null; }
+
+  // 2) DOM 兜底：静态报告页等 repo 为空但页面有 slide 图的场景
+  const domUrl = findSlideUrlInDom();
+  if (domUrl) {
+    try {
+      const dataUrl = await fetchAsDataURL(domUrl);
+      if (dataUrl) return { dataUrl, source: 'dom' };
+    } catch (e) {
+      log.warn('[Chat] DOM slide 图下载失败:', e?.message);
+    }
+  }
+
+  return {
+    dataUrl: null,
+    source: 'failed',
+    reason: slide || url ? 'PPT 图片下载失败（可能是网络或权限问题）' : '当前页面没有可用的 PPT 页',
+  };
+}
+
+/** 从页面 DOM 里找 slide 图（报告页/静态课件的退化路径） */
+function findSlideUrlInDom() {
+  try {
+    const selectors = [
+      '.slide-item.active-slide-item img',
+      '.slide-item img',
+      '.swiper-slide-active img',
+      '.ppt-courseware-inner img',
+      '.ppt-inner img',
+    ];
+    for (const sel of selectors) {
+      const img = document.querySelector(sel);
+      const src = img?.currentSrc || img?.src || '';
+      if (src && /\/slide\/|cover/i.test(src)) return src;
+    }
+  } catch (e) { log.warn('[Chat] findSlideUrlInDom', e); }
+  return '';
 }
 
 async function refreshCtxThumb() {
   const span = $sel('#ykt-chat-ctx-thumb');
   span.textContent = '⏳';
-  const dataUrl = await getCurrentSlideDataURL();
+  const { dataUrl, source, reason } = await resolveCurrentSlideImage();
   if (dataUrl) {
     span.innerHTML = '';
     const img = document.createElement('img');
-    img.src = dataUrl; img.title = '当前 PPT 页';
+    img.src = dataUrl;
+    img.title = source === 'repo' ? '当前 PPT 页（来自课件数据）' : '当前 PPT 页（来自页面）';
     span.appendChild(img);
   } else {
-    span.textContent = '（未获取到 PPT，将仅用文字回答）';
+    span.textContent = `（未取到 PPT：${reason || '未知原因'}）`;
   }
 }
 
 // ---------------- 渲染 ----------------
 
 function addBubble(kind, htmlOrNode) {
-  const log = $sel('#ykt-chat-log');
+  const $log = $sel('#ykt-chat-log');
   const div = document.createElement('div');
   div.className = `ykt-chat-msg ${kind}`;
   if (typeof htmlOrNode === 'string') div.innerHTML = htmlOrNode;
   else div.appendChild(htmlOrNode);
-  log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  $log.appendChild(div);
+  $log.scrollTop = $log.scrollHeight;
   return div;
 }
 
 function renderHistory() {
-  const log = $sel('#ykt-chat-log');
-  log.innerHTML = '';
+  const $log = $sel('#ykt-chat-log');
+  $log.innerHTML = '';
   for (const m of history) {
     if (m.role === 'system') continue;
     const text = (Array.isArray(m.content) ? m.content : [])
@@ -155,9 +196,9 @@ function renderHistory() {
     } else {
       div.innerHTML = mdToHtml(text);
     }
-    log.appendChild(div);
+    $log.appendChild(div);
   }
-  log.scrollTop = log.scrollHeight;
+  $log.scrollTop = $log.scrollHeight;
 }
 
 /** 把历史中除最近 N 张外的图片替换为占位符，控制 token */
@@ -177,6 +218,13 @@ function trimOldImages(keep = 1) {
 
 // ---------------- 发送 ----------------
 
+/** 中止正在进行的流式请求（清空会话 / 关闭面板 / 发送新消息时调用） */
+function abortStreaming(reason = '已取消') {
+  if (abortCtrl) {
+    try { abortCtrl.abort(reason); } catch { /* 旧浏览器不支持带参 abort */ }
+  }
+}
+
 async function sendCurrent() {
   if (streaming) return;
   const $input = $sel('#ykt-chat-input');
@@ -188,17 +236,28 @@ async function sendCurrent() {
   $sel('#ykt-chat-send').disabled = true;
   try {
     const content = [{ type: 'text', text }];
+    let attachFailed = '';
     if (attach) {
-      addBubble('user', '⏳ 正在获取当前 PPT…');
-      const log = $sel('#ykt-chat-log');
-      const dataUrl = await getCurrentSlideDataURL();
-      log.lastChild?.remove();
-      if (dataUrl) content.push({ type: 'image_url', image_url: { url: dataUrl } });
+      const pending = addBubble('user', '⏳ 正在获取当前 PPT…');
+      const { dataUrl, reason } = await resolveCurrentSlideImage();
+      pending.remove();
+      if (dataUrl) {
+        content.push({ type: 'image_url', image_url: { url: dataUrl } });
+      } else {
+        // 明确告知用户本条没有附图，而不是静默降级
+        attachFailed = reason || '未取到当前 PPT 页';
+      }
     }
 
     history.push({ role: 'user', content });
     trimOldImages(1);
-    addBubble('user', text);
+    const userBubble = addBubble('user', escapeHtml(text));
+    if (attachFailed) {
+      const warn = document.createElement('div');
+      warn.className = 'ykt-chat-warn';
+      warn.textContent = `⚠️ ${attachFailed}——本条为纯文本提问`;
+      userBubble.appendChild(warn);
+    }
     $input.value = '';
 
     // AI 气泡（流式）
@@ -214,8 +273,8 @@ async function sendCurrent() {
           + (acc.content ? mdToHtml(acc.content) : '<em>…</em>');
         const rBody = aiBubble.querySelector('.reasoning-body');
         if (rBody) { rBody.textContent = acc.reasoning; rBody.scrollTop = rBody.scrollHeight; }
-        const log = $sel('#ykt-chat-log');
-        log.scrollTop = log.scrollHeight;
+        const $log = $sel('#ykt-chat-log');
+        $log.scrollTop = $log.scrollHeight;
       });
     };
 
@@ -237,18 +296,18 @@ async function sendCurrent() {
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {
-    addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span><br/><small>提示：到设置里检查开发者模式是否已解锁。</small>`);
+    const aborted = e?.name === 'AbortError' || /abort|cancel/i.test(String(e?.message || ''));
+    if (aborted) {
+      addBubble('ai', '<span class="muted">（已取消）</span>');
+    } else {
+      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span><br/><small>提示：到设置里检查 API 配置是否正确。</small>`);
+    }
   } finally {
     streaming = false;
     abortCtrl = null;
     $sel('#ykt-chat-send').disabled = false;
     $sel('#ykt-chat-log').scrollTop = $sel('#ykt-chat-log').scrollHeight;
   }
-}
-
-function getDevCfg() {
-  // 优先开发者配置；留 override 接口给未来 UI 选择其他 profile
-  try { return null; } catch { return null; }
 }
 
 function escapeHtml(s) {

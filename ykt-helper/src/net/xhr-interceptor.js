@@ -1,5 +1,6 @@
 // src/net/xhr-interceptor.js
 import { gm } from '../core/env.js';
+import { log } from '../core/log.js';
 import { actions } from '../state/actions.js';
 
 export function installXHRInterceptor() {
@@ -23,26 +24,27 @@ export function installXHRInterceptor() {
 
   function detectEnvironmentAndAdaptAPI() {
     const hostname = location.hostname;
-    if (hostname === 'www.yuketang.cn') { console.log('[雨课堂助手][INFO] 检测到标准雨课堂环境'); return 'standard'; }
-    if (hostname === 'pro.yuketang.cn') { console.log('[雨课堂助手][INFO] 检测到荷塘雨课堂环境'); return 'pro'; }
-    if (hostname === 'changjiang.yuketang.cn') { console.log('[雨课堂助手][INFO] 检测到长江雨课堂环境'); return 'changjiang'; }
-    console.log('[雨课堂助手][ERR] 未知环境:', hostname); return 'unknown';
+    if (hostname === 'www.yuketang.cn') { log.dbg('[xhr] 检测到标准雨课堂环境'); return 'standard'; }
+    if (hostname === 'pro.yuketang.cn') { log.dbg('[xhr] 检测到荷塘雨课堂环境'); return 'pro'; }
+    if (hostname === 'changjiang.yuketang.cn') { log.dbg('[xhr] 检测到长江雨课堂环境'); return 'changjiang'; }
+    log.dbg('[xhr] 未知环境:', hostname); return 'unknown';
   }
+  // 环境探测：结果暂未参与分支，仅用于日志标记当前站点
+  detectEnvironmentAndAdaptAPI();
 
   MyXHR.addHandler((xhr, method, url) => {
-    const envType = detectEnvironmentAndAdaptAPI();
     const pathname = url.pathname || '';
-    console.log('[雨课堂助手][INFO] XHR请求:', method, pathname, url.search);
+    log.dbg('[xhr] 请求:', method, pathname, url.search);
 
     // 课件：精确路径或包含关键字
     if (
       pathname === '/api/v3/lesson/presentation/fetch' ||
       (pathname.includes('presentation') && pathname.includes('fetch'))
     ) {
-      console.log('[雨课堂助手][INFO] 拦截课件请求');
+      log.dbg('[雨课堂助手][INFO] 拦截课件请求');
       xhr.intercept((resp) => {
         const id = url.searchParams.get('presentation_id');
-        console.log('[雨课堂助手][INFO] 课件响应:', resp);
+        log.dbg('[雨课堂助手][INFO] 课件响应:', resp);
         if (resp && (resp.code === 0 || resp.success)) {
           actions.onPresentationLoaded(id, resp.data || resp.result);
         }
@@ -55,7 +57,7 @@ export function installXHRInterceptor() {
       pathname === '/api/v3/lesson/problem/answer' ||
       (pathname.includes('problem') && pathname.includes('answer'))
     ) {
-      console.log('[雨课堂助手][INFO] 拦截答题请求');
+      log.dbg('[雨课堂助手][INFO] 拦截答题请求');
       xhr.intercept((resp, payload) => {
         try {
           const { problemId, result } = JSON.parse(payload || '{}');
@@ -63,7 +65,7 @@ export function installXHRInterceptor() {
             actions.onAnswerProblem(problemId, result);
           }
         } catch (e) {
-          console.error('[雨课堂助手][ERR] 解析答题响应失败:', e);
+          log.err('[雨课堂助手][ERR] 解析答题响应失败:', e);
         }
       });
       return;
@@ -83,7 +85,7 @@ export function installXHRInterceptor() {
       return;
     }
     if (pathname.includes('/api/')) {
-      console.log('[雨课堂助手][WARN] 其他API:', method, pathname);
+      log.dbg('[雨课堂助手][WARN] 其他API:', method, pathname);
     }
   });
 
@@ -140,7 +142,7 @@ export async function getOnLesson() {
 
   // 调试信息
   try {
-    console.groupCollapsed(
+    log.dbg(
       `%c[getOnLesson] host=%s  result=%s  candidates=%d`,
       'color:#09f',
       location.hostname,
@@ -148,13 +150,13 @@ export async function getOnLesson() {
       candidates.length
     );
       tries.forEach((t, i) => {
-      console.log(
+      log.dbg(
         `#${i+1}`,
         { url: t.url, ok: t.ok, status: t.status, note: t.note, parsedLength: t.parsedLength, bodySnippet: t.bodySnippet }
       );
     });
-    if (!finalList.length && lastErr) console.warn('[getOnLesson] last error:', lastErr);
-    console.groupEnd();
+    if (!finalList.length && lastErr) log.warn('[getOnLesson] last error:', lastErr);
+
   } catch {}
 
   return finalList;
@@ -236,10 +238,10 @@ export async function checkinClass(lessonId, opts = {}) {
 
       if (token) {
         try {
-          console.groupCollapsed('%c[checkinClass] OK %s', 'color:#0a0', cand.name);
-          console.log('payload:', cand.payload);
-          console.log('setAuth:', !!setAuth);
-          console.groupEnd();
+          log.dbg('%c[checkinClass] OK %s', 'color:#0a0', cand.name);
+          log.dbg('payload:', cand.payload);
+          log.dbg('setAuth:', !!setAuth);
+
         } catch {}
         return { token, setAuth, raw: data };
       }
@@ -251,11 +253,11 @@ export async function checkinClass(lessonId, opts = {}) {
   }
 
   try {
-    console.groupCollapsed('%c[checkinClass] FAILED host=%s', 'color:#f33', location.hostname);
-    console.log('lessonId:', lessonId, 'classroomId:', classroomId);
-    tries.forEach((t, i) => console.log(`#${i + 1}`, t));
-    if (lastErr) console.warn('lastErr:', lastErr);
-    console.groupEnd();
+    log.dbg('%c[checkinClass] FAILED host=%s', 'color:#f33', location.hostname);
+    log.dbg('lessonId:', lessonId, 'classroomId:', classroomId);
+    tries.forEach((t, i) => log.dbg(`#${i + 1}`, t));
+    if (lastErr) log.warn('lastErr:', lastErr);
+
   } catch {}
   // 抛给上层，由上层走“直跳 lesson 页”的兜底逻辑
   throw new Error('checkinClass HTTP 400');
@@ -288,13 +290,13 @@ export async function getActivePresentationId(lessonId) {
         fromData.presentation_id ||
         (Array.isArray(fromData) && (fromData[0]?.presentationId || fromData[0]?.presentation_id));
       if (pid) {
-        console.log('[雨课堂助手][DBG][getActivePresentationId] OK', { url, presentationId: pid });
+        log.dbg('[雨课堂助手][DBG][getActivePresentationId] OK', { url, presentationId: pid });
         return String(pid);
       }
     } catch (e) {
       // 忽略，试下一个
     }
   }
-  console.warn('[雨课堂助手][WARN][getActivePresentationId] no pid found for lesson', lessonId);
+  log.warn('[雨课堂助手][WARN][getActivePresentationId] no pid found for lesson', lessonId);
   return null;
 }

@@ -1,5 +1,6 @@
 // src/ai/deepseek.js
 import { gm } from '../core/env.js';
+import { log } from '../core/log.js';
 
 export function queryDeepSeek(question, aiCfg) {
   const { apiKey, endpoint, model, temperature, maxTokens } = aiCfg || {};
@@ -25,8 +26,8 @@ export function queryDeepSeek(question, aiCfg) {
       onload: (res) => {
         try {
           const data = JSON.parse(res.responseText);
-          console.log('[雨课堂助手] API响应状态:', res.status);
-          console.log('[雨课堂助手] API响应内容:', res.responseText);
+          log.dbg('[雨课堂助手] API响应状态:', res.status);
+          log.dbg('[雨课堂助手] API响应内容:', res.responseText);
           if (res.status !== 200) {
             reject(new Error(`API请求失败: HTTP ${res.status}`));
             return;
@@ -37,7 +38,7 @@ export function queryDeepSeek(question, aiCfg) {
           }
           const content = data.choices?.[0]?.message?.content?.trim?.();
           if (content && content.length > 10) {
-            console.log('[雨课堂助手] AI回答:', content);
+            log.dbg('[雨课堂助手] AI回答:', content);
             resolve(content);
           } else {
             reject(new Error('AI返回内容为空或过短'));
@@ -45,7 +46,7 @@ export function queryDeepSeek(question, aiCfg) {
         } catch (e) { reject(new Error(`解析API响应失败: ${e.message}`)); }
       },
       onerror: (err) => {
-        console.error('[雨课堂助手] 网络请求失败:', err);
+        log.err('[雨课堂助手] 网络请求失败:', err);
         reject(new Error(`请求失败: ${err?.statusText || '网络错误'}`));
       },
       ontimeout: () => reject(new Error('请求超时，请检查网络连接')),

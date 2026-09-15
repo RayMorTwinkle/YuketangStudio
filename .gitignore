@@ -25,6 +25,8 @@ dist-ssr
 # Temporary files
 temp/
 # dist/YuketangStudio-latest.user.js 随版本提交，作为 README 的固定安装地址
+# 含明文密码/API Key 的生成器：不入库（用 gen-devmode.example.js 作模板）
 ykt-helper/scripts/gen-devmode.js
-scripts/dev-password.txt
+# 含解锁码的端到端测试：不入库
 ykt-helper/scripts/test-devmode.mjs
+scripts/dev-password.txt

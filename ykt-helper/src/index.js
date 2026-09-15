@@ -7,6 +7,7 @@ import { installToolbar } from './ui/toolbar.js';
 import { actions } from './state/actions.js';
 import { ui } from './ui/ui-api.js';
 import { isStudentV3Page, runHistoryCapture } from './core/history-capture.js'; 
+import { log } from './core/log.js';
 
 (function loadFA() {
   const link = document.createElement('link');
@@ -15,23 +16,35 @@ import { isStudentV3Page, runHistoryCapture } from './core/history-capture.js';
   document.head.appendChild(link);
 })();
 
+/** 用户正在页面里输入时，不要刷新打断 */
+function userIsTyping() {
+  try {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) return true;
+  } catch {}
+  return false;
+}
+
 function maybeAutoReloadOnMount() {
   try {
-    // If the script is mounted after DOM is already ready, reload once so XHR/WS interceptors can arm early.
-    // Guarded by sessionStorage to avoid infinite reload loops.
+    // 脚本在 DOM ready 之后才挂载时，重载一次让 XHR/WS 拦截器尽早生效。
+    // 用 sessionStorage 防无限循环。
     const key = '__ykt_helper_auto_reload_once__';
     if (document.readyState === 'loading') return false;
     if (!window.sessionStorage) return false;
     if (window.sessionStorage.getItem(key) === '1') return false;
 
     window.sessionStorage.setItem(key, '1');
-    console.log('[YKT-Helper][INFO] Late mount detected; reloading once to arm interceptors.');
+    log.info('Late mount detected; reloading once to arm interceptors.');
     window.setTimeout(() => window.location.reload(), 50);
     return true;
   } catch {
     return false;
   }
 }
+
 function startPeriodicReload(opts = {}) {
   try {
     const intervalMs = Number.isFinite(opts.intervalMs) ? opts.intervalMs : 5 * 60 * 1000;
@@ -40,38 +53,43 @@ function startPeriodicReload(opts = {}) {
 
     if (!Number.isFinite(intervalMs) || intervalMs <= 0) return;
 
-      window.setInterval(() => {
-    try {
-      console.log('[雨课堂助手]][DEBUG] periodic tick', {
-        pathname: window.location.pathname,
-        hidden: document.hidden
-      });
+    window.setInterval(() => {
+      try {
+        // 课堂/报告页永不刷新（会被打断）
+        if (skipLessonPages && /\/lesson\/|\/student-lesson-report\/|\/student-v3\//.test(window.location.pathname)) {
+          log.dbg('skip reload: lesson/report page');
+          return;
+        }
+        // 任意助手面板打开时不刷新，避免打断用户操作（PDF导出、AI对话等）
+        if (document.querySelector('.ykt-panel.visible')) {
+          log.dbg('skip reload: panel open');
+          return;
+        }
+        // 页面可见时不刷新（用户在看着这个页面，刷新会造成明显干扰）
+        if (onlyWhenHidden && !document.hidden) {
+          log.dbg('skip reload: page visible');
+          return;
+        }
+        // 用户正在输入时不刷新
+        if (userIsTyping()) {
+          log.dbg('skip reload: user typing');
+          return;
+        }
 
-      if (skipLessonPages && /\/lesson\/|\/student-lesson-report\/|\/student-v3\//.test(window.location.pathname)) {
-        console.log('[雨课堂助手][DEBUG] skip reload: lesson/report page');
-        return;
+        log.info('Periodic reload triggered to avoid zombie session.');
+        window.location.reload();
+      } catch (e) {
+        log.err('periodic reload tick failed', e);
       }
-      // 任意助手面板打开时不刷新，避免打断用户操作（PDF导出、AI对话等）
-      if (document.querySelector('.ykt-panel.visible')) {
-        console.log('[雨课堂助手][DEBUG] skip reload: panel open');
-        return;
-      }
-      if (onlyWhenHidden && !document.hidden) {
-        console.log('[雨课堂助手][DEBUG] skip reload: page visible');
-        return;
-      }
-
-      console.log('[雨课堂助手][INFO] Periodic reload triggered to avoid zombie session.');
-      window.location.reload();
-    } catch (e) {
-      console.error(e);
-    }
-  }, intervalMs);
+    }, intervalMs);
   } catch {}
 }
+
 (function main() {
   if (maybeAutoReloadOnMount()) return;
-  startPeriodicReload({ intervalMs: 1 * 60 * 1000, onlyWhenHidden: false, skipLessonPages: true });
+  // 仅在页面隐藏时刷新，且间隔放宽到 3 分钟：
+  // 此前是 1 分钟 + 页面可见也刷新，是「面板莫名消失 / 脚本好像失效」的根源
+  startPeriodicReload({ intervalMs: 3 * 60 * 1000, onlyWhenHidden: true, skipLessonPages: true });
   // 样式/图标
   injectStyles();
 
@@ -93,7 +111,6 @@ function startPeriodicReload(opts = {}) {
 
   // 历史课件收集器：student-v3 报告页自动执行（配合课件面板的「历史课件」导入）
   if (isStudentV3Page()) {
-    runHistoryCapture().catch(e => console.error('[YKS-History] 启动失败', e));
+    runHistoryCapture().catch(e => log.err('[History] 启动失败', e));
   }
 })();
-

@@ -1,35 +1,35 @@
 // settings.js (new version)
 import tpl from './settings.html';
+import { log } from '../../core/log.js';
 import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
-import { unlockDevMode, isDevUnlocked, getDevConfig } from '../../core/devmode.js';
+import { unlockDevMode, getDevConfig } from '../../core/devmode.js';
 
 let mounted = false;
 let root;
 
 // ---- AI Profile helpers ----
+// 预设模板只填 baseUrl/model，API Key 一律留空由用户自己填。
+// （上游曾在此硬编码作者自己的 key，已清除——不要把任何真实 key 提交进仓库）
 const AI_PRESETS = {
   'longcat-flash': {
     name: 'LongCat Flash',
     baseUrl: 'https://api.longcat.chat/openai',
     model: 'LongCat-Flash-Chat',
     visionModel: 'LongCat-Flash-Omni-2603',
-    apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
   },
   'longcat-omni': {
     name: 'LongCat Omni',
     baseUrl: 'https://api.longcat.chat/openai',
     model: 'LongCat-Flash-Omni-2603',
     visionModel: 'LongCat-Flash-Omni-2603',
-    apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
   },
   'longcat-thinking': {
     name: 'LongCat Thinking',
     baseUrl: 'https://api.longcat.chat/openai',
     model: 'LongCat-Flash-Thinking-2601',
     visionModel: 'LongCat-Flash-Thinking-2601',
-    apiKey: 'sk-REPLACE-WITH-YOUR-KEY',
   },
   'kimi': {
     name: 'Kimi',
@@ -73,13 +73,6 @@ function ensureAIProfiles(configAI) {
   if (!configAI.activeProfileId) {
     configAI.activeProfileId = configAI.profiles[0].id;
   }
-}
-
-function getActiveProfile(configAI) {
-  ensureAIProfiles(configAI);
-  const list = configAI.profiles;
-  const id = configAI.activeProfileId;
-  return list.find(p => p.id === id) || list[0];
 }
 
 // ------------------------------
@@ -203,14 +196,15 @@ export function mountSettingsPanel() {
     if (devCfg.reasoningEffort) p.reasoningEffort = devCfg.reasoningEffort;
     ai.activeProfileId = DEV_PROFILE_ID;
     ui.saveConfig();
-    refreshProfileSelect();
-    loadProfileToForm(DEV_PROFILE_ID);
+    syncFormFromConfig();   // 解锁后表单立即显示新配置（此前要重开页面才刷新）
   }
 
   $devBtn?.addEventListener('click', async () => {
     const pass = ($devPass?.value || '').trim();
     if (!pass) { ui.toast?.('请输入解锁码'); return; }
     $devBtn.disabled = true;
+    const originalText = $devBtn.textContent;
+    $devBtn.textContent = '校验中…';   // 310k 迭代约 1~2 秒，给个反馈
     try {
       const devCfg = await unlockDevMode(pass);
       applyDevProfile(devCfg);
@@ -219,6 +213,7 @@ export function mountSettingsPanel() {
       ui.toast?.(`解锁成功：${devCfg.name || '内置配置'} 已启用`);
     } catch (e) {
       ui.toast?.('解锁失败：' + (e?.message || e));
+      $devBtn.textContent = originalText;
     } finally {
       refreshDevHint();
     }
@@ -247,7 +242,7 @@ export function mountSettingsPanel() {
     $baseUrl.value = preset.baseUrl;
     $model.value = preset.model;
     $visionModel.value = preset.visionModel;
-    
+
     if (preset.apiKey) {
       $api.value = preset.apiKey;
       ui.toast(`已应用预设: ${preset.name}，API Key 已自动填充`, 3000);
@@ -255,6 +250,7 @@ export function mountSettingsPanel() {
       ui.toast(`已应用预设: ${preset.name}，请填写 API Key`, 3000);
     }
     $presetSelect.value = '';
+    scheduleAutoSave();   // 预设也走自动保存
   });
 
   // 添加 profile
@@ -290,33 +286,14 @@ export function mountSettingsPanel() {
     loadProfileToForm(ai.activeProfileId);
   });
 
-  // 初始化原有 UI 配置
+  // 初始化表单（后续所有刷新统一走 syncFormFromConfig）
+  syncFormFromConfig();
 
-  $autoJoin.checked = !!ui.config.autoJoinEnabled;
-  $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
-  $auto.checked = !!ui.config.autoAnswer;
-  $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
+  // 保存按钮
+  root.querySelector('#ykt-btn-settings-save').addEventListener('click', () => commitForm());
 
-  $iftex.checked = !!ui.config.iftex;
-
-  $delay.value = Math.floor((ui.config.autoAnswerDelay || 3000) / 1000);
-  $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1000);
-
-  $priority.checked = (ui.config.aiSlidePickPriority !== false);
-
-  $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
-  $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));
-
-  if (ui.config.customNotifyAudioName) {
-    $audioName.textContent = `当前：${ui.config.customNotifyAudioName}`;
-  } else {
-    $audioName.textContent = '当前：使用内置“叮-咚”提示音';
-  }
-
-  // 保存设置
-
-  root.querySelector('#ykt-btn-settings-save').addEventListener('click', () => {
-    // --- 保存当前 Profile ---
+  // ===== 表单 → config 的唯一写入路径（保存按钮与自动保存共用，避免两套逻辑漂移） =====
+  function commitForm({ silent = false } = {}) {
     const ai = ui.config.ai;
     const pid = ai.activeProfileId;
     const p = ai.profiles.find(x => x.id === pid);
@@ -326,17 +303,19 @@ export function mountSettingsPanel() {
       p.apiKey = $api.value.trim();
       p.model = $model.value.trim() || p.model;
       p.visionModel = $visionModel.value.trim() || p.visionModel;
-      ai.ocrApi = $ocrApi.value.trim();
-      ai.ocrApiKey = $ocrApiKey.value.trim();
-      ai.translateApi = $translateApi.value.trim();
-      ai.translateApiKey = $translateApiKey.value.trim();
-      ai.translateModel = $translateModel.value.trim();
       const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
-    if (curOpt) curOpt.textContent = p.name || p.id;
+      if (curOpt) curOpt.textContent = p.name || p.id;
     }
+    ai.ocrApi = $ocrApi.value.trim();
+    ai.ocrApiKey = $ocrApiKey.value.trim();
+    ai.translateApi = $translateApi.value.trim();
+    ai.translateApiKey = $translateApiKey.value.trim();
+    ai.translateModel = $translateModel.value.trim();
 
-    ai.kimiApiKey = p.apiKey;
-    storage.set('kimiApiKey', p.apiKey);
+    if (p) {
+      ai.kimiApiKey = p.apiKey;      // 兼容旧字段
+      storage.set('kimiApiKey', p.apiKey);
+    }
     ui.config.autoJoinEnabled = !!$autoJoin.checked;
     ui.config.autoAnswerOnAutoJoin = !!$autoJoinAutoAnswer.checked;
     ui.config.autoAnswer = !!$auto.checked;
@@ -350,8 +329,49 @@ export function mountSettingsPanel() {
 
     ui.saveConfig();
     ui.updateAutoAnswerBtn();
-    ui.toast('设置已保存');
+    if (!silent) ui.toast('设置已保存');
+    return p;
+  }
+
+  // 自动保存：失焦/变更即落盘（此前必须先点"保存设置"，关掉面板改动就丢）
+  // 用 blur（捕获阶段）而非每次 input，避免边打字边写存储
+  let autoSaveTimer = 0;
+  const scheduleAutoSave = () => {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+      try { commitForm({ silent: true }); } catch (e) { log.warn('[Settings] 自动保存失败', e); }
+    }, 300);
+  };
+  const AUTO_SAVE_SELECTOR = 'input[type="text"], input[type="password"], input[type="number"], textarea, select, input[type="checkbox"]';
+  root.addEventListener('change', (e) => {
+    if (e.target?.matches?.(AUTO_SAVE_SELECTOR) && e.target.closest('.settings-content')) scheduleAutoSave();
   });
+  root.addEventListener('focusout', (e) => {
+    if (e.target?.matches?.('input[type="text"], input[type="password"], input[type="number"], textarea')
+      && e.target.closest('.settings-content')) scheduleAutoSave();
+  });
+
+  /** 从 config 反向刷新所有表单（解锁开发者模式、切 tab、重置后调用） */
+  function syncFormFromConfig() {
+    ensureAIProfiles(ui.config.ai);
+    refreshProfileSelect();
+    loadProfileToForm(ui.config.ai.activeProfileId);
+    $autoJoin.checked = !!ui.config.autoJoinEnabled;
+    $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
+    $auto.checked = !!ui.config.autoAnswer;
+    $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
+    $iftex.checked = !!ui.config.iftex;
+    $delay.value = Math.floor((ui.config.autoAnswerDelay || 3000) / 1000);
+    $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1000);
+    $priority.checked = (ui.config.aiSlidePickPriority !== false);
+    $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
+    $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));
+    $audioName.textContent = ui.config.customNotifyAudioName
+      ? `当前：${ui.config.customNotifyAudioName}`
+      : '当前：使用内置“叮-咚”提示音';
+  }
+  // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
+  root.__yksSyncForm = syncFormFromConfig;
 
   //--------------------------------------
   //            重置为默认
@@ -361,34 +381,9 @@ export function mountSettingsPanel() {
     if (!confirm('确定要重置为默认设置吗？')) return;
 
     Object.assign(ui.config, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
-
     ensureAIProfiles(ui.config.ai);
 
-    const active = getActiveProfile(ui.config.ai);
-
-    // 更新表单
-    refreshProfileSelect();
-    loadProfileToForm(active.id);
-
-    $autoJoin.checked = false;
-    $autoJoinAutoAnswer.checked = true;
-    $auto.checked = ui.config.autoAnswer;
-    $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
-    $iftex.checked = !!ui.config.iftex;
-
-    $delay.value = Math.floor(ui.config.autoAnswerDelay / 1000);
-    $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1000);
-    $priority.checked = !!ui.config.aiSlidePickPriority;
-
-    $notifyDur.value = 5;
-    $notifyVol.value = 60;
-    $ocrApi.value = ui.config.ai.ocrApi || '';
-    $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
-    $translateApi.value = ui.config.ai.translateApi || '';
-    $translateApiKey.value = ui.config.ai.translateApiKey || '';
-    $translateModel.value = ui.config.ai.translateModel || '';
-    $audioName.textContent = '当前：使用内置“叮-咚”提示音';
-
+    syncFormFromConfig();
     storage.set('kimiApiKey', '');
 
     ui.saveConfig();
@@ -476,6 +471,8 @@ export function showSettingsPanel(visible = true) {
   const panel = document.getElementById('ykt-settings-panel');
   if (!panel) return;
   panel.classList.toggle('visible', !!visible);
+  // 每次打开时从 config 重新拉取（解锁开发者模式、其他面板改配置后保持一致）
+  if (visible) panel.__yksSyncForm?.();
 }
 
 export function toggleSettingsPanel() {

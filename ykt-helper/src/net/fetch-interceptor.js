@@ -1,5 +1,5 @@
 import { repo } from '../state/repo.js';
-import { actions } from '../state/actions.js';
+import { log } from '../core/log.js';
 
 (function interceptFetch() {
   if (window.__YKT_FETCH_PATCHED__) return;
@@ -7,12 +7,12 @@ import { actions } from '../state/actions.js';
 
   const rawFetch = window.fetch;
   window.fetch = async function (...args) {
-    const [input, init] = args;
+    const [input] = args;
     const url = typeof input === 'string' ? input : input?.url || '';
 
     // === (1) 打印调试日志，可观察哪些接口走 fetch ===
     if (url.includes('lesson') || url.includes('slide') || url.includes('problem')) {
-      console.log('[雨课堂助手][INFO][fetch-interceptor] 捕获请求:', url);
+      log.dbg('[雨课堂助手][INFO][fetch-interceptor] 捕获请求:', url);
     }
 
     const resp = await rawFetch.apply(this, args);
@@ -41,15 +41,15 @@ import { actions } from '../state/actions.js';
               filled++;
             }
           }
-          console.log(`雨课堂助手][INFO][fetch-interceptor] 已填充 slides ${filled}/${slides.length}`);
+          log.dbg(`雨课堂助手][INFO][fetch-interceptor] 已填充 slides ${filled}/${slides.length}`);
         }
       }
     } catch (e) {
-      console.warn('[雨课堂助手][ERR][fetch-interceptor] 解析响应失败:', e);
+      log.warn('[雨课堂助手][ERR][fetch-interceptor] 解析响应失败:', e);
     }
 
     return resp; // 一定要返回原始 Response
   };
 
-  console.log('[雨课堂助手][INFO][fetch-interceptor] fetch() 已被拦截');
+  log.dbg('[雨课堂助手][INFO][fetch-interceptor] fetch() 已被拦截');
 })();

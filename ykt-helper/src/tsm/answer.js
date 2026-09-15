@@ -1,4 +1,5 @@
 import { ui } from '../ui/ui-api.js';
+import { log } from '../core/log.js';
 import { repo } from '../state/repo.js';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, Math.max(0, ms|0))); }
@@ -151,18 +152,18 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
 
   if (pastDeadline || forceRetry) {
 
-    console.group('[雨课堂助手][DEBUG][answer] >>> 进入补交分支判断');
-    console.log('problemId:', problem.problemId);
-    console.log('pastDeadline:', pastDeadline, '(now=', now, ', endTime=', endTime, ')');
-    console.log('forceRetry:', forceRetry);
-    console.log('传入 startTime:', startTime, '传入 endTime:', endTime);
+    log.dbg('[雨课堂助手][DEBUG][answer] >>> 进入补交分支判断');
+    log.dbg('problemId:', problem.problemId);
+    log.dbg('pastDeadline:', pastDeadline, '(now=', now, ', endTime=', endTime, ')');
+    log.dbg('forceRetry:', forceRetry);
+    log.dbg('传入 startTime:', startTime, '传入 endTime:', endTime);
 
     const ps = repo?.problemStatus?.get?.(problem.problemId);
-    console.log('从 repo.problemStatus 获取:', ps);
+    log.dbg('从 repo.problemStatus 获取:', ps);
 
     const st = Number.isFinite(startTime) ? startTime : (ps?.startTime);
     const et = Number.isFinite(endTime)   ? endTime   : (ps?.endTime);
-    console.log('最终用于 retry 的 st=', st, ' et=', et);
+    log.dbg('最终用于 retry 的 st=', st, ' et=', et);
 
     // 计算 dt
     const off  = Math.max(0, retryDtOffsetMs);
@@ -170,25 +171,24 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
 
     if (Number.isFinite(st)) {
       dt = st + off;
-      console.log('补交 dt = startTime + offset =', dt);
+      log.dbg('补交 dt = startTime + offset =', dt);
     } else if (Number.isFinite(et)) {
       dt = Math.max(0, et - Math.max(off, 5000));
-      console.log('补交 dt = near endTime window =', dt);
+      log.dbg('补交 dt = near endTime window =', dt);
     } else {
       dt = Date.now() - off;
-      console.log('补交 dt = fallback =', dt);
+      log.dbg('补交 dt = fallback =', dt);
     }
 
-    console.log('>>> 即将调用 retryAnswer()');
-    console.groupEnd();
+    log.dbg('>>> 即将调用 retryAnswer()');
 
     try {
       const resp = await retryAnswer(problem, result, dt, { headers });
-      console.log('[雨课堂助手][INFO][answer] 补交成功 (/retry)', { problemId: problem.problemId, dt, pastDeadline, forceRetry });
+      log.dbg('[雨课堂助手][INFO][answer] 补交成功 (/retry)', { problemId: problem.problemId, dt, pastDeadline, forceRetry });
       return { route: 'retry', resp };
     } catch (e) {
-      console.error('[雨课堂助手][ERR][answer] 补交失败 (/retry)：', e);
-      console.error('[雨课堂助手][ERR][answer] 失败参数：', { st, et, dt, pastDeadline, forceRetry });
+      log.err('[雨课堂助手][ERR][answer] 补交失败 (/retry)：', e);
+      log.err('[雨课堂助手][ERR][answer] 失败参数：', { st, et, dt, pastDeadline, forceRetry });
       throw e;
     }
   }

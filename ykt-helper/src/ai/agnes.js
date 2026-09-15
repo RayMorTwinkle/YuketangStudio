@@ -2,13 +2,11 @@
 // Agnes（OpenAI 兼容）LLM 封装：对话 / 图片 / 思考 / 流式 / 工具调用
 // 默认配置来自开发者模式解锁的内置配置（core/devmode.js），也可传参覆盖
 import { gm } from '../core/env.js';
+import { log } from '../core/log.js';
 import { getDevConfig } from '../core/devmode.js';
 
-const DEBUG = (() => {
-  try { return !!localStorage.getItem('yksDebug'); } catch { return false; }
-})();
-
-function log(...args) { if (DEBUG) console.log('[YKS-Agnes]', ...args); }
+/** 本模块日志前缀 */
+const dlog = (...args) => log.dbg('[Agnes]', ...args);
 
 /** 与 openai.js 的 makeChatUrl 相同的自适应拼接逻辑 */
 export function makeChatUrl(baseUrl) {
@@ -32,7 +30,7 @@ function sseParser(onEvent) {
       if (!line.startsWith('data:')) continue;
       const data = line.slice(5).trim();
       if (!data || data === '[DONE]') { if (data === '[DONE]') onEvent(null); continue; }
-      try { onEvent(JSON.parse(data)); } catch (e) { log('sse parse fail', e); }
+      try { onEvent(JSON.parse(data)); } catch (e) { dlog('sse parse fail', e); }
     }
   };
 }
@@ -69,14 +67,14 @@ export async function agnesChat(opts) {
 
   const url = makeChatUrl(baseUrl);
   const timeoutMs = opts.timeoutMs || 120000;
-  log('request', { url, model, stream, thinking });
+  dlog('request', { url, model, stream, thinking });
 
   if (stream) {
     // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
     try {
       return await fetchStream(url, apiKey, body, opts, timeoutMs);
     } catch (e) {
-      log('fetch stream failed, fallback to GM_xhr:', e?.message || e);
+      dlog('fetch stream failed, fallback to GM_xhr:', e?.message || e);
       if (e?.name === 'AbortError') throw e;
       return await gmXhrStream(url, apiKey, body, opts, timeoutMs);
     }
@@ -85,7 +83,7 @@ export async function agnesChat(opts) {
   try {
     return await fetchStream(url, apiKey, body, opts, timeoutMs);
   } catch (e) {
-    log('fetch failed, fallback to GM_xhr:', e?.message || e);
+    dlog('fetch failed, fallback to GM_xhr:', e?.message || e);
     return gmXhrOnce(url, apiKey, body, timeoutMs);
   }
 }
@@ -143,7 +141,7 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
         const data = line.slice(5).trim();
         if (!data) continue;
         if (data === '[DONE]') break;
-        try { pickDelta(JSON.parse(data), opts, acc); } catch (e) { log('parse', e); }
+        try { pickDelta(JSON.parse(data), opts, acc); } catch (e) { dlog('parse', e); }
       }
     }
     return acc;

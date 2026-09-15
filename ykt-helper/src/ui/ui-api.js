@@ -1,15 +1,13 @@
 // src/ui/ui-api.js
 import { gm } from '../core/env.js';
+import { log } from '../core/log.js';
 import { storage } from '../core/storage.js';
 import { DEFAULT_CONFIG } from '../core/types.js';
-import { repo } from '../state/repo.js';
 import { toast } from './toast.js';
-import * as SettingsPanel from './panels/settings.js';
 import * as AIPanel from './panels/ai.js';
 import * as PresPanel from './panels/presentation.js';
 import * as ProbListPanel from './panels/problem-list.js';
 import * as ActivePanel from './panels/active-problems.js';
-import * as TutorialPanel from './panels/tutorial.js';
 import * as Shell from './panels/shell.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
 
@@ -40,7 +38,7 @@ function saveConfig() {
         autoJoinEnabled: !!this.config.autoJoinEnabled,
         autoAnswerOnAutoJoin: !!this.config.autoAnswerOnAutoJoin,
       });
-    } catch (e) { console.warn('[ui.saveConfig] failed', e); }
+    } catch (e) { log.warn('[ui.saveConfig] failed', e); }
 }
 
 // 面板层级管理
@@ -265,7 +263,7 @@ export const ui = {
 
       this._playNotifySound(+this.config.notifyVolume || 0.6);
     } catch (e) {
-      console.warn('[雨课堂助手][WARN][ui.notifyProblem] failed:', e);
+      log.warn('[雨课堂助手][WARN][ui.notifyProblem] failed:', e);
     }
   },
 
@@ -291,7 +289,7 @@ export const ui = {
         }
         return;
       } catch (e) {
-        console.warn('[雨课堂助手][WARN] custom audio failed, fallback to tone:', e);
+        log.warn('[雨课堂助手][WARN] custom audio failed, fallback to tone:', e);
         // 回退到合成音
       }
     }
