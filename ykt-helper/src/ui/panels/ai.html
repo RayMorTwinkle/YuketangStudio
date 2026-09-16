@@ -1,83 +1,52 @@
 <div id="ykt-ai-answer-panel" class="ykt-panel">
+  <style>
+    #ykt-ai-answer-panel { display: none; flex-direction: column; }
+    #ykt-ai-answer-panel.visible { display: flex; }
+    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }
+    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }
+    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }
+    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }
+    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }
+    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }
+    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }
+    .ykt-ai-msg.ai p { margin: 0 0 6px; }
+    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }
+    .ykt-ai-msg.ai details { margin-bottom: 6px; }
+    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }
+    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }
+    .ykt-ai-msg .err { color: #c0392b; }
+    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }
+    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }
+    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }
+    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }
+    #ykt-ai-ctx .ctx-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }
+    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }
+    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }
+    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }
+    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }
+    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }
+    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }
+    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }
+  </style>
   <div class="panel-header">
-    <h3><i class="fas fa-robot"></i> AI 融合分析</h3>
-    <span id="ykt-ai-close" class="close-btn" title="关闭">
-      <i class="fas fa-times"></i>
-    </span>
+    <h3>🤖 AI 解答</h3>
+    <button id="ykt-ai-clear">清空会话</button>
+    <span class="close-btn" id="ykt-ai-close"><i class="fas fa-times"></i></span>
   </div>
-  <div class="panel-body">
-    <div style="margin-bottom: 10px;">
-      <strong>当前题目：</strong>
-      <div style="font-size: 12px; color: #666; margin: 4px 0;">
-        系统将自动识别当前页面的题目
-      </div>
-      <div id="ykt-ai-text-status" class="text-status warning">
-        正在检测题目信息...
-      </div>
-      <div id="ykt-ai-question-display" class="ykt-question-display">
-        提示：系统使用融合模式，同时分析题目文本信息和页面图像，提供最准确的答案。
-      </div>
+  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">
+    <div id="ykt-ai-log"></div>
+    <div id="ykt-ai-ctx">
+      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>
+      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>
+      <span id="ykt-ai-ctx-thumb"></span>
     </div>
-    <!-- 当前要提问的PPT预览 -->
-    <div id="ykt-ai-selected" style="display:none; margin: 10px 0;">
-      <strong>已选PPT预览：</strong>
-      <div style="font-size: 12px; color: #666; margin: 4px 0;">
-        下方小图为即将用于分析的PPT页面截图
-      </div>
-      <div style="border: 1px solid var(--ykt-border-strong); padding: 6px; border-radius: 6px; display: inline-block;">
-        <!-- 兼容旧单页：仍保留该 img -->
-        <img id="ykt-ai-selected-thumb"
-             alt="已选PPT预览"
-             style="max-width: 180px; max-height: 120px; display:none;" />
-
-        <!-- 多页预览容器：由 ai.js 动态填充 -->
-        <div id="ykt-ai-selected-thumbs"
-             style="display:flex; flex-wrap:wrap; gap:6px; max-width: 420px;">
-        </div>
-      </div>
+    <div id="ykt-ai-custom">
+      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">
     </div>
-    <div style="margin-bottom: 10px;">
-      <strong>自定义提示（可选）：</strong>
-      <div style="font-size: 12px; color: #666; margin: 4px 0;">
-        提示：此内容将追加到系统生成的prompt后面，可用于补充特殊要求或背景信息。
-      </div>
-      <textarea 
-        id="ykt-ai-custom-prompt" 
-        class="ykt-custom-prompt"
-        placeholder="例如：请用中文回答、注重解题思路、考虑XXX知识点等"
-      ></textarea>
-    </div>
-
-    <button id="ykt-ai-ask" style="width: 100%; height: 32px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer; margin-bottom: 10px;">
-      <i class="fas fa-brain"></i> 融合模式分析（文本+图像）
-    </button>
-
-    <div id="ykt-ai-loading" class="ai-loading" style="display: none;">
-      <i class="fas fa-spinner fa-spin"></i> AI正在使用融合模式分析...
-    </div>
-    <div id="ykt-ai-error" class="ai-error" style="display: none;"></div>
-    <div>
-      <strong>AI 分析结果：</strong>
-      <div id="ykt-ai-answer" class="ai-answer"></div>
-    </div>
-    <!-- 可编辑答案区 -->
-    <div id="ykt-ai-edit-section" style="display:none; margin-top:12px;">
-      <strong>提交前可编辑答案：</strong>
-      <div style="font-size: 12px; color: #666; margin: 4px 0;">
-        提示：这里是将要提交的“结构化答案”。可直接编辑。支持：
-        <br>• 选择题/投票：填写 <code>["A"]</code> 或 <code>A,B</code>
-        <br>• 填空题：填写 <code>[" 1"]</code> 或 直接写 <code> 1</code>（自动包成数组）
-        <br>• 主观题：可填 JSON（如 <code>{"content":"略","pics":[]}</code>）或直接输入文本
-      </div>
-      <textarea id="ykt-ai-answer-edit"
-        style="width:100%; min-height:88px; border:1px solid var(--ykt-border-strong); border-radius:6px; padding:6px; font-family:monospace;"></textarea>
-      <div id="ykt-ai-validate" style="font-size:12px; color:#666; margin-top:6px;"></div>
-      <div style="margin-top:8px; display:flex; gap:8px;">
-        <button id="ykt-ai-submit" class="ykt-btn ykt-btn-primary" style="flex:0 0 auto;">
-          提交编辑后的答案
-        </button>
-        <button id="ykt-ai-reset-edit" class="ykt-btn" style="flex:0 0 auto;">重置为 AI 建议</button>
-      </div>
+    <div class="ykt-ai-inputbar">
+      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>
+      <button id="ykt-ai-send">发送</button>
     </div>
   </div>
 </div>

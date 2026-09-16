@@ -350,591 +350,7 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$6 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3><i class="fas fa-robot"></i> AI 融合分析</h3>\n    <span id="ykt-ai-close" class="close-btn" title="关闭">\n      <i class="fas fa-times"></i>\n    </span>\n  </div>\n  <div class="panel-body">\n    <div style="margin-bottom: 10px;">\n      <strong>当前题目：</strong>\n      <div style="font-size: 12px; color: #666; margin: 4px 0;">\n        系统将自动识别当前页面的题目\n      </div>\n      <div id="ykt-ai-text-status" class="text-status warning">\n        正在检测题目信息...\n      </div>\n      <div id="ykt-ai-question-display" class="ykt-question-display">\n        提示：系统使用融合模式，同时分析题目文本信息和页面图像，提供最准确的答案。\n      </div>\n    </div>\n    \x3c!-- 当前要提问的PPT预览 --\x3e\n    <div id="ykt-ai-selected" style="display:none; margin: 10px 0;">\n      <strong>已选PPT预览：</strong>\n      <div style="font-size: 12px; color: #666; margin: 4px 0;">\n        下方小图为即将用于分析的PPT页面截图\n      </div>\n      <div style="border: 1px solid var(--ykt-border-strong); padding: 6px; border-radius: 6px; display: inline-block;">\n        \x3c!-- 兼容旧单页：仍保留该 img --\x3e\n        <img id="ykt-ai-selected-thumb"\n             alt="已选PPT预览"\n             style="max-width: 180px; max-height: 120px; display:none;" />\n\n        \x3c!-- 多页预览容器：由 ai.js 动态填充 --\x3e\n        <div id="ykt-ai-selected-thumbs"\n             style="display:flex; flex-wrap:wrap; gap:6px; max-width: 420px;">\n        </div>\n      </div>\n    </div>\n    <div style="margin-bottom: 10px;">\n      <strong>自定义提示（可选）：</strong>\n      <div style="font-size: 12px; color: #666; margin: 4px 0;">\n        提示：此内容将追加到系统生成的prompt后面，可用于补充特殊要求或背景信息。\n      </div>\n      <textarea \n        id="ykt-ai-custom-prompt" \n        class="ykt-custom-prompt"\n        placeholder="例如：请用中文回答、注重解题思路、考虑XXX知识点等"\n      ></textarea>\n    </div>\n\n    <button id="ykt-ai-ask" style="width: 100%; height: 32px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer; margin-bottom: 10px;">\n      <i class="fas fa-brain"></i> 融合模式分析（文本+图像）\n    </button>\n\n    <div id="ykt-ai-loading" class="ai-loading" style="display: none;">\n      <i class="fas fa-spinner fa-spin"></i> AI正在使用融合模式分析...\n    </div>\n    <div id="ykt-ai-error" class="ai-error" style="display: none;"></div>\n    <div>\n      <strong>AI 分析结果：</strong>\n      <div id="ykt-ai-answer" class="ai-answer"></div>\n    </div>\n    \x3c!-- 可编辑答案区 --\x3e\n    <div id="ykt-ai-edit-section" style="display:none; margin-top:12px;">\n      <strong>提交前可编辑答案：</strong>\n      <div style="font-size: 12px; color: #666; margin: 4px 0;">\n        提示：这里是将要提交的“结构化答案”。可直接编辑。支持：\n        <br>• 选择题/投票：填写 <code>["A"]</code> 或 <code>A,B</code>\n        <br>• 填空题：填写 <code>[" 1"]</code> 或 直接写 <code> 1</code>（自动包成数组）\n        <br>• 主观题：可填 JSON（如 <code>{"content":"略","pics":[]}</code>）或直接输入文本\n      </div>\n      <textarea id="ykt-ai-answer-edit"\n        style="width:100%; min-height:88px; border:1px solid var(--ykt-border-strong); border-radius:6px; padding:6px; font-family:monospace;"></textarea>\n      <div id="ykt-ai-validate" style="font-size:12px; color:#666; margin-top:6px;"></div>\n      <div style="margin-top:8px; display:flex; gap:8px;">\n        <button id="ykt-ai-submit" class="ykt-btn ykt-btn-primary" style="flex:0 0 auto;">\n          提交编辑后的答案\n        </button>\n        <button id="ykt-ai-reset-edit" class="ykt-btn" style="flex:0 0 auto;">重置为 AI 建议</button>\n      </div>\n    </div>\n  </div>\n</div>';
-  // src/ai/kimi.js
-  // 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
-  // 约定：
-  // 1 -> single_choice   （单选）
-  // 2 -> multiple_choice （多选）
-  // 3 -> single_choice   （投票题按单选处理）
-  // 4 -> fill_in         （填空题）
-  // 5 -> subjective      （主观题 / 简答题）
-    function mapProblemTypeToQuestionType(problemType) {
-    if (problemType == null) return null;
-    const n = Number(problemType);
-    switch (n) {
-     case 1:
-      return "single_choice";
-
-     case 2:
-      return "multiple_choice";
-
-     case 3:
-      return "single_choice";
-
-     case 4:
-      return "fill_in";
-
-     case 5:
-      return "subjective";
-
-     default:
-      return null;
-    }
-  }
-  function getActiveProfile(aiCfg) {
-    const cfg = aiCfg || {};
-    const profiles = Array.isArray(cfg.profiles) ? cfg.profiles : [];
-    if (!profiles.length) {
-      const legacyKey = cfg.kimiApiKey;
-      if (!legacyKey) return null;
-      return {
-        id: "legacy",
-        name: "Kimi Legacy",
-        baseUrl: "https://api.moonshot.cn/v1/chat/completions",
-        apiKey: legacyKey,
-        model: "moonshot-v1-8k",
-        visionModel: "moonshot-v1-8k-vision-preview"
-      };
-    }
-    const activeId = cfg.activeProfileId;
-    let p = profiles.find(p => p.id === activeId);
-    if (!p) p = profiles[0];
-    if (!p.baseUrl) p.baseUrl = "https://api.moonshot.cn/v1/chat/completions";
-    return p;
-  }
-  function makeChatUrl$1(profile) {
-    let base = (profile.baseUrl || "https://api.moonshot.cn/v1/chat/completions").replace(/\/+$/, "");
-    if (!base.includes("/chat/completions")) if (base.includes("/v1")) base += "/chat/completions"; else if (base.includes("/openai")) base += "/v1/chat/completions"; else base += "/v1/chat/completions";
-    return base;
-  }
-  // -----------------------------------------------
-  // Unified Prompt blocks for Text & Vision
-  // -----------------------------------------------
-    const BASE_SYSTEM_PROMPT = [ "1) 任何时候优先遵循【用户输入（优先级最高）】中的明确要求；", "2) 当输入是课件页面（PPT）图像或题干文本时，先判断是否存在“明确题目”；", "3) 若存在明确题目，则输出以下格式的内容：", "   单选：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A", "   多选：格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C", "   投票：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项，如A", "   填空/主观题: 格式要求：答案: [直接给出答案内容]，解释: [补充说明]", "4) 若识别不到明确题目，直接使用回答用户输入的问题", "3) 如果PROMPT格式不正确，或者你只接收了图片，输出：", "   STATE: NO_PROMPT", "   SUMMARY: <介绍页面/上下文的主要内容>" ].join("\n");
-  // Vision 补充：识别题型与版面元素的步骤说明
-    const VISION_GUIDE = [ "【视觉识别要求】", "A. 先判断是否为题目页面（是否有题干/选项/空格/问句等）", "B. 若是题目，尝试提取题干、选项与关键信息；", "C. 否则参考用户输入回答" ].join("\n");
-  // 通用 OpenAI 协议聊天请求封装（用于 Vision 两步调用）
-    function chatCompletion(profile, payload, debugLabel = "[AI OpenAI]", timeoutMs = 6e4) {
-    const url = makeChatUrl$1(profile);
-    return new Promise((resolve, reject) => {
-      gm.xhr({
-        method: "POST",
-        url: url,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${profile.apiKey}`
-        },
-        data: JSON.stringify(payload),
-        timeout: timeoutMs,
-        onload: res => {
-          try {
-            log.dbg(`[雨课堂助手]${debugLabel} Status:`, res.status);
-            log.dbg(`[雨课堂助手]${debugLabel} Response:`, res.responseText);
-            if (res.status !== 200) {
-              let errorMessage = `AI 请求失败: ${res.status}`;
-              try {
-                const errorData = JSON.parse(res.responseText);
-                if (errorData.error?.message) errorMessage += ` - ${errorData.error.message}`;
-                if (errorData.error?.code) errorMessage += ` (${errorData.error.code})`;
-              } catch {
-                errorMessage += ` - ${res.responseText}`;
-              }
-              reject(new Error(errorMessage));
-              return;
-            }
-            const data = JSON.parse(res.responseText);
-            resolve(data);
-          } catch (e) {
-            log.err(`[雨课堂助手]${debugLabel} 解析响应失败:`, e);
-            reject(new Error(`解析API响应失败: ${e.message}`));
-          }
-        },
-        onerror: err => {
-          log.err(`[雨课堂助手]${debugLabel} 网络请求失败:`, err);
-          reject(new Error("网络请求失败"));
-        }
-      });
-    });
-  }
-  async function singleStepVisionCall(profile, cleanBase64List, textPrompt, options = {}) {
-    const visionModel = profile.visionModel || profile.model;
-    const timeoutMs = options.timeout || 6e4;
-    const visionTextHeader = [ "【融合模式说明】你将看到一张课件/PPT截图与可选的附加文本。", VISION_GUIDE ].join("\n");
-    const imageBlocks = [];
-    for (const b64 of cleanBase64List) imageBlocks.push({
-      type: "image_url",
-      image_url: {
-        url: `data:image/png;base64,${b64}`
-      }
-    });
-    const messages = [ {
-      role: "system",
-      content: BASE_SYSTEM_PROMPT
-    }, {
-      role: "user",
-      content: [ ...imageBlocks, {
-        type: "text",
-        text: [ visionTextHeader, "【用户输入（优先级最高）】", textPrompt || "（无）" ].join("\n")
-      } ]
-    } ];
-    const data = await chatCompletion(profile, {
-      model: visionModel,
-      messages: messages,
-      temperature: .3
-    }, "[AI OpenAI Vision 单步]", timeoutMs);
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error("AI返回内容为空");
-    log.dbg("[AI OpenAI Vision] 成功获取回答(单步)");
-    return content;
-  }
-  /**
-   * 通用 OpenAI 协议 Vision 模型（图像+文本）
-   */  async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}) {
-    const profile = getActiveProfile(aiCfg);
-    if (!profile || !profile.apiKey) throw new Error("请先在设置中配置 AI API Key");
-    // ===== 兼容单图 / 多图 =====
-        const inputList = Array.isArray(imageBase64) ? imageBase64 : [ imageBase64 ];
-    const cleanBase64List = inputList.filter(Boolean).map(x => String(x).replace(/^data:image\/[^;]+;base64,/, "")).filter(x => !!x);
-    if (cleanBase64List.length === 0) throw new Error("图像数据格式错误");
-    const visionModel = profile.visionModel || profile.model;
-    const textModel = profile.model;
-    const hasSeparateTextModel = !!textModel && textModel !== visionModel;
-    const {disableTwoStep: disableTwoStep = false, twoStepDebug: twoStepDebug = false, timeout: timeoutMs = 6e4, problemType: problemType = null} = options || {};
-    // -------- 0. 如果只有 VLM（或者显式关闭两步），回退到单步逻辑 --------
-        if (!hasSeparateTextModel || disableTwoStep) {
-      if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision] use single-step vision", {
-        hasSeparateTextModel: hasSeparateTextModel,
-        disableTwoStep: disableTwoStep
-      });
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision] use TWO-STEP pipeline", {
-      visionModel: visionModel,
-      textModel: textModel
-    });
-    // ===================== Step 1: Vision 抽结构化题目 =====================
-        const STEP1_SYSTEM_PROMPT = `\n你是一个“题目结构化助手”。你将看到课件截图和可选的附加文本，请从中提取出清晰的题目结构，并以 JSON 格式输出。\n\n你不仅要识别文字（类似 OCR），还要理解图片里的内容（例如物体、颜色、形状、数量、相对位置等），并把这些与题目有关的信息转化为题干或补充说明的一部分。\n\n【题型识别优先级】\n1. 如果页面上出现了明确的题型标签文字，如：\n   - "单选题"、"多选题"、"投票题"、"填空题"、"主观题" 等，\n   请优先根据这些标签设置 question_type：\n   - 单选题 / 投票题 -> "single_choice"\n   - 多选题         -> "multiple_choice"\n   - 填空题         -> "fill_in"\n   - 主观题 / 简答题 / 论述题 -> "subjective"\n2. 当没有明显题型标签时，再根据题干语义和版面结构推断题型。\n\n【选项字母规则】\n- 只有在页面上出现了清晰的选项字母（通常为 "A."、"B."、"C."、"D." 等）并跟随选项内容时，才能将 question_type 设为 "single_choice" 或 "multiple_choice"（或投票题对应的 "single_choice"）。\n- 如果没有任何 A/B/C/D 这种选项字母，而问题又需要开放性自由回答，请优先将 question_type 设为 "subjective"。\n\n请尽量识别：\n- question_type: "single_choice" | "multiple_choice" | "fill_in" | "subjective" | "visual_only" | "unknown"\n- stem: 题干文本（如果题干主要依赖图片，请用自然语言描述图片中与题目相关的内容，可保留数学公式信息）\n- options: 一个对象，键为 "A"、"B"、"C"、"D" 等，值为选项内容文字（若不是选择题可为空对象）\n- image_facts: （可选）一个字符串数组，列出与解题有关的关键图像事实，例如 ["图中是一根黄色的香蕉", "背景是白色"]。\n- requires_image_for_solution: 布尔值。如果即使你尽力用文字描述图片，仍然很难仅凭文字保证答对（例如复杂几何图形或高度依赖精确位置关系的题目），请设为 true；如果你的文字描述已经足够让人类或文字模型解题，请设为 false。\n\n输出示例（仅示例，不是固定模板）：\n{\n  "question_type": "single_choice",\n  "stem": "根据图片中的水果，选择它的颜色。",\n  "options": {\n    "A": "红色",\n    "B": "黄色",\n    "C": "蓝色",\n    "D": "绿色"\n  },\n  "image_facts": [\n    "图片中是一根黄色的香蕉，背景为白色"\n  ],\n  "requires_image_for_solution": false\n}\n\n如果无法识别题目或截图并非题目，请尽量给出你能看到的内容，但仍然保持上述 JSON 结构（字段缺省时可以用 null、空对象或空数组）。\n仅输出 JSON，不要任何额外文字。\n`.trim();
-    const step1Messages = [ {
-      role: "system",
-      content: STEP1_SYSTEM_PROMPT
-    }, {
-      role: "user",
-      content: [ ...cleanBase64List.map(b64 => ({
-        type: "image_url",
-        image_url: {
-          url: `data:image/png;base64,${b64}`
-        }
-      })), textPrompt ? {
-        type: "text",
-        text: `【辅助文本】\n${textPrompt}`
-      } : {
-        type: "text",
-        text: "【辅助文本】（无额外文本，仅根据截图识别题目）"
-      } ]
-    } ];
-    let structuredQuestion;
-    try {
-      const data1 = await chatCompletion(profile, {
-        model: visionModel,
-        messages: step1Messages,
-        temperature: .1
-      }, "[AI OpenAI Vision Step1]", timeoutMs);
-      const content1 = data1.choices?.[0]?.message?.content || "";
-      if (twoStepDebug) log.dbg("[雨课堂助手][DEBUG][vision-step1] raw content:", content1);
-      const jsonMatch = content1.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("no JSON found in step1 result");
-      structuredQuestion = JSON.parse(jsonMatch[0]);
-    } catch (err) {
-      log.warn("[雨课堂助手][WARN][vision-step1] failed, fallback to single-step", err);
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-    if (!structuredQuestion || !structuredQuestion.stem) {
-      log.warn("[雨课堂助手][WARN][vision-step1] invalid structuredQuestion, fallback");
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step1] structuredQuestion:", structuredQuestion);
-    // ========= 题型合并逻辑：后端 problemType 优先，其次 VLM 推断，全部缺失则回退 subjective =========
-        const backendQuestionType = mapProblemTypeToQuestionType(problemType);
-    const vlmQuestionType = structuredQuestion.question_type || null;
-    let finalQuestionType = backendQuestionType || vlmQuestionType || null;
-    // 如果 VLM 返回的是 unknown / visual_only 这类不太可用的类型，也当成“缺失”
-        if (finalQuestionType === "unknown" || finalQuestionType === "visual_only") finalQuestionType = null;
-    // 当后端和 VLM 都没有给出可用题型时，统一回退为主观题
-        if (!finalQuestionType) finalQuestionType = "subjective";
-    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step1] questionType merged:", {
-      problemType: problemType,
-      backendQuestionType: backendQuestionType,
-      vlmQuestionType: vlmQuestionType,
-      finalQuestionType: finalQuestionType
-    });
-    // 如果模型明确表示“必须依赖原始图像才能解题”，则回退到单步 Vision，避免纯文本推理丢失关键信息
-        if (structuredQuestion.requires_image_for_solution === true) {
-      log.warn("[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step");
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-    // ===================== Step 2: Text 模型纯文本推理解题 =====================
-        const {stem: stem, options: sqOptions = {}, image_facts: image_facts = []} = structuredQuestion;
-    let solvePrompt = "你是一个严谨的解题助手，请根据下面的题目进行推理解答：\n\n";
-    solvePrompt += `【题干】\n${stem}\n\n`;
-    const optionKeys = Object.keys(sqOptions);
-    if (optionKeys.length > 0) {
-      solvePrompt += "【选项】\n";
-      for (const key of optionKeys) solvePrompt += `${key}. ${sqOptions[key]}\n`;
-      solvePrompt += "\n";
-    }
-    solvePrompt += "请逐步推理，推理结果按以下格式输出：\n";
-    if (finalQuestionType === "single_choice") solvePrompt += "答案: [单个大写字母]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "multiple_choice") solvePrompt += "答案: [多个大写字母，用顿号分隔，如 A、C、D]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "fill_in") solvePrompt += "答案: [直接给出需要填入的内容，多个空用逗号分隔]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "subjective") solvePrompt += "答案: [完整回答]\n解释: [可选的补充说明]\n";
-    // 将图像关键信息一并提供给文本模型，用于弥补完全无图像输入的劣势
-        if (Array.isArray(image_facts) && image_facts.length > 0) {
-      solvePrompt += "【图像关键信息】\n";
-      for (const fact of image_facts) if (typeof fact === "string" && fact.trim()) solvePrompt += `- ${fact.trim()}\n`;
-      solvePrompt += "\n";
-    }
-    const step2Messages = [ {
-      role: "system",
-      content: "你是一个解题助手，请严格按照用户指定的输出格式作答，尽量保证答案正确。"
-    }, {
-      role: "user",
-      content: [ {
-        type: "text",
-        text: solvePrompt
-      } ]
-    } ];
-    try {
-      const data2 = await chatCompletion(profile, {
-        model: textModel,
-        messages: step2Messages,
-        temperature: .2
-      }, "[AI OpenAI Vision Step2]", timeoutMs);
-      const content2 = data2.choices?.[0]?.message?.content || "";
-      if (!content2) throw new Error("AI返回内容为空");
-      if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step2] final content:", content2);
-      return content2;
-    } catch (err) {
-      log.warn("[雨课堂助手][WARN][vision-step2] failed, fallback to single-step", err);
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-  }
-  // src/capture/screenshot.js
-    async function captureProblemScreenshot() {
-    try {
-      const html2canvas = await ensureHtml2Canvas();
-      const el = document.querySelector(".ques-title") || document.querySelector(".problem-body") || document.querySelector(".ppt-inner") || document.querySelector(".ppt-courseware-inner") || document.body;
-      return await html2canvas(el, {
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: "#ffffff",
-        scale: 1,
-        width: Math.min(el.scrollWidth, 1200),
-        height: Math.min(el.scrollHeight, 800)
-      });
-    } catch (e) {
-      log.err("[captureProblemScreenshot] failed", e);
-      return null;
-    }
-  }
-  /**
-   * 获取指定幻灯片的截图
-   * @param {string} slideId - 幻灯片ID
-   * @returns {Promise<string|null>} base64图片数据
-   */  async function captureSlideImage(slideId) {
-    try {
-      log.dbg("[captureSlideImage] 获取幻灯片图片:", slideId);
-      const slide = repo.slides.get(slideId);
-      if (!slide) {
-        log.err("[captureSlideImage] 找不到幻灯片:", slideId);
-        return null;
-      }
-      // 使用 cover 或 coverAlt 图片URL
-            const imageUrl = slide.coverAlt || slide.cover || slide.image || slide.thumbnail;
-      if (!imageUrl) {
-        log.err("[captureSlideImage] 幻灯片没有图片URL");
-        return null;
-      }
-      log.dbg("[captureSlideImage] 图片URL:", imageUrl);
-      // 下载图片并转换为base64
-            const base64 = await downloadImageAsBase64(imageUrl);
-      if (!base64) {
-        log.err("[captureSlideImage] 下载图片失败");
-        return null;
-      }
-      log.dbg("[captureSlideImage] ✅ 成功获取图片, 大小:", Math.round(base64.length / 1024), "KB");
-      return base64;
-    } catch (e) {
-      log.err("[captureSlideImage] 失败:", e);
-      return null;
-    }
-  }
-  /**
-   * 下载图片并转换为base64
-   * @param {string} url - 图片URL
-   * @returns {Promise<string|null>}
-   */  async function downloadImageAsBase64(url) {
-    return new Promise(resolve => {
-      try {
-        const img = new Image;
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-          try {
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0);
-            const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
-            if (base64.length > 1e6) {
-              log.dbg("[雨课堂助手][INFO][downloadImageAsBase64] 图片过大，进行压缩...");
-              const compressed = canvas.toDataURL("image/jpeg", .5).split(",")[1];
-              log.dbg("[雨课堂助手][INFO][downloadImageAsBase64] 压缩后大小:", Math.round(compressed.length / 1024), "KB");
-              resolve(compressed);
-            } else resolve(base64);
-          } catch (e) {
-            log.err("[雨课堂助手][ERR][downloadImageAsBase64] Canvas处理失败:", e);
-            resolve(null);
-          }
-        };
-        img.onerror = e => {
-          log.err("[雨课堂助手][ERR][downloadImageAsBase64] 图片加载失败:", e);
-          resolve(null);
-        };
-        img.src = url;
-      } catch (e) {
-        log.err("[雨课堂助手][ERR][downloadImageAsBase64] 失败:", e);
-        resolve(null);
-      }
-    });
-  }
-  // 原有的 captureProblemForVision
-    async function captureProblemForVision() {
-    try {
-      log.dbg("[captureProblemForVision] 开始截图...");
-      const canvas = await captureProblemScreenshot();
-      if (!canvas) {
-        log.err("[captureProblemForVision] 截图失败");
-        return null;
-      }
-      log.dbg("[captureProblemForVision] 截图成功，转换为base64...");
-      const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
-      log.dbg("[captureProblemForVision] base64 长度:", base64.length);
-      if (base64.length > 1e6) {
-        log.dbg("[captureProblemForVision] 图片过大，进行压缩...");
-        const smallerBase64 = canvas.toDataURL("image/jpeg", .5).split(",")[1];
-        log.dbg("[captureProblemForVision] 压缩后长度:", smallerBase64.length);
-        return smallerBase64;
-      }
-      return base64;
-    } catch (e) {
-      log.err("[captureProblemForVision] failed", e);
-      return null;
-    }
-  }
-  function cleanProblemBody(body, problemType, TYPE_MAP) {
-    if (!body) return "";
-    const typeLabel = TYPE_MAP[problemType];
-    if (!typeLabel) return body;
-    // 去除题目开头的类型标识，如 "填空题：" "单选题：" 等
-        const pattern = new RegExp(`^${typeLabel}[：:\\s]+`, "i");
-    return body.replace(pattern, "").trim();
-  }
-  // 改进的融合模式 prompt 格式化函数
-    function formatProblemForVision(problem, TYPE_MAP, hasTextInfo = false) {
-    const problemType = TYPE_MAP[problem.problemType] || "题目";
-    let basePrompt = hasTextInfo ? `结合文本信息和图片内容分析${problemType}，按格式回答：` : `观察图片内容，识别${problemType}并按格式回答：`;
-    if (hasTextInfo && problem.body) {
-      // ✅ 清理题目内容
-      const cleanBody = cleanProblemBody(problem.body, problem.problemType, TYPE_MAP);
-      basePrompt += `\n\n【文本信息】\n题目：${cleanBody}`;
-      if (problem.options?.length) {
-        basePrompt += "\n选项：";
-        for (const o of problem.options) basePrompt += `\n${o.key}. ${o.value}`;
-      }
-      basePrompt += "\n\n若图片内容与文本冲突，以图片为准。";
-    }
-    // 根据题目类型添加具体格式要求
-        switch (problem.problemType) {
-     case 1:
-      // 单选题
-      basePrompt += `\n\n格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A`;
-      break;
-
-     case 2:
-      // 多选题
-      basePrompt += `\n\n格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C`;
-      break;
-
-     case 3:
-      // 投票题
-      basePrompt += `\n\n格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项`;
-      break;
-
-     case 4:
-      // 填空题
-      basePrompt += `\n\n这是一道填空题。\n\n重要说明：\n- 题目内容已经处理，不含"填空题"等字样\n- 观察图片和文本，找出需要填入的内容\n- 答案中不要出现任何题目类型标识\n\n格式要求：\n答案: [直接给出填空内容]\n解释: [简要说明]\n\n示例：\n答案: 氧气,葡萄糖\n解释: 光合作用的产物\n\n多个填空用逗号分开`;
-      break;
-
-     case 5:
-      // 主观题
-      basePrompt += `\n\n格式要求：\n答案: [完整回答]\n解释: [补充说明]\n\n注意：直接回答，不要重复题目`;
-      break;
-
-     default:
-      basePrompt += `\n\n格式要求：\n答案: [你的答案]\n解释: [详细解释]`;
-    }
-    return basePrompt;
-  }
-  // 改进的答案解析函数
-    function parseAIAnswer(problem, aiAnswer) {
-    try {
-      const lines = String(aiAnswer || "").split("\n");
-      let answerLine = "";
-      let answerIdx = -1;
-      // 先定位“答案:”所在行
-            for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.includes("答案:") || line.includes("答案：")) {
-          answerLine = line.replace(/答案[:：]\s*/, "").trim();
-          answerIdx = i;
-          break;
-        }
-      }
-      // === 对填空题和主观题，允许多行答案 ===
-            if ((problem.problemType === 4 || problem.problemType === 5) && answerIdx >= 0) {
-        const block = [];
-        // 当前行如果有内容，先收进去
-                if (answerLine) block.push(answerLine);
-        // 继续向下收集，直到遇到“解释:”或文本结束
-                for (let i = answerIdx + 1; i < lines.length; i++) {
-          const l = lines[i];
-          if (/^\s*解释[:：]/.test(l)) break;
-          block.push((l || "").trimEnd());
-        }
-        const merged = block.join("\n").trim();
-        if (merged) answerLine = merged;
-      }
-      // 如果仍然没有任何答案内容，退回到第一行兜底
-            if (!answerLine) answerLine = (lines[0] || "").trim();
-      log.dbg("[雨课堂助手][INFO][parseAIAnswer] 题目类型:", problem.problemType, "原始答案行:", answerLine);
-      switch (problem.problemType) {
-       case 1:
- // 单选题
-               case 3:
-        {
-          // 投票题
-          let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
-          if (m) {
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:", [ m[0] ]);
-            return [ m[0] ];
-          }
-          const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
-          if (chineseMatch) {
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票中文解析结果:", [ chineseMatch[1] ]);
-            return [ chineseMatch[1] ];
-          }
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析失败");
-          return null;
-        }
-
-       case 2:
-        {
-          // 多选题
-          if (answerLine.includes("、")) {
-            const options = answerLine.split("、").map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
-            if (options.length > 0) {
-              const result = [ ...new Set(options) ].sort();
-              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选顿号解析结果:", result);
-              return result;
-            }
-          }
-          if (answerLine.includes(",") || answerLine.includes("，")) {
-            const options = answerLine.split(/[,，]/).map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
-            if (options.length > 0) {
-              const result = [ ...new Set(options) ].sort();
-              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选逗号解析结果:", result);
-              return result;
-            }
-          }
-          const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
-          if (letters && letters.length > 1) {
-            const result = [ ...new Set(letters) ].sort();
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选连续解析结果:", result);
-            return result;
-          }
-          if (letters && letters.length === 1) {
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选单个解析结果:", letters);
-            return letters;
-          }
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选解析失败");
-          return null;
-        }
-
-       case 4:
-        {
-          // 填空题
-          // 更激进的清理策略
-          let cleanAnswer = answerLine.replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, "").trim();
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 清理后答案:", cleanAnswer);
-          // 如果清理后还包含这些词，继续清理
-                    if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
-            cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, "").trim();
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 二次清理后:", cleanAnswer);
-          }
-          const answerLength = cleanAnswer.length;
-          if (answerLength <= 50) {
-            cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, "").replace(/[^\w\u4e00-\u9fa5]+$/, "");
-            const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
-            if (blanks.length > 0) {
-              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:", blanks);
-              return blanks;
-            }
-          }
-          if (cleanAnswer) {
-            const result = {
-              content: cleanAnswer,
-              pics: []
-            };
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 简答题解析结果:", result);
-            return result;
-          }
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 填空/简答解析失败");
-          return null;
-        }
-
-       case 5:
-        {
-          // 主观题
-          const content = answerLine.replace(/^(主观题|论述题)[:：\s]*/i, "").trim();
-          if (content) {
-            const result = {
-              content: content,
-              pics: []
-            };
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 主观题解析结果:", result);
-            return result;
-          }
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 主观题解析失败");
-          return null;
-        }
-
-       default:
-        log.dbg("[雨课堂助手][INFO][parseAIAnswer] 未知题目类型:", problem.problemType);
-        return null;
-      }
-    } catch (e) {
-      log.err("[雨课堂助手][ERR][parseAIAnswer] 解析失败", e);
-      return null;
-    }
-  }
+  var tpl$6 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-clear">清空会话</button>\n    <span class="close-btn" id="ykt-ai-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
   const L$2 = (...a) => log.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
   const W$2 = (...a) => log.warn("[雨课堂助手][WARN][vuex-helper]", ...a);
   const E = (...a) => log.err("[雨课堂助手][ERR][vuex-helper]", ...a);
@@ -1007,98 +423,830 @@
       check();
     });
   }
-  const L$1 = (...a) => log.dbg("[ai]", ...a);
+  // src/core/devmode-blob.js
+  // AUTO-GENERATED by scripts/gen-devmode.js — DO NOT EDIT MANUALLY
+  // 重新生成：修改 scripts/gen-devmode.js 中的 DEV_PASSWORD / DEV_CONFIG 后运行 node scripts/gen-devmode.js
+    const DEV_BLOB = {
+    saltB64: "WbhvTSzq7jX1bYQyNs5KSQ==",
+    ivB64: "KoYwUmOXYammoVAi",
+    ctB64: "za37BMXQXCHLL3W45LSuNy+pMLXWjaqR0svInBDIJc4KzpISbs1RrhM2ZP88Q0PlpbonUaU9o7XWcJTkfOrN5KhAsu8OfvAYbY9pUfxOKflhQWgx3SJJfQnOKOEYKFoTksfwlHzKZdNPlqumjREKDlWQpXuFbZI/63O66KY/Ww9NVK+4JGgR6a/sw0gSqY/QIDUv1EGngwZOkxrGxg13o1fDMml+v6+hKBoCFAAOj7QSCt2+MzF+YP/qzmE/Q1LoznQplmOkPnTGItbIrGvJMd5/m/6XAxyx0Vz4cs379g==",
+    pwHash: "29bd1a86cd27bbe3ded241e6c810a7ac17f18a5f90f9de976e7918494e4aba7c",
+    iterations: 31e4
+  };
+  // src/core/devmode.js
+  // 开发者模式：解锁内置的加密 LLM 配置
+  // 加密：AES-256-GCM，密钥由密码 PBKDF2 派生（与 scripts/gen-devmode.js 配套）
+  // 校验：pwHash = SHA-256(PBKDF2 派生密钥原始字节) —— 校验也挂在慢哈希后，
+  //       攻击者离线爆破每个候选密码都要跑完全部迭代
+  // 解锁后配置缓存到 localStorage（同浏览器免重复输入）；换浏览器重新输密码即可
+    const enc = new TextEncoder;
+  const b64ToU8 = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  async function sha256HexBytes(bytes) {
+    const h = await crypto.subtle.digest("SHA-256", bytes);
+    return [ ...new Uint8Array(h) ].map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  async function deriveBitsAndKey(password, saltBytes, iterations) {
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, [ "deriveBits" ]);
+    const rawBits = new Uint8Array(await crypto.subtle.deriveBits({
+      name: "PBKDF2",
+      salt: saltBytes,
+      iterations: iterations,
+      hash: "SHA-256"
+    }, keyMaterial, 256));
+    const key = await crypto.subtle.importKey("raw", rawBits, {
+      name: "AES-GCM"
+    }, false, [ "decrypt" ]);
+    return {
+      rawBits: rawBits,
+      key: key
+    };
+  }
+  /**
+   * 用密码解锁内置配置。成功返回配置对象并缓存；失败抛错（不暴露原因细节）。
+   * @param {string} password
+   * @returns {Promise<Object>} 配置 { name, baseUrl, apiKey, model, visionModel, reasoningEffort }
+   */  async function unlockDevMode(password) {
+    const pw = String(password || "");
+    if (!pw) throw new Error("请输入解锁码");
+    const {rawBits: rawBits, key: key} = await deriveBitsAndKey(pw, b64ToU8(DEV_BLOB.saltB64), DEV_BLOB.iterations);
+    const hash = await sha256HexBytes(rawBits);
+    if (hash !== DEV_BLOB.pwHash) throw new Error("解锁码错误");
+    let plain;
+    try {
+      plain = await crypto.subtle.decrypt({
+        name: "AES-GCM",
+        iv: b64ToU8(DEV_BLOB.ivB64)
+      }, key, b64ToU8(DEV_BLOB.ctB64));
+    } catch {
+      throw new Error("解密失败（blob 与解锁码不匹配，请重新生成）");
+    }
+    const cfg = JSON.parse((new TextDecoder).decode(plain));
+    setDevUnlocked(cfg);
+    return cfg;
+  }
+  /** 获取解锁的配置（未解锁返回 null） */  function getDevConfig() {
+    return storage.get("devmode.config");
+  }
+  function setDevUnlocked(cfg) {
+    storage.set("devmode.config", cfg);
+  }
+  // src/ai/agnes.js
+  // Agnes（OpenAI 兼容）LLM 封装：对话 / 图片 / 思考 / 流式 / 工具调用
+  // 默认配置来自开发者模式解锁的内置配置（core/devmode.js），也可传参覆盖
+  /** 本模块日志前缀 */  const dlog = (...args) => log.dbg("[Agnes]", ...args);
+  /** 与 openai.js 的 makeChatUrl 相同的自适应拼接逻辑 */  function makeChatUrl$1(baseUrl) {
+    let base = String(baseUrl || "").replace(/\/+$/, "");
+    if (!base) base = "https://api.agnes-ai.cn/v1";
+    if (base.includes("/chat/completions")) return base;
+    if (base.includes("/v1")) return base + "/chat/completions";
+    if (base.includes("/openai")) return base + "/v1/chat/completions";
+    return base + "/v1/chat/completions";
+  }
+  /** 解析 SSE data 行的缓冲器 */  function sseParser(onEvent) {
+    let buf = "";
+    return chunk => {
+      buf += chunk;
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx).replace(/\r$/, "");
+        buf = buf.slice(idx + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") {
+          if (data === "[DONE]") onEvent(null);
+          continue;
+        }
+        try {
+          onEvent(JSON.parse(data));
+        } catch (e) {
+          dlog("sse parse fail", e);
+        }
+      }
+    };
+  }
+  /**
+   * 调用 Agnes chat completions
+   * @param {Object} opts
+   * @param {Array}  opts.messages        OpenAI 格式消息（content 可含 image_url）
+   * @param {boolean} [opts.stream]       流式（默认 false）
+   * @param {(delta:string)=>void} [opts.onDelta]        流式正文增量
+   * @param {(delta:string)=>void} [opts.onReasoning]    流式思考增量
+   * @param {boolean} [opts.thinking]     是否开启思考（默认 true，reasoning_effort 取配置）
+   * @param {Array}  [opts.tools]         工具定义
+   * @param {Object} [opts.override]      { baseUrl, apiKey, model, reasoningEffort } 覆盖内置配置
+   * @param {number} [opts.timeoutMs]
+   * @returns {Promise<{content:string, reasoning:string, toolCalls?:Array, usage?:Object}>}
+   */  async function agnesChat(opts) {
+    const dev = getDevConfig() || {};
+    const ov = opts.override || {};
+    const baseUrl = ov.baseUrl || dev.baseUrl;
+    const apiKey = ov.apiKey || dev.apiKey;
+    const model = ov.model || dev.model;
+    if (!baseUrl || !apiKey) throw new Error("开发者模式未解锁：请到设置中解锁内置配置");
+    const thinking = opts.thinking !== false;
+    const effort = ov.reasoningEffort || dev.reasoningEffort || "medium";
+    const body = {
+      model: model,
+      messages: opts.messages
+    };
+    if (thinking && effort && effort !== "off") body.reasoning_effort = effort;
+    if (opts.tools && opts.tools.length) {
+      body.tools = opts.tools;
+      body.tool_choice = "auto";
+    }
+    const stream = !!opts.stream;
+    if (stream) body.stream = true;
+    const url = makeChatUrl$1(baseUrl);
+    const timeoutMs = opts.timeoutMs || 12e4;
+    dlog("request", {
+      url: url,
+      model: model,
+      stream: stream,
+      thinking: thinking
+    });
+    if (stream) 
+    // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
+    try {
+      return await fetchStream(url, apiKey, body, opts, timeoutMs);
+    } catch (e) {
+      dlog("fetch stream failed, fallback to GM_xhr:", e?.message || e);
+      if (e?.name === "AbortError") throw e;
+      return await gmXhrStream(url, apiKey, body, opts, timeoutMs);
+    }
+    // 非流式同样 fetch 优先，GM_xhr 兜底
+        try {
+      return await fetchStream(url, apiKey, body, opts, timeoutMs);
+    } catch (e) {
+      dlog("fetch failed, fallback to GM_xhr:", e?.message || e);
+      return gmXhrOnce(url, apiKey, body, timeoutMs);
+    }
+  }
+  function pickDelta(obj, opts, acc) {
+    const d = obj?.choices?.[0]?.delta || {};
+    if (d.reasoning_content) {
+      acc.reasoning += d.reasoning_content;
+      opts.onReasoning?.(d.reasoning_content);
+    }
+    if (d.content) {
+      acc.content += d.content;
+      opts.onDelta?.(d.content);
+    }
+    const tc = d.tool_calls;
+    if (tc) for (const t of tc) {
+      const i = t.index ?? 0;
+      acc.toolCalls[i] = acc.toolCalls[i] || {
+        id: t.id || "",
+        type: "function",
+        function: {
+          name: "",
+          arguments: ""
+        }
+      };
+      if (t.id) acc.toolCalls[i].id = t.id;
+      if (t.function?.name) acc.toolCalls[i].function.name += t.function.name;
+      if (t.function?.arguments) acc.toolCalls[i].function.arguments += t.function.arguments;
+    }
+  }
+  async function fetchStream(url, apiKey, body, opts, timeoutMs) {
+    const ctrl = new AbortController;
+    const timer = setTimeout(() => ctrl.abort(new Error("timeout")), timeoutMs);
+    const onAbort = () => ctrl.abort(new Error("aborted"));
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        clearTimeout(timer);
+        throw Object.assign(new Error("aborted"), {
+          name: "AbortError"
+        });
+      }
+      opts.signal.addEventListener("abort", onAbort, {
+        once: true
+      });
+    }
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      if (!body.stream) {
+        const data = await res.json();
+        const m = data?.choices?.[0]?.message || {};
+        return {
+          content: m.content || "",
+          reasoning: m.reasoning_content || "",
+          toolCalls: m.tool_calls,
+          usage: data.usage
+        };
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder;
+      const acc = {
+        content: "",
+        reasoning: "",
+        toolCalls: []
+      };
+      let buf = "";
+      for (;;) {
+        const {done: done, value: value} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {
+          stream: true
+        });
+        let idx;
+        while ((idx = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, idx).replace(/\r$/, "");
+          buf = buf.slice(idx + 1);
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (!data) continue;
+          if (data === "[DONE]") break;
+          try {
+            pickDelta(JSON.parse(data), opts, acc);
+          } catch (e) {
+            dlog("parse", e);
+          }
+        }
+      }
+      return acc;
+    } finally {
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+    }
+  }
+  function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const acc = {
+        content: "",
+        reasoning: "",
+        toolCalls: []
+      };
+      let seen = 0;
+      gm.xhr({
+        method: "POST",
+        url: url,
+        timeout: timeoutMs,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`
+        },
+        data: JSON.stringify(body),
+        onprogress: res => {
+          const text = res.responseText || "";
+          const chunk = text.slice(seen);
+          seen = text.length;
+          const feed = sseParser(obj => {
+            if (obj) pickDelta(obj, opts, acc);
+          });
+          feed(chunk);
+        },
+        onload: res => {
+          if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || "").slice(0, 200)}`));
+          // 兜底：progress 可能漏最后一段
+                    const text = res.responseText || "";
+          sseParser(obj => {
+            if (obj) pickDelta(obj, opts, acc);
+          })(text.slice(seen) + "\n");
+          resolve(acc);
+        },
+        onerror: () => reject(new Error("网络错误（GM_xhr）")),
+        ontimeout: () => reject(new Error("请求超时（GM_xhr）"))
+      });
+    });
+  }
+  function gmXhrOnce(url, apiKey, body, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      gm.xhr({
+        method: "POST",
+        url: url,
+        timeout: timeoutMs,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`
+        },
+        data: JSON.stringify(body),
+        onload: res => {
+          if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || "").slice(0, 200)}`));
+          try {
+            const data = JSON.parse(res.responseText);
+            const m = data?.choices?.[0]?.message || {};
+            resolve({
+              content: m.content || "",
+              reasoning: m.reasoning_content || "",
+              toolCalls: m.tool_calls,
+              usage: data.usage
+            });
+          } catch (e) {
+            reject(new Error("响应解析失败: " + e.message));
+          }
+        },
+        onerror: () => reject(new Error("网络错误")),
+        ontimeout: () => reject(new Error("请求超时"))
+      });
+    });
+  }
+  // src/ui/slide-image.js
+  // 「当前 PPT 页图片」解析的共享模块：chat 与 AI 解答面板都用它。
+  // 三级来源：repo slide 数据 → 页面 DOM → 明确失败（绝不悄悄截整页当 PPT）。
+  /** 在 repo 中定位当前 slide（课堂内主路径） */  function findCurrentSlide() {
+    try {
+      const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
+      if (sid && repo.slides.has(sid)) return repo.slides.get(sid);
+      for (const [, pres] of repo.presentations) {
+        const hit = (pres?.slides || []).find(s => String(s.id) === sid);
+        if (hit) return hit;
+      }
+      // 退化：取 presentation 的第一页
+            for (const [, pres] of repo.presentations) if (pres?.slides?.length) return pres.slides[0];
+    } catch (e) {
+      log.warn("[SlideImage] findCurrentSlide", e);
+    }
+    return null;
+  }
+  function slideImageUrl(slide) {
+    return slide?.coverAlt || slide?.cover || slide?.image || slide?.thumbnail || "";
+  }
+  /** 从页面 DOM 里找 slide 图（报告页/静态课件的退化路径） */  function findSlideUrlInDom() {
+    try {
+      const selectors = [ 'img[src*="/slide/"]', // 课堂 fullscreen 页的主 PPT 图
+      ".slide-item.active-slide-item img", ".slide-item img", ".swiper-slide-active img", ".ppt-courseware-inner img", ".ppt-inner img" ];
+      for (const sel of selectors) {
+        const img = document.querySelector(sel);
+        const src = img?.currentSrc || img?.src || "";
+        if (src && /\/slide\/|cover/i.test(src)) return src;
+      }
+    } catch (e) {
+      log.warn("[SlideImage] findSlideUrlInDom", e);
+    }
+    return "";
+  }
+  /**
+   * 解析当前 PPT 页图片。
+   * @returns {Promise<{dataUrl:string|null, source:'repo'|'dom'|'failed', reason?:string}>}
+   *   source: 'repo' = 命中课件数据（最可信）；'dom' = 页面 DOM；'failed' = 拿不到
+   * 注意：不做整页 html2canvas 兜底——那会把整页截图当 PPT 发给 AI 且用户毫不知情。
+   */  async function resolveCurrentSlideImage() {
+    // 1) repo 中的 slide（课堂内正常路径）
+    const slide = findCurrentSlide();
+    const url = slideImageUrl(slide);
+    if (url) try {
+      const dataUrl = await fetchAsDataURL(url);
+      if (dataUrl) return {
+        dataUrl: dataUrl,
+        source: "repo"
+      };
+    } catch (e) {
+      try {
+        (window.unsafeWindow || window).__yksImgErr = `repo(${String(url).slice(0, 70)}): ${String(e?.message || e).slice(0, 100)}`;
+      } catch {}
+      log.warn("[SlideImage] repo slide 图下载失败，尝试 DOM 兜底:", e?.message);
+    }
+    // 2) DOM 兜底：报告页/静态课件等 repo 数据失效但页面有新鲜 slide 图的场景
+        const domUrl = findSlideUrlInDom();
+    if (domUrl) try {
+      const dataUrl = await fetchAsDataURL(domUrl);
+      if (dataUrl) return {
+        dataUrl: dataUrl,
+        source: "dom"
+      };
+    } catch (e) {
+      try {
+        (window.unsafeWindow || window).__yksImgErr = `dom(${String(domUrl).slice(0, 70)}): ${String(e?.message || e).slice(0, 100)}`;
+      } catch {}
+      log.warn("[SlideImage] DOM slide 图下载失败:", e?.message);
+    }
+    return {
+      dataUrl: null,
+      source: "failed",
+      reason: slide || url ? "PPT 图片下载失败（可能是网络或权限问题）" : "当前页面没有可用的 PPT 页"
+    };
+  }
+  // src/ui/panels/ai.js
+  // AI 解答面板：题目专注版多轮对话。
+  // 与 PPT对话(chat) 的区别：自动识别当前页 + 注入课堂系统的题干文本（比截图 OCR 可靠），
+  // 首轮「解答此页」一键触发，后续追问共享上下文。
+  // 调用链：agnesChat（OpenAI 兼容流式，支持 reasoning_content 思考链与取消），
+  //         override 来自当前激活的 AI Profile——任意 OpenAI 兼容端点都能用。
+    const L$1 = (...a) => log.dbg("[ai]", ...a);
   const W$1 = (...a) => log.warn("[ai]", ...a);
   let mounted$6 = false;
   let root$5;
   let preferredSlideFromPresentation = null;
- // 启用来自presentation的页面
-    function renderSelectedPPTPreview() {
-    const box = document.getElementById("ykt-ai-selected");
-    const singleImg = document.getElementById("ykt-ai-selected-thumb");
-    const thumbs = document.getElementById("ykt-ai-selected-thumbs");
-    if (!box || !singleImg || !thumbs) return;
-    // 清空多图容器
-        thumbs.innerHTML = "";
-    // 单页回退
-        const url = preferredSlideFromPresentation?.imageUrl || "";
-    if (url) {
-      singleImg.src = url;
-      singleImg.style.display = "";
-      box.style.display = "";
+ // 来自课件面板/事件的指定页
+    let history$2 = [];
+ // OpenAI 格式消息
+    let streaming$1 = false;
+ // 防并发发送
+    let abortCtrl$1 = null;
+  const SYSTEM_PROMPT$1 = [ "你是「YuketangStudio」雨课堂学习助手，专注解答课堂题目与讲解课件内容。", "规则：", "1) 用户消息可能附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；", "2) 若是选择题，先给答案再给理由，格式：答案: [字母]\\n解释: [理由]；填空/主观题给完整答案与解题思路；", "3) 若消息明确说明页面不是题目，直接回答用户的问题；", "4) 回答使用简体中文，简洁准确，数学公式用 $...$；", "5) 图片或文本无法识别时直接说明，不要编造。" ].join("\n");
+  const DEFAULT_ANALYZE_PROMPT = "请解答此页的题目：先给答案，再给简要解题过程。若页面不是题目页，请概述页面内容。";
+  function $sel$1(sel) {
+    return root$5.querySelector(sel);
+  }
+  function mountAIPanel() {
+    if (mounted$6) return root$5;
+    const host = document.createElement("div");
+    host.innerHTML = tpl$6;
+    document.body.appendChild(host.firstElementChild);
+    root$5 = document.getElementById("ykt-ai-answer-panel");
+    $sel$1("#ykt-ai-close").addEventListener("click", () => showAIPanel(false));
+    $sel$1("#ykt-ai-clear").addEventListener("click", () => {
+      abortStreaming$1("清空会话");
+      history$2 = [];
+      renderHistory$1();
+      addBubble$1("ai", mdToHtml("会话已清空。点击「发送」（输入留空）可解答当前页题目。"));
+    });
+    const $input = $sel$1("#ykt-ai-input");
+    const $send = $sel$1("#ykt-ai-send");
+    $send.addEventListener("click", () => sendCurrent$1());
+    $input.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendCurrent$1();
+      }
+    });
+    waitForVueReady().then(() => {
+      watchMainPageChange((slideId, slideInfo) => {
+        L$1("主界面页面切换事件", {
+          slideId: slideId,
+          slideInfoType: slideInfo?.type,
+          problemID: slideInfo?.problemID,
+          index: slideInfo?.index
+        });
+        preferredSlideFromPresentation = null;
+        renderCtxStatus();
+      });
+    }).catch(e => {
+      W$1("Vue 实例初始化失败，将使用备用方案:", e);
+    });
+    window.addEventListener("ykt:presentation:slide-selected", ev => {
+      L$1("收到小窗选页事件", ev?.detail);
+      const sid = asIdStr(ev?.detail?.slideId);
+      if (sid) preferredSlideFromPresentation = {
+        slideId: sid,
+        imageUrl: ev?.detail?.imageUrl || null
+      };
+      renderCtxStatus();
+    });
+    window.addEventListener("ykt:open-ai", () => {
+      showAIPanel(true);
+    });
+    mounted$6 = true;
+    renderCtxStatus();
+    return root$5;
+  }
+  function showAIPanel(v = true) {
+    if (!mounted$6) mountAIPanel();
+    if (!v) abortStreaming$1("面板已关闭");
+    root$5.classList.toggle("visible", !!v);
+    if (v) {
+      renderCtxStatus();
+      if (history$2.length === 0) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
+      if (ui.config.aiAutoAnalyze && history$2.length === 0 && !streaming$1) queueMicrotask(() => sendCurrent$1({
+        auto: true
+      }));
+      setTimeout(() => $sel$1("#ykt-ai-input")?.focus(), 60);
+    }
+    const aiBtn = document.getElementById("ykt-btn-ai");
+    if (aiBtn) aiBtn.classList.toggle("active", !!v);
+    L$1("showAIPanel", {
+      visible: v
+    });
+  }
+  /** 中止正在进行的流式请求 */  function abortStreaming$1(reason = "已取消") {
+    if (abortCtrl$1) try {
+      abortCtrl$1.abort(reason);
+    } catch {}
+  }
+  // ---------------- 当前页与题目上下文 ----------------
+    function asIdStr(v) {
+    return v == null ? null : String(v);
+  }
+  /** 当前应分析的 slide（优先：课件面板指定页 > 主界面当前页 > 最近题目关联页） */  function pickCurrentSlide() {
+    if (preferredSlideFromPresentation?.slideId) {
+      const sid = asIdStr(preferredSlideFromPresentation.slideId);
+      const hit = repo.slides.get(sid) || findSlideAcrossPresentations$1(sid);
+      if (hit) return {
+        slide: hit,
+        source: `课件面板指定（第 ${hit.index ?? hit.page ?? "?"} 页）`
+      };
+    }
+    const prio = !(ui?.config?.aiSlidePickPriority === "presentation");
+    const mainSid = asIdStr(getCurrentMainPageSlideId());
+    if (prio && mainSid) {
+      const hit = repo.slides.get(mainSid) || findSlideAcrossPresentations$1(mainSid);
+      if (hit) return {
+        slide: hit,
+        source: `主界面当前页（第 ${hit.index ?? hit.page ?? "?"} 页）`
+      };
+    }
+    if (repo.currentSlideId != null) {
+      const sid = asIdStr(repo.currentSlideId);
+      const hit = repo.slides.get(sid) || findSlideAcrossPresentations$1(sid);
+      if (hit) return {
+        slide: hit,
+        source: `课件浏览选中（第 ${hit.index ?? hit.page ?? "?"} 页）`
+      };
+    }
+    try {
+      if (repo.encounteredProblems?.length > 0) {
+        const latest = repo.encounteredProblems.at(-1);
+        const sid = repo.problemStatus.get(latest.problemId)?.slideId ? String(repo.problemStatus.get(latest.problemId).slideId) : null;
+        const hit = sid ? repo.slides.get(sid) || findSlideAcrossPresentations$1(sid) : null;
+        if (hit) return {
+          slide: hit,
+          source: `最近题目关联页（第 ${hit.index ?? hit.page ?? "?"} 页）`
+        };
+      }
+    } catch (e) {
+      W$1("pickCurrentSlide fallback:", e);
+    }
+    return {
+      slide: null,
+      source: ""
+    };
+  }
+  function findSlideAcrossPresentations$1(idStr) {
+    for (const [, pres] of repo.presentations) {
+      const hit = (pres?.slides || []).find(s => String(s.id) === idStr);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  /** 组装首轮/追问的用户文本：题干文本注入（来自课堂系统，比截图 OCR 可靠） */  function buildUserText(problem, customPrompt, isAnalyze) {
+    const parts = [];
+    if (problem) {
+      parts.push("【题目信息（来自课堂系统，比截图更可靠）】");
+      const typeStr = PROBLEM_TYPE_MAP[problem.problemType] || (problem.problemType != null ? `类型 ${problem.problemType}` : "");
+      if (typeStr) parts.push(`题型：${typeStr}`);
+      if (problem.body) parts.push(`题干：${problem.body}`);
+      if (Array.isArray(problem.options) && problem.options.length) {
+        parts.push("选项：");
+        for (const o of problem.options) parts.push(`${o.key}. ${o.value}`);
+      }
+      if (Array.isArray(problem.blanks) && problem.blanks.length) parts.push(`空位：${problem.blanks.join(" | ")}`);
+    }
+    if (isAnalyze) parts.push(problem ? "请结合以上题目文本与页面截图解答此题。" : "【页面说明】当前页面可能不是题目页；请根据截图内容概述页面，若有题目请解答。");
+    if (customPrompt) parts.push(`【用户自定义要求】\n${customPrompt}`);
+    return parts.join("\n");
+  }
+  /** 页面识别状态行（面板底部小字） */  function renderCtxStatus() {
+    if (!mounted$6) return;
+    const statusEl = $sel$1("#ykt-ai-text-status");
+    if (!statusEl) return;
+    const {slide: slide, source: source} = pickCurrentSlide();
+    if (slide) {
+      const hasProblem = !!slide.problem;
+      statusEl.textContent = `✓ ${source}${hasProblem ? " · 含题目" : ""}`;
+      statusEl.style.color = "";
     } else {
-      singleImg.style.display = "none";
-      box.style.display = "none";
+      statusEl.textContent = "⚠ 未检测到课件页（可先在课堂里翻页）";
+      statusEl.style.color = "#b42318";
+    }
+    renderCtxThumb();
+  }
+  async function renderCtxThumb() {
+    const span = $sel$1("#ykt-ai-ctx-thumb");
+    if (!span) return;
+    span.textContent = "⏳";
+    const {dataUrl: dataUrl} = await resolveCurrentSlideImage();
+    if (dataUrl) {
+      span.innerHTML = "";
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      img.title = "当前 PPT 页";
+      span.appendChild(img);
+    } else span.textContent = "（无图）";
+  }
+  // ---------------- 渲染 ----------------
+    function addBubble$1(kind, htmlOrNode) {
+    const $log = $sel$1("#ykt-ai-log");
+    const div = document.createElement("div");
+    div.className = `ykt-ai-msg ${kind}`;
+    if (typeof htmlOrNode === "string") div.innerHTML = htmlOrNode; else div.appendChild(htmlOrNode);
+    $log.appendChild(div);
+    $log.scrollTop = $log.scrollHeight;
+    return div;
+  }
+  function renderHistory$1() {
+    const $log = $sel$1("#ykt-ai-log");
+    $log.innerHTML = "";
+    for (const m of history$2) {
+      const text = (Array.isArray(m.content) ? m.content : [ {
+        type: "text",
+        text: m.content
+      } ]).filter(c => c.type === "text").map(c => c.text).join("\n");
+      const imgs = (Array.isArray(m.content) ? m.content : []).filter(c => c.type === "image_url").map(c => c.image_url.url);
+      const div = document.createElement("div");
+      div.className = `ykt-ai-msg ${m.role === "user" ? "user" : "ai"}`;
+      if (m.role === "user") {
+        div.textContent = text || "（图片）";
+        for (const src of imgs) {
+          const img = document.createElement("img");
+          img.src = src;
+          div.appendChild(img);
+        }
+      } else div.innerHTML = mdToHtml(text);
+      $log.appendChild(div);
+    }
+    $log.scrollTop = $log.scrollHeight;
+  }
+  /** 把历史中除最近 N 张外的图片替换为占位符，控制 token */  function trimOldImages$1(keep = 1) {
+    const imgMsgs = [];
+    for (const m of history$2) {
+      if (m.role !== "user" || !Array.isArray(m.content)) continue;
+      const imgIdx = m.content.map((c, i) => c.type === "image_url" ? i : -1).filter(i => i >= 0);
+      if (imgIdx.length) imgMsgs.push({
+        m: m,
+        imgIdx: imgIdx
+      });
+    }
+    for (const {m: m, imgIdx: imgIdx} of imgMsgs.slice(0, Math.max(0, imgMsgs.length - keep))) for (const i of imgIdx) m.content[i] = {
+      type: "text",
+      text: "[此前的 PPT 页图片已省略]"
+    };
+  }
+  function escapeHtml$1(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+  // ---------------- 发送 ----------------
+  /** 当前激活 Profile → agnesChat override（保留任意 OpenAI 兼容端点能力） */  function getOverride() {
+    const aiCfg = ui.config.ai;
+    const profiles = Array.isArray(aiCfg?.profiles) ? aiCfg.profiles : [];
+    const p = profiles.find(x => x.id === aiCfg.activeProfileId) || profiles[0];
+    if (!p || !p.apiKey) return null;
+    // 带图消息必须走 vision 能力模型；现代多模态模型通常 text/vision 同 ID
+        return {
+      baseUrl: p.baseUrl,
+      apiKey: p.apiKey,
+      model: p.visionModel || p.model,
+      reasoningEffort: p.reasoningEffort
+    };
+  }
+  async function sendCurrent$1({auto: auto = false} = {}) {
+    if (streaming$1) return;
+    const $input = $sel$1("#ykt-ai-input");
+    const text = ($input?.value || "").trim();
+    const isAnalyze = !text;
+ // 空输入 = 解答此页
+        const customPrompt = ($sel$1("#ykt-ai-custom-prompt")?.value || "").trim();
+    const attach = $sel$1("#ykt-ai-attach")?.checked ?? true;
+    streaming$1 = true;
+    $sel$1("#ykt-ai-send").disabled = true;
+    try {
+      const content = [ {
+        type: "text",
+        text: text || DEFAULT_ANALYZE_PROMPT
+      } ];
+      let attachFailed = "";
+      if (attach || isAnalyze) {
+        const pending = addBubble$1("user", `⏳ 正在获取当前 PPT…${text ? "" : "（解答此页）"}`);
+        const {dataUrl: dataUrl, reason: reason} = await resolveCurrentSlideImage();
+        pending.remove();
+        if (dataUrl) content.push({
+          type: "image_url",
+          image_url: {
+            url: dataUrl
+          }
+        }); else if (isAnalyze) attachFailed = reason || "未取到当前 PPT 页";
+      }
+      const userText = buildUserText(pickCurrentSlide().slide, customPrompt, isAnalyze);
+      // 题干文本注入：首轮整段作为文本；追问时只追加用户输入（题干已在历史里）
+            if (isAnalyze) content[0].text = userText || DEFAULT_ANALYZE_PROMPT; else if (text) content[0].text = text + (customPrompt ? `\n【用户自定义要求】\n${customPrompt}` : "");
+      history$2.push({
+        role: "user",
+        content: content
+      });
+      trimOldImages$1(1);
+      const userBubble = addBubble$1("user", escapeHtml$1(text || DEFAULT_ANALYZE_PROMPT));
+      for (const c of content) if (c.type === "image_url") {
+        const img = document.createElement("img");
+        img.src = c.image_url.url;
+        img.alt = "当前 PPT 页";
+        userBubble.appendChild(img);
+      }
+      if (attachFailed) {
+        const warn = document.createElement("div");
+        warn.className = "ykt-chat-warn";
+        warn.textContent = `⚠️ ${attachFailed}——本条无截图，仅依据题目文本作答`;
+        userBubble.appendChild(warn);
+      }
+      if ($input) $input.value = "";
+      // AI 气泡（流式，思考中自动展开 → 正文自动折叠）
+            const aiBubble = addBubble$1("ai", "<em>思考中…</em>");
+      const acc = {
+        content: "",
+        reasoning: ""
+      };
+      let raf = 0;
+      let phase = "waiting";
+      const paint = () => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          if (phase !== "answering" && acc.content) phase = "answering"; else if (phase === "waiting" && acc.reasoning) phase = "thinking";
+          const thinking = phase === "thinking";
+          aiBubble.innerHTML = (acc.reasoning ? `<details ${thinking ? "open" : ""}><summary>💭 思考过程${thinking ? "（进行中…）" : "（点击展开）"}</summary><div class="reasoning-body"></div></details>` : "") + (acc.content ? mdToHtml(acc.content) : thinking ? "" : "<em>…</em>");
+          const rBody = aiBubble.querySelector(".reasoning-body");
+          if (rBody) {
+            rBody.textContent = acc.reasoning;
+            rBody.scrollTop = rBody.scrollHeight;
+          }
+          const $log = $sel$1("#ykt-ai-log");
+          $log.scrollTop = $log.scrollHeight;
+        });
+      };
+      abortCtrl$1 = new AbortController;
+      const res = await agnesChat({
+        messages: [ {
+          role: "system",
+          content: SYSTEM_PROMPT$1
+        }, ...history$2 ],
+        stream: true,
+        thinking: true,
+        signal: abortCtrl$1.signal,
+        override: getOverride() || void 0,
+        onDelta: d => {
+          acc.content += d;
+          paint();
+        },
+        onReasoning: d => {
+          acc.reasoning += d;
+          paint();
+        }
+      });
+      acc.content = res.content || acc.content;
+      acc.reasoning = res.reasoning || acc.reasoning;
+      aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml$1(acc.reasoning)}</div></details>` : "") + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
+      history$2.push({
+        role: "assistant",
+        content: acc.content || "（无内容）"
+      });
+    } catch (e) {
+      const aborted = e?.name === "AbortError" || /abort|cancel/i.test(String(e?.message || ""));
+      if (aborted) addBubble$1("ai", '<span class="muted">（已取消）</span>'); else addBubble$1("ai", `<span class="err">出错了：${escapeHtml$1(e?.message || String(e))}</span><br/><small>提示：到设置里检查 AI 配置的 API Key。</small>`);
+    } finally {
+      streaming$1 = false;
+      abortCtrl$1 = null;
+      $sel$1("#ykt-ai-send").disabled = false;
+      $sel$1("#ykt-ai-log").scrollTop = $sel$1("#ykt-ai-log").scrollHeight;
     }
   }
-  function ensureMathJax() {
-    const mj = window.MathJax;
-    const ok = !!(mj && mj.typesetPromise);
-    if (!ok) log.warn("[雨课堂助手][WARN][ai] MathJax 未就绪（未通过 @require 预置？）");
-    return Promise.resolve(ok);
+  // ---------------- 兼容旧导出（其他模块引用） ----------------
+    async function askAIForCurrent() {
+    return sendCurrent$1({
+      auto: true
+    });
   }
-  function typesetTexIn(el) {
-    const mj = window.MathJax;
-    if (!el || !mj || typeof mj.typesetPromise !== "function") return Promise.resolve(false);
-    // 等待 MathJax 自己的启动就绪
-        const ready = mj.startup && mj.startup.promise ? mj.startup.promise : Promise.resolve();
-    return ready.then(() => mj.typesetPromise([ el ]).then(() => true).catch(() => false));
-  }
-  function escapeHtml$1(s = "") {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-  function safeLink(url = "") {
+  // ---------------- Markdown 渲染（chat 面板也引用） ----------------
+    function safeLink(url = "") {
     try {
       const u = new URL(url, location.origin);
       if (u.protocol === "http:" || u.protocol === "https:") return u.href;
     } catch (_) {}
     return null;
- // 非 http/https 直接丢弃，避免 javascript: 等协议
-    }
+  }
   function mdToHtml(mdRaw = "") {
-    // 先整体转义，确保默认无 HTML 注入
     let md = escapeHtml$1(mdRaw).replace(/\r\n?/g, "\n");
-    // 代码块（fenced）
-    // ```lang\ncode\n```
-        md = md.replace(/```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (_, lang, code) => {
+    md = md.replace(/```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (_, lang, code) => {
       const l = lang ? ` data-lang="${lang}"` : "";
       return `<pre class="ykt-md-code"><code${l}>${code}</code></pre>`;
     });
-    // 行内代码 `
-        md = md.replace(/`([^`]+?)`/g, (_, code) => `<code class="ykt-md-inline">${code}</code>`);
-    // 标题 #, ##, ###, ####, #####, ######
-        md = md.replace(/^######\s+(.*)$/gm, "<h6>$1</h6>").replace(/^#####\s+(.*)$/gm, "<h5>$1</h5>").replace(/^####\s+(.*)$/gm, "<h4>$1</h4>").replace(/^###\s+(.*)$/gm, "<h3>$1</h3>").replace(/^##\s+(.*)$/gm, "<h2>$1</h2>").replace(/^#\s+(.*)$/gm, "<h1>$1</h1>");
-    // 引用块 >
-        md = md.replace(/^(?:&gt;\s?.+(\n(?!\n).+)*)/gm, block => {
+    md = md.replace(/`([^`]+?)`/g, (_, code) => `<code class="ykt-md-inline">${code}</code>`);
+    md = md.replace(/^######\s+(.*)$/gm, "<h6>$1</h6>").replace(/^#####\s+(.*)$/gm, "<h5>$1</h5>").replace(/^####\s+(.*)$/gm, "<h4>$1</h4>").replace(/^###\s+(.*)$/gm, "<h3>$1</h3>").replace(/^##\s+(.*)$/gm, "<h2>$1</h2>").replace(/^#\s+(.*)$/gm, "<h1>$1</h1>");
+    md = md.replace(/^(?:&gt;\s?.+(\n(?!\n).+)*)/gm, block => {
       const inner = block.replace(/^&gt;\s?/gm, "");
       return `<blockquote>${inner}</blockquote>`;
     });
-    // 无序列表 
-        md = md.replace(/(^(-|\*|\+)\s+.+(\n(?!\n).+)*)/gm, block => {
+    md = md.replace(/(^(-|\*|\+)\s+.+(\n(?!\n).+)*)/gm, block => {
       const items = block.split("\n").map(l => l.trim()).filter(l => /^(-|\*|\+)\s+/.test(l)).map(l => `<li>${l.replace(/^(-|\*|\+)\s+/, "")}</li>`).join("");
       return `<ul>${items}</ul>`;
     });
-    // 有序列表
-        md = md.replace(/(^\d+\.\s+.+(\n(?!\n).+)*)/gm, block => {
+    md = md.replace(/(^\d+\.\s+.+(\n(?!\n).+)*)/gm, block => {
       const items = block.split("\n").map(l => l.trim()).filter(l => /^\d+\.\s+/.test(l)).map(l => `<li>${l.replace(/^\d+\.\s+/, "")}</li>`).join("");
       return `<ol>${items}</ol>`;
     });
-    // 粗体/斜体
-        md = md.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
+    md = md.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
     md = md.replace(/\*([^*]+?)\*/g, "<em>$1</em>");
     md = md.replace(/__([^_]+?)__/g, "<strong>$1</strong>");
     md = md.replace(/_([^_]+?)_/g, "<em>$1</em>");
-    // 水平线
-        md = md.replace(/^\s*([-*_]){3,}\s*$/gm, "<hr/>");
-    // 链接 [text](url)
-        md = md.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, text, url) => {
+    md = md.replace(/^\s*([-*_]){3,}\s*$/gm, "<hr/>");
+    md = md.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, text, url) => {
       const safe = safeLink(url);
       if (!safe) return text;
- // 不安全则降级为纯文本
-            return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
     });
-    // 段落：把非块级标签之外的连续文字块包成 <p>
-        const lines = md.split("\n");
+    const lines = md.split("\n");
     const out = [];
     let buf = [];
     const flush = () => {
@@ -1119,451 +1267,6 @@
     }
     flush();
     return out.join("\n");
-  }
-  function findSlideAcrossPresentations$1(idStr) {
-    for (const [, pres] of repo.presentations) {
-      const arr = pres?.slides || [];
-      const hit = arr.find(s => String(s.id) === idStr);
-      if (hit) return hit;
-    }
-    return null;
-  }
-  // —— 运行时自愈：把 repo.slides 的数字键迁移为字符串键
-    function normalizeRepoSlidesKeys$1(tag = "ai.mount") {
-    try {
-      if (!repo || !repo.slides || !(repo.slides instanceof Map)) {
-        W$1("normalizeRepoSlidesKeys: repo.slides 不是 Map");
-        return;
-      }
-      const beforeKeys = Array.from(repo.slides.keys());
-      const nums = beforeKeys.filter(k => typeof k === "number");
-      let moved = 0;
-      for (const k of nums) {
-        const v = repo.slides.get(k);
-        const ks = String(k);
-        if (!repo.slides.has(ks)) {
-          repo.slides.set(ks, v);
-          moved++;
-        }
-      }
-      const afterSample = Array.from(repo.slides.keys()).slice(0, 8);
-      L$1(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
-    } catch (e) {
-      W$1("normalizeRepoSlidesKeys error:", e);
-    }
-  }
-  function asIdStr(v) {
-    return v == null ? null : String(v);
-  }
-  function isMainPriority() {
-    const v = ui?.config?.aiSlidePickPriority;
-    const ret = !(v === "presentation");
-    L$1("isMainPriority?", {
-      cfg: v,
-      result: ret
-    });
-    return ret;
-  }
-  function fallbackSlideIdFromRecent() {
-    try {
-      if (repo.encounteredProblems?.length > 0) {
-        const latest = repo.encounteredProblems.at(-1);
-        const st = repo.problemStatus.get(latest.problemId);
-        const sid = st?.slideId ? String(st.slideId) : null;
-        L$1("fallbackSlideIdFromRecent", {
-          latestProblemId: latest.problemId,
-          sid: sid
-        });
-        return sid;
-      }
-    } catch (e) {
-      W$1("fallbackSlideIdFromRecent error:", e);
-    }
-    return null;
-  }
-  function $$3(sel) {
-    return document.querySelector(sel);
-  }
-  function getSlideByAny$1(id) {
-    const sid = id == null ? null : String(id);
-    if (!sid) return {
-      slide: null,
-      hit: "none"
-    };
-    if (repo.slides.has(sid)) return {
-      slide: repo.slides.get(sid),
-      hit: "string"
-    };
-    const cross = findSlideAcrossPresentations$1(sid);
-    if (cross) {
-      repo.slides.set(sid, cross);
-      return {
-        slide: cross,
-        hit: "cross-fill"
-      };
-    }
-    const asNum = Number.isNaN(Number(sid)) ? null : Number(sid);
-    if (asNum != null && repo.slides.has(asNum)) {
-      const v = repo.slides.get(asNum);
-      repo.slides.set(sid, v);
-      return {
-        slide: v,
-        hit: "number→string-migrate"
-      };
-    }
-    return {
-      slide: null,
-      hit: "miss"
-    };
-  }
-  function mountAIPanel() {
-    if (mounted$6) return root$5;
-    normalizeRepoSlidesKeys$1("ai.mount");
-    const host = document.createElement("div");
-    host.innerHTML = tpl$6;
-    document.body.appendChild(host.firstElementChild);
-    root$5 = document.getElementById("ykt-ai-answer-panel");
-    $$3("#ykt-ai-close")?.addEventListener("click", () => showAIPanel(false));
-    $$3("#ykt-ai-ask")?.addEventListener("click", askAIFusionMode);
-    waitForVueReady().then(() => {
-      watchMainPageChange((slideId, slideInfo) => {
-        L$1("主界面页面切换事件", {
-          slideId: slideId,
-          slideInfoType: slideInfo?.type,
-          problemID: slideInfo?.problemID,
-          index: slideInfo?.index
-        });
-        preferredSlideFromPresentation = null;
-        renderQuestion();
-      });
-    }).catch(e => {
-      W$1("Vue 实例初始化失败，将使用备用方案:", e);
-    });
-    window.addEventListener("ykt:presentation:slide-selected", ev => {
-      L$1("收到小窗选页事件", ev?.detail);
-      const sid = asIdStr(ev?.detail?.slideId);
-      const imageUrl = ev?.detail?.imageUrl || null;
-      if (sid) preferredSlideFromPresentation = {
-        slideId: sid,
-        imageUrl: imageUrl
-      };
-      renderQuestion();
-    });
-    window.addEventListener("ykt:open-ai", () => {
-      L$1("收到打开 AI 面板事件");
-      showAIPanel(true);
-    });
-    window.addEventListener("ykt:ask-ai-for-slide", ev => {
-      const detail = ev?.detail || {};
-      const slideId = asIdStr(detail.slideId);
-      const imageUrl = detail.imageUrl || "";
-      L$1("收到“提问当前PPT”事件", {
-        slideId: slideId,
-        imageLen: imageUrl?.length || 0
-      });
-      if (slideId) {
-        preferredSlideFromPresentation = {
-          slideId: slideId,
-          imageUrl: imageUrl
-        };
-        const look = getSlideByAny$1(slideId);
-        if (look.slide && imageUrl) look.slide.image = imageUrl;
-        L$1("提问当前PPT: lookupHit=", look.hit, "hasSlide=", !!look.slide);
-      }
-      showAIPanel(true);
-      renderQuestion();
-      renderSelectedPPTPreview();
-    });
-    mounted$6 = true;
-    L$1("mountAIPanel 完成, cfg.aiSlidePickPriority=", ui?.config?.aiSlidePickPriority);
-    return root$5;
-  }
-  function showAIPanel(v = true) {
-    mountAIPanel();
-    root$5.classList.toggle("visible", !!v);
-    if (v) {
-      renderQuestion();
-      if (ui.config.aiAutoAnalyze) queueMicrotask(() => {
-        askAIFusionMode();
-      });
-    }
-    const aiBtn = document.getElementById("ykt-btn-ai");
-    if (aiBtn) aiBtn.classList.toggle("active", !!v);
-    L$1("showAIPanel", {
-      visible: v
-    });
-  }
-  function setAILoading(v) {
-    $$3("#ykt-ai-loading").style.display = v ? "" : "none";
-  }
-  function setAIError(msg = "") {
-    const el = $$3("#ykt-ai-error");
-    el.style.display = msg ? "" : "none";
-    el.textContent = msg || "";
-  }
-  function setAIAnswer(content = "") {
-    const el = $$3("#ykt-ai-answer");
-    if (!el) return;
-    if (window.MathJax && window.MathJax.config == null) window.MathJax.config = {};
-    window.MathJax = Object.assign(window.MathJax || {}, {
-      tex: {
-        inlineMath: [ [ "$", "$" ], [ "\\(", "\\)" ] ]
-      }
-    });
-    el.innerHTML = content ? mdToHtml(content) : "";
-    try {
-      if (ui?.config?.iftex) ensureMathJax().then(ok => {
-        if (!ok) {
-          log.warn("[雨课堂助手][WARN][ai] MathJax 未就绪，跳过 typeset");
-          return;
-        }
-        el.classList.add("tex-enabled");
-        typesetTexIn(el).then(() => log.dbg("[雨课堂助手][DBG][ai] MathJax typeset 完成"));
-      }); else el.classList.remove("tex-enabled");
-    } catch (e) {/* 静默降级 */}
-  }
-  function getCustomPrompt() {
-    const el = $$3("#ykt-ai-custom-prompt");
-    return el ? el.value.trim() || "" : "";
-  }
-  function _logMapLookup(where, id) {
-    const sid = id == null ? null : String(id);
-    const hasS = sid ? repo.slides.has(sid) : false;
-    const nid = sid != null && !Number.isNaN(Number(sid)) ? Number(sid) : null;
-    const hasN = nid != null ? repo.slides.has(nid) : false;
-    const sample = (() => {
-      try {
-        return Array.from(repo.slides.keys()).slice(0, 8);
-      } catch {
-        return [];
-      }
-    })();
-    L$1(`${where} -> lookup`, {
-      id: sid,
-      hasString: hasS,
-      hasNumber: hasN,
-      sampleKeys: sample
-    });
-  }
-  function renderQuestion() {
-    let displayText = "";
-    let hasPageSelected = false;
-    let selectionSource = "";
-    let slide = null;
-    if (preferredSlideFromPresentation?.slideId) {
-      const sid = asIdStr(preferredSlideFromPresentation.slideId);
-      _logMapLookup("renderQuestion(preferred from presentation)", sid);
-      const look = getSlideByAny$1(sid);
-      slide = look.slide;
-      if (slide) {
-        displayText = `来自课件面板：${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
-        selectionSource = `课件浏览（传入/${look.hit}键命中）`;
-        hasPageSelected = true;
-      }
-    }
-    if (!slide) {
-      const prio = isMainPriority();
-      if (prio) {
-        const mainSid = asIdStr(getCurrentMainPageSlideId());
-        _logMapLookup("renderQuestion(main priority)", mainSid);
-        const look = getSlideByAny$1(mainSid);
-        slide = look.slide;
-        if (slide) {
-          displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
-          selectionSource = `主界面检测（${look.hit}键命中）`;
-          displayText += slide.problem ? "\n📝 此页面包含题目" : "\n📄 此页面为普通内容页";
-          hasPageSelected = true;
-        }
-      } else {
-        const presentationPanel = document.getElementById("ykt-presentation-panel");
-        const isOpen = presentationPanel && presentationPanel.classList.contains("visible");
-        const curSid = asIdStr(repo.currentSlideId);
-        L$1("renderQuestion(presentation priority)", {
-          isOpen: isOpen,
-          curSid: curSid
-        });
-        if (isOpen && curSid) {
-          _logMapLookup("renderQuestion(pres open, curSid)", curSid);
-          const look = getSlideByAny$1(curSid);
-          slide = look.slide;
-          if (slide) {
-            displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
-            selectionSource = `课件浏览面板（${look.hit}键命中）`;
-            displayText += slide.problem ? "\n📝 此页面包含题目" : "\n📄 此页面为普通内容页";
-            hasPageSelected = true;
-          }
-        } else {
-          if (!slide && curSid) {
-            _logMapLookup("renderQuestion(pres fallback curSid)", curSid);
-            const look = getSlideByAny$1(curSid);
-            slide = look.slide;
-            if (slide) {
-              displayText = `课件面板最近选中: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
-              selectionSource = `课件浏览（兜底/${look.hit}键命中）`;
-              hasPageSelected = true;
-            }
-          }
-          if (!slide) {
-            const fb = fallbackSlideIdFromRecent();
-            if (fb) {
-              _logMapLookup("renderQuestion(fallback recent)", fb);
-              const look = getSlideByAny$1(fb);
-              slide = look.slide;
-              if (slide) {
-                displayText = `最近题目关联页: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
-                selectionSource = `最近题目（兜底/${look.hit}键命中）`;
-                hasPageSelected = true;
-              }
-            }
-          }
-          if (!slide) {
-            displayText = "未检测到当前页面\n💡 请在主界面或课件面板中选择页面。";
-            selectionSource = "无";
-          }
-        }
-      }
-    }
-    const el = document.querySelector("#ykt-ai-question-display");
-    if (el) el.textContent = displayText;
-    const img = document.getElementById("ykt-ai-selected-thumb");
-    const box = document.getElementById("ykt-ai-selected");
-    if (img && box) renderSelectedPPTPreview();
-    const statusEl = document.querySelector("#ykt-ai-text-status");
-    if (statusEl) {
-      statusEl.textContent = hasPageSelected ? `✓ 已选择页面（来源：${selectionSource}），可进行图像分析` : "⚠ 请选择要分析的页面";
-      statusEl.className = hasPageSelected ? "text-status success" : "text-status warning";
-    }
-  }
-  async function askAIFusionMode() {
-    setAIError("");
-    setAILoading(true);
-    setAIAnswer("");
-    try {
-      if (!hasActiveAIProfile(ui.config.ai)) throw new Error("请先在设置中配置 API Key");
-      let currentSlideId = null;
-      let slide = null;
-      let selectionSource = "";
-      let forcedImageUrl = null;
-      if (preferredSlideFromPresentation?.slideId) {
-        currentSlideId = asIdStr(preferredSlideFromPresentation.slideId);
-        const look = getSlideByAny$1(currentSlideId);
-        slide = look.slide;
-        forcedImageUrl = preferredSlideFromPresentation.imageUrl || null;
-        selectionSource = `课件浏览（传入/${look.hit}键命中）`;
-        L$1("[ask] 使用presentation传入的页面:", {
-          currentSlideId: currentSlideId,
-          lookupHit: look.hit,
-          hasSlide: !!slide
-        });
-      }
-      if (!slide) {
-        const prio = isMainPriority();
-        if (prio) {
-          const mainSlideId = asIdStr(getCurrentMainPageSlideId());
-          if (mainSlideId) {
-            currentSlideId = mainSlideId;
-            const look = getSlideByAny$1(currentSlideId);
-            slide = look.slide;
-            selectionSource = `主界面当前页面（${look.hit}键命中）`;
-            L$1("[ask] 使用主界面当前页面:", {
-              currentSlideId: currentSlideId,
-              lookupHit: look.hit,
-              hasSlide: !!slide
-            });
-          }
-        } else {
-          const presentationPanel = document.getElementById("ykt-presentation-panel");
-          const isOpen = presentationPanel && presentationPanel.classList.contains("visible");
-          if (isOpen && repo.currentSlideId != null) {
-            currentSlideId = asIdStr(repo.currentSlideId);
-            const look = getSlideByAny$1(currentSlideId);
-            slide = look.slide;
-            selectionSource = `课件浏览面板（${look.hit}键命中）`;
-            L$1("[ask] 使用课件面板选中的页面:", {
-              currentSlideId: currentSlideId,
-              lookupHit: look.hit,
-              hasSlide: !!slide
-            });
-          }
-        }
-      }
-      if (!slide && repo.currentSlideId != null) {
-        currentSlideId = asIdStr(repo.currentSlideId);
-        const look = getSlideByAny$1(currentSlideId);
-        slide = look.slide;
-        selectionSource = selectionSource || `课件浏览（兜底/${look.hit}键命中）`;
-        L$1("[ask] Fallback 使用 repo.currentSlideId:", {
-          currentSlideId: currentSlideId,
-          lookupHit: look.hit,
-          hasSlide: !!slide
-        });
-      }
-      if (!slide) {
-        const fb = fallbackSlideIdFromRecent();
-        if (fb) {
-          currentSlideId = asIdStr(fb);
-          const look = getSlideByAny$1(currentSlideId);
-          slide = look.slide;
-          selectionSource = selectionSource || `最近题目（兜底/${look.hit}键命中）`;
-          L$1("[ask] Fallback 使用 最近题目 slideId:", {
-            currentSlideId: currentSlideId,
-            lookupHit: look.hit,
-            hasSlide: !!slide
-          });
-        }
-      }
-      if (!currentSlideId || !slide) throw new Error("无法确定要分析的页面。请在主界面打开一个页面，或在课件浏览中选择页面。");
-      L$1("[ask] 页面选择来源:", selectionSource, "页面ID:", currentSlideId, "页面信息:", slide);
-      if (forcedImageUrl) {
-        slide.image = forcedImageUrl;
- // 强制指定
-                L$1("[ask] 使用传入 imageUrl");
-      }
-      // ===== 获取页面图片 =====
-            L$1("[ask] 获取页面图片...");
-      ui.toast(`正在获取${selectionSource}图片...`, 2e3);
-      const imageBase64 = await captureSlideImage(currentSlideId);
-      if (!imageBase64) throw new Error("无法获取页面图片，请确保页面已加载完成");
-      const imageBase64OrList = imageBase64;
-      L$1("[ask] ✅ 页面图片获取成功，大小(KB)=", Math.round(imageBase64.length / 1024));
-      let textPrompt = `【页面说明】当前页面可能不是题目页；请结合用户提示作答。`;
-      const customPrompt = getCustomPrompt();
-      if (customPrompt) {
-        textPrompt += `\n\n【用户自定义要求】\n${customPrompt}`;
-        L$1("[ask] 用户自定义prompt:", customPrompt);
-      }
-      // ===== 题型 hint：仅当当前页面是题目时提供 =====
-            let problemType = null;
-      const problem = slide?.problem;
-      if (problem && typeof problem.problemType !== "undefined") problemType = problem.problemType;
-      L$1("[ask] problemType hint:", problemType);
-      ui.toast(`正在分析${selectionSource}内容...`, 3e3);
-      L$1("[ask] 调用 Vision API...");
-      const aiContent = await queryAIVision(imageBase64OrList, textPrompt, ui.config.ai, {
-        problemType: problemType
-      });
-      setAILoading(false);
-      L$1("[ask] Vision API调用成功, 内容长度=", aiContent?.length);
-      // 若当前页有题目，尝试解析
-            let parsed = null;
-      if (problem) {
-        parsed = parseAIAnswer(problem, aiContent);
-        L$1("[ask] 解析结果:", parsed);
-      }
-      let displayContent = `${selectionSource}图像分析结果：\n${aiContent}`;
-      if (customPrompt) displayContent = `${selectionSource}图像分析结果（包含自定义要求）：\n${aiContent}`;
-      if (parsed && problem) setAIAnswer(`${displayContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`); else {
-        if (!problem) displayContent += "\n\n💡 当前页面不是题目页面（或未识别到题目）。";
-        setAIAnswer(displayContent);
-      }
-    } catch (e) {
-      setAILoading(false);
-      W$1("[ask] 页面分析失败:", e);
-      setAIError(`页面分析失败: ${e.message}`);
-    }
-  }
-  async function askAIForCurrent() {
-    return askAIFusionMode();
   }
   var tpl$5 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.selected {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 */\n    #ykt-filter-problems {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // src/core/pdf-export.js
@@ -2680,331 +2383,6 @@
   }
   var tpl$3 = '<div id="ykt-shell-panel" class="ykt-panel ykt-shell">\n  <style>\n    #ykt-shell-panel { display: none; flex-direction: column; width: 760px; height: 78vh; max-height: 78vh; padding: 0; }\n    #ykt-shell-panel.visible { display: flex; }\n    .ykt-shell-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--ykt-border, #ddd); }\n    .ykt-shell-header .shell-title { font-weight: 600; font-size: 14px; color: var(--ykt-accent, #1d63df); flex: 1; }\n    .ykt-shell-header .shell-close { cursor: pointer; color: #607190; padding: 2px 6px; }\n    .ykt-shell-header .shell-close:hover { color: #222; }\n    .ykt-shell-body { flex: 1; display: flex; min-height: 0; }\n    .ykt-shell-tabs { width: 118px; border-right: 1px solid var(--ykt-border, #ddd); padding: 8px 6px; display: flex; flex-direction: column; gap: 2px; background: #f7f9fc; }\n    .ykt-shell-tab { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: #44506b; font-size: 13px; user-select: none; }\n    .ykt-shell-tab:hover { background: #eaeffa; }\n    .ykt-shell-tab.active { background: var(--ykt-accent, #1d63df); color: #fff; }\n    .ykt-shell-tab i { width: 16px; text-align: center; }\n    .ykt-shell-content { flex: 1; overflow: hidden; position: relative; display: flex; }\n    /* 迁移进来的原面板：从 fixed 弹窗变为 tab 内容。\n       display 交给面板自身规则（chat 需 flex，其余 block），shell 只负责： */\n    #ykt-shell-content > .ykt-panel {\n      position: static !important;\n      width: 100% !important; max-height: none !important; height: 100% !important;\n      border: none !important; box-shadow: none !important; border-radius: 0 !important;\n      overflow: auto;\n    }\n    /* 非当前 tab 的面板无条件隐藏（压过面板自身 ID 样式） */\n    #ykt-shell-content > .ykt-panel:not(.active-tab) { display: none !important; }\n  </style>\n  <div class="ykt-shell-header">\n    <span class="shell-title"><i class="fas fa-briefcase"></i> YuketangStudio</span>\n    <span class="shell-close" id="ykt-shell-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="ykt-shell-body">\n    <div class="ykt-shell-tabs" id="ykt-shell-tabs"></div>\n    <div class="ykt-shell-content" id="ykt-shell-content"></div>\n  </div>\n</div>\n';
   var tpl$2 = '<div id="ykt-chat-panel" class="ykt-panel">\n  <style>\n    #ykt-chat-panel { display: none; flex-direction: column; }\n    #ykt-chat-panel.visible { display: flex; }\n    #ykt-chat-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-chat-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 240px; max-height: 52vh; }\n    .ykt-chat-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-chat-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-chat-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-chat-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-chat-msg.ai p { margin: 0 0 6px; }\n    .ykt-chat-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-chat-msg.ai details { margin-bottom: 6px; }\n    .ykt-chat-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-chat-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    #ykt-chat-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    .ykt-chat-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-chat-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-chat-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-chat-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; }\n    #ykt-chat-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-chat-clear { padding: 3px 8px; font-size: 12px; }\n    .ykt-chat-msg.ai .err { color: #c0392b; }\n    .ykt-chat-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-chat-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n  </style>\n  <div class="panel-header">\n    <h3>💬 PPT 对话</h3>\n    <button id="ykt-chat-clear">清空会话</button>\n    <span class="close-btn" id="ykt-chat-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-chat-log"></div>\n    <div id="ykt-chat-ctx"><label><input type="checkbox" id="ykt-chat-attach" checked> 每条消息附带当前 PPT 页</label><span id="ykt-chat-ctx-thumb"></span></div>\n    <div class="ykt-chat-inputbar">\n      <textarea id="ykt-chat-input" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>\n      <button id="ykt-chat-send">发送</button>\n    </div>\n  </div>\n</div>\n';
-  // src/core/devmode-blob.js
-  // AUTO-GENERATED by scripts/gen-devmode.js — DO NOT EDIT MANUALLY
-  // 重新生成：修改 scripts/gen-devmode.js 中的 DEV_PASSWORD / DEV_CONFIG 后运行 node scripts/gen-devmode.js
-    const DEV_BLOB = {
-    saltB64: "WbhvTSzq7jX1bYQyNs5KSQ==",
-    ivB64: "KoYwUmOXYammoVAi",
-    ctB64: "za37BMXQXCHLL3W45LSuNy+pMLXWjaqR0svInBDIJc4KzpISbs1RrhM2ZP88Q0PlpbonUaU9o7XWcJTkfOrN5KhAsu8OfvAYbY9pUfxOKflhQWgx3SJJfQnOKOEYKFoTksfwlHzKZdNPlqumjREKDlWQpXuFbZI/63O66KY/Ww9NVK+4JGgR6a/sw0gSqY/QIDUv1EGngwZOkxrGxg13o1fDMml+v6+hKBoCFAAOj7QSCt2+MzF+YP/qzmE/Q1LoznQplmOkPnTGItbIrGvJMd5/m/6XAxyx0Vz4cs379g==",
-    pwHash: "29bd1a86cd27bbe3ded241e6c810a7ac17f18a5f90f9de976e7918494e4aba7c",
-    iterations: 31e4
-  };
-  // src/core/devmode.js
-  // 开发者模式：解锁内置的加密 LLM 配置
-  // 加密：AES-256-GCM，密钥由密码 PBKDF2 派生（与 scripts/gen-devmode.js 配套）
-  // 校验：pwHash = SHA-256(PBKDF2 派生密钥原始字节) —— 校验也挂在慢哈希后，
-  //       攻击者离线爆破每个候选密码都要跑完全部迭代
-  // 解锁后配置缓存到 localStorage（同浏览器免重复输入）；换浏览器重新输密码即可
-    const enc = new TextEncoder;
-  const b64ToU8 = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-  async function sha256HexBytes(bytes) {
-    const h = await crypto.subtle.digest("SHA-256", bytes);
-    return [ ...new Uint8Array(h) ].map(b => b.toString(16).padStart(2, "0")).join("");
-  }
-  async function deriveBitsAndKey(password, saltBytes, iterations) {
-    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, [ "deriveBits" ]);
-    const rawBits = new Uint8Array(await crypto.subtle.deriveBits({
-      name: "PBKDF2",
-      salt: saltBytes,
-      iterations: iterations,
-      hash: "SHA-256"
-    }, keyMaterial, 256));
-    const key = await crypto.subtle.importKey("raw", rawBits, {
-      name: "AES-GCM"
-    }, false, [ "decrypt" ]);
-    return {
-      rawBits: rawBits,
-      key: key
-    };
-  }
-  /**
-   * 用密码解锁内置配置。成功返回配置对象并缓存；失败抛错（不暴露原因细节）。
-   * @param {string} password
-   * @returns {Promise<Object>} 配置 { name, baseUrl, apiKey, model, visionModel, reasoningEffort }
-   */  async function unlockDevMode(password) {
-    const pw = String(password || "");
-    if (!pw) throw new Error("请输入解锁码");
-    const {rawBits: rawBits, key: key} = await deriveBitsAndKey(pw, b64ToU8(DEV_BLOB.saltB64), DEV_BLOB.iterations);
-    const hash = await sha256HexBytes(rawBits);
-    if (hash !== DEV_BLOB.pwHash) throw new Error("解锁码错误");
-    let plain;
-    try {
-      plain = await crypto.subtle.decrypt({
-        name: "AES-GCM",
-        iv: b64ToU8(DEV_BLOB.ivB64)
-      }, key, b64ToU8(DEV_BLOB.ctB64));
-    } catch {
-      throw new Error("解密失败（blob 与解锁码不匹配，请重新生成）");
-    }
-    const cfg = JSON.parse((new TextDecoder).decode(plain));
-    setDevUnlocked(cfg);
-    return cfg;
-  }
-  /** 获取解锁的配置（未解锁返回 null） */  function getDevConfig() {
-    return storage.get("devmode.config");
-  }
-  function setDevUnlocked(cfg) {
-    storage.set("devmode.config", cfg);
-  }
-  // src/ai/agnes.js
-  // Agnes（OpenAI 兼容）LLM 封装：对话 / 图片 / 思考 / 流式 / 工具调用
-  // 默认配置来自开发者模式解锁的内置配置（core/devmode.js），也可传参覆盖
-  /** 本模块日志前缀 */  const dlog = (...args) => log.dbg("[Agnes]", ...args);
-  /** 与 openai.js 的 makeChatUrl 相同的自适应拼接逻辑 */  function makeChatUrl(baseUrl) {
-    let base = String(baseUrl || "").replace(/\/+$/, "");
-    if (!base) base = "https://api.agnes-ai.cn/v1";
-    if (base.includes("/chat/completions")) return base;
-    if (base.includes("/v1")) return base + "/chat/completions";
-    if (base.includes("/openai")) return base + "/v1/chat/completions";
-    return base + "/v1/chat/completions";
-  }
-  /** 解析 SSE data 行的缓冲器 */  function sseParser(onEvent) {
-    let buf = "";
-    return chunk => {
-      buf += chunk;
-      let idx;
-      while ((idx = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, idx).replace(/\r$/, "");
-        buf = buf.slice(idx + 1);
-        if (!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-        if (!data || data === "[DONE]") {
-          if (data === "[DONE]") onEvent(null);
-          continue;
-        }
-        try {
-          onEvent(JSON.parse(data));
-        } catch (e) {
-          dlog("sse parse fail", e);
-        }
-      }
-    };
-  }
-  /**
-   * 调用 Agnes chat completions
-   * @param {Object} opts
-   * @param {Array}  opts.messages        OpenAI 格式消息（content 可含 image_url）
-   * @param {boolean} [opts.stream]       流式（默认 false）
-   * @param {(delta:string)=>void} [opts.onDelta]        流式正文增量
-   * @param {(delta:string)=>void} [opts.onReasoning]    流式思考增量
-   * @param {boolean} [opts.thinking]     是否开启思考（默认 true，reasoning_effort 取配置）
-   * @param {Array}  [opts.tools]         工具定义
-   * @param {Object} [opts.override]      { baseUrl, apiKey, model, reasoningEffort } 覆盖内置配置
-   * @param {number} [opts.timeoutMs]
-   * @returns {Promise<{content:string, reasoning:string, toolCalls?:Array, usage?:Object}>}
-   */  async function agnesChat(opts) {
-    const dev = getDevConfig() || {};
-    const ov = opts.override || {};
-    const baseUrl = ov.baseUrl || dev.baseUrl;
-    const apiKey = ov.apiKey || dev.apiKey;
-    const model = ov.model || dev.model;
-    if (!baseUrl || !apiKey) throw new Error("开发者模式未解锁：请到设置中解锁内置配置");
-    const thinking = opts.thinking !== false;
-    const effort = ov.reasoningEffort || dev.reasoningEffort || "medium";
-    const body = {
-      model: model,
-      messages: opts.messages
-    };
-    if (effort !== "off") body.reasoning_effort = effort;
-    if (opts.tools && opts.tools.length) {
-      body.tools = opts.tools;
-      body.tool_choice = "auto";
-    }
-    const stream = true;
-    body.stream = true;
-    const url = makeChatUrl(baseUrl);
-    const timeoutMs = opts.timeoutMs || 12e4;
-    dlog("request", {
-      url: url,
-      model: model,
-      stream: stream,
-      thinking: thinking
-    });
-    // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
-    try {
-      return await fetchStream(url, apiKey, body, opts, timeoutMs);
-    } catch (e) {
-      dlog("fetch stream failed, fallback to GM_xhr:", e?.message || e);
-      if (e?.name === "AbortError") throw e;
-      return await gmXhrStream(url, apiKey, body, opts, timeoutMs);
-    }
-    // 非流式同样 fetch 优先，GM_xhr 兜底
-    try {
-      return await fetchStream(url, apiKey, body, opts, timeoutMs);
-    } catch (e) {
-      dlog("fetch failed, fallback to GM_xhr:", e?.message || e);
-      return gmXhrOnce(url, apiKey, body, timeoutMs);
-    }
-  }
-  function pickDelta(obj, opts, acc) {
-    const d = obj?.choices?.[0]?.delta || {};
-    if (d.reasoning_content) {
-      acc.reasoning += d.reasoning_content;
-      opts.onReasoning?.(d.reasoning_content);
-    }
-    if (d.content) {
-      acc.content += d.content;
-      opts.onDelta?.(d.content);
-    }
-    const tc = d.tool_calls;
-    if (tc) for (const t of tc) {
-      const i = t.index ?? 0;
-      acc.toolCalls[i] = acc.toolCalls[i] || {
-        id: t.id || "",
-        type: "function",
-        function: {
-          name: "",
-          arguments: ""
-        }
-      };
-      if (t.id) acc.toolCalls[i].id = t.id;
-      if (t.function?.name) acc.toolCalls[i].function.name += t.function.name;
-      if (t.function?.arguments) acc.toolCalls[i].function.arguments += t.function.arguments;
-    }
-  }
-  async function fetchStream(url, apiKey, body, opts, timeoutMs) {
-    const ctrl = new AbortController;
-    const timer = setTimeout(() => ctrl.abort(new Error("timeout")), timeoutMs);
-    const onAbort = () => ctrl.abort(new Error("aborted"));
-    if (opts.signal) {
-      if (opts.signal.aborted) {
-        clearTimeout(timer);
-        throw Object.assign(new Error("aborted"), {
-          name: "AbortError"
-        });
-      }
-      opts.signal.addEventListener("abort", onAbort, {
-        once: true
-      });
-    }
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        signal: ctrl.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(body)
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      if (!body.stream) {
-        const data = await res.json();
-        const m = data?.choices?.[0]?.message || {};
-        return {
-          content: m.content || "",
-          reasoning: m.reasoning_content || "",
-          toolCalls: m.tool_calls,
-          usage: data.usage
-        };
-      }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder;
-      const acc = {
-        content: "",
-        reasoning: "",
-        toolCalls: []
-      };
-      let buf = "";
-      for (;;) {
-        const {done: done, value: value} = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, {
-          stream: true
-        });
-        let idx;
-        while ((idx = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, idx).replace(/\r$/, "");
-          buf = buf.slice(idx + 1);
-          if (!line.startsWith("data:")) continue;
-          const data = line.slice(5).trim();
-          if (!data) continue;
-          if (data === "[DONE]") break;
-          try {
-            pickDelta(JSON.parse(data), opts, acc);
-          } catch (e) {
-            dlog("parse", e);
-          }
-        }
-      }
-      return acc;
-    } finally {
-      clearTimeout(timer);
-      opts.signal?.removeEventListener("abort", onAbort);
-    }
-  }
-  function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
-    return new Promise((resolve, reject) => {
-      const acc = {
-        content: "",
-        reasoning: "",
-        toolCalls: []
-      };
-      let seen = 0;
-      gm.xhr({
-        method: "POST",
-        url: url,
-        timeout: timeoutMs,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        data: JSON.stringify(body),
-        onprogress: res => {
-          const text = res.responseText || "";
-          const chunk = text.slice(seen);
-          seen = text.length;
-          const feed = sseParser(obj => {
-            if (obj) pickDelta(obj, opts, acc);
-          });
-          feed(chunk);
-        },
-        onload: res => {
-          if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || "").slice(0, 200)}`));
-          // 兜底：progress 可能漏最后一段
-                    const text = res.responseText || "";
-          sseParser(obj => {
-            if (obj) pickDelta(obj, opts, acc);
-          })(text.slice(seen) + "\n");
-          resolve(acc);
-        },
-        onerror: () => reject(new Error("网络错误（GM_xhr）")),
-        ontimeout: () => reject(new Error("请求超时（GM_xhr）"))
-      });
-    });
-  }
-  function gmXhrOnce(url, apiKey, body, timeoutMs) {
-    return new Promise((resolve, reject) => {
-      gm.xhr({
-        method: "POST",
-        url: url,
-        timeout: timeoutMs,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        data: JSON.stringify(body),
-        onload: res => {
-          if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || "").slice(0, 200)}`));
-          try {
-            const data = JSON.parse(res.responseText);
-            const m = data?.choices?.[0]?.message || {};
-            resolve({
-              content: m.content || "",
-              reasoning: m.reasoning_content || "",
-              toolCalls: m.tool_calls,
-              usage: data.usage
-            });
-          } catch (e) {
-            reject(new Error("响应解析失败: " + e.message));
-          }
-        },
-        onerror: () => reject(new Error("网络错误")),
-        ontimeout: () => reject(new Error("请求超时"))
-      });
-    });
-  }
   // src/ui/panels/chat.js
   // PPT 多轮对话面板：截取/读取当前 PPT 页 + 连续追问，思考链折叠显示，流式输出
     let mounted$3 = false;
@@ -3053,83 +2431,8 @@
       setTimeout(() => $sel("#ykt-chat-input")?.focus(), 60);
     }
   }
-  // ---------------- 当前 PPT 页获取 ----------------
-  /** 在 repo 中定位当前 slide（课堂内主路径） */  function findCurrentSlide() {
-    try {
-      const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
-      if (sid && repo.slides.has(sid)) return repo.slides.get(sid);
-      for (const [, pres] of repo.presentations) {
-        const hit = (pres?.slides || []).find(s => String(s.id) === sid);
-        if (hit) return hit;
-      }
-      // 退化：取 presentation 的第一页
-            for (const [, pres] of repo.presentations) if (pres?.slides?.length) return pres.slides[0];
-    } catch (e) {
-      log.warn("[Chat] findCurrentSlide", e);
-    }
-    return null;
-  }
-  function slideImageUrl(slide) {
-    return slide?.coverAlt || slide?.cover || slide?.image || slide?.thumbnail || "";
-  }
-  /**
-   * 解析当前 PPT 页，返回 { dataUrl, source, reason }
-   * source: 'repo'        = 命中 repo 里的 slide 图（最可信）
-   *         'dom'         = 从页面 DOM 里找到的 slide 图
-   *         'failed'      = 拿不到，reason 说明原因
-   * 注意：**不再用整页 html2canvas 兜底**——那会悄悄把「整个页面截图」当成 PPT 发给 AI，
-   *      导致回答质量崩坏且用户毫不知情。宁可明确失败，也不给假上下文。
-   */  async function resolveCurrentSlideImage() {
-    // 1) repo 中的 slide（课堂内正常路径）
-    const slide = findCurrentSlide();
-    const url = slideImageUrl(slide);
-    if (url) try {
-      const dataUrl = await fetchAsDataURL(url);
-      if (dataUrl) return {
-        dataUrl: dataUrl,
-        source: "repo"
-      };
-    } catch (e) {
-      try {
-        (window.unsafeWindow || window).__yksImgErr = `repo(${String(url).slice(0, 70)}): ${String(e?.message || e).slice(0, 100)}`;
-      } catch {}
-      log.warn("[Chat] repo slide 图下载失败，尝试 DOM 兜底:", e?.message);
-    }
-    // 2) DOM 兜底：静态报告页等 repo 为空但页面有 slide 图的场景
-        const domUrl = findSlideUrlInDom();
-    if (domUrl) try {
-      const dataUrl = await fetchAsDataURL(domUrl);
-      if (dataUrl) return {
-        dataUrl: dataUrl,
-        source: "dom"
-      };
-    } catch (e) {
-      try {
-        (window.unsafeWindow || window).__yksImgErr = `dom(${String(domUrl).slice(0, 70)}): ${String(e?.message || e).slice(0, 100)}`;
-      } catch {}
-      log.warn("[Chat] DOM slide 图下载失败:", e?.message);
-    }
-    return {
-      dataUrl: null,
-      source: "failed",
-      reason: slide || url ? "PPT 图片下载失败（可能是网络或权限问题）" : "当前页面没有可用的 PPT 页"
-    };
-  }
-  /** 从页面 DOM 里找 slide 图（报告页/静态课件的退化路径） */  function findSlideUrlInDom() {
-    try {
-      const selectors = [ 'img[src*="/slide/"]', // 课堂 fullscreen 页的主 PPT 图
-      ".slide-item.active-slide-item img", ".slide-item img", ".swiper-slide-active img", ".ppt-courseware-inner img", ".ppt-inner img" ];
-      for (const sel of selectors) {
-        const img = document.querySelector(sel);
-        const src = img?.currentSrc || img?.src || "";
-        if (src && /\/slide\/|cover/i.test(src)) return src;
-      }
-    } catch (e) {
-      log.warn("[Chat] findSlideUrlInDom", e);
-    }
-    return "";
-  }
-  async function refreshCtxThumb() {
+  // ---------------- 当前 PPT 页获取（共享模块 slide-image.js） ----------------
+    async function refreshCtxThumb() {
     const span = $sel("#ykt-chat-ctx-thumb");
     span.textContent = "⏳";
     const {dataUrl: dataUrl, source: source, reason: reason} = await resolveCurrentSlideImage();
@@ -4335,6 +3638,281 @@
       resp: resp
     };
   }
+  // src/ai/kimi.js
+  // 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
+  // 约定：
+  // 1 -> single_choice   （单选）
+  // 2 -> multiple_choice （多选）
+  // 3 -> single_choice   （投票题按单选处理）
+  // 4 -> fill_in         （填空题）
+  // 5 -> subjective      （主观题 / 简答题）
+    function mapProblemTypeToQuestionType(problemType) {
+    if (problemType == null) return null;
+    const n = Number(problemType);
+    switch (n) {
+     case 1:
+      return "single_choice";
+
+     case 2:
+      return "multiple_choice";
+
+     case 3:
+      return "single_choice";
+
+     case 4:
+      return "fill_in";
+
+     case 5:
+      return "subjective";
+
+     default:
+      return null;
+    }
+  }
+  function getActiveProfile(aiCfg) {
+    const cfg = aiCfg || {};
+    const profiles = Array.isArray(cfg.profiles) ? cfg.profiles : [];
+    if (!profiles.length) {
+      const legacyKey = cfg.kimiApiKey;
+      if (!legacyKey) return null;
+      return {
+        id: "legacy",
+        name: "Kimi Legacy",
+        baseUrl: "https://api.moonshot.cn/v1/chat/completions",
+        apiKey: legacyKey,
+        model: "moonshot-v1-8k",
+        visionModel: "moonshot-v1-8k-vision-preview"
+      };
+    }
+    const activeId = cfg.activeProfileId;
+    let p = profiles.find(p => p.id === activeId);
+    if (!p) p = profiles[0];
+    if (!p.baseUrl) p.baseUrl = "https://api.moonshot.cn/v1/chat/completions";
+    return p;
+  }
+  function makeChatUrl(profile) {
+    let base = (profile.baseUrl || "https://api.moonshot.cn/v1/chat/completions").replace(/\/+$/, "");
+    if (!base.includes("/chat/completions")) if (base.includes("/v1")) base += "/chat/completions"; else if (base.includes("/openai")) base += "/v1/chat/completions"; else base += "/v1/chat/completions";
+    return base;
+  }
+  // -----------------------------------------------
+  // Unified Prompt blocks for Text & Vision
+  // -----------------------------------------------
+    const BASE_SYSTEM_PROMPT = [ "1) 任何时候优先遵循【用户输入（优先级最高）】中的明确要求；", "2) 当输入是课件页面（PPT）图像或题干文本时，先判断是否存在“明确题目”；", "3) 若存在明确题目，则输出以下格式的内容：", "   单选：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A", "   多选：格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C", "   投票：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项，如A", "   填空/主观题: 格式要求：答案: [直接给出答案内容]，解释: [补充说明]", "4) 若识别不到明确题目，直接使用回答用户输入的问题", "3) 如果PROMPT格式不正确，或者你只接收了图片，输出：", "   STATE: NO_PROMPT", "   SUMMARY: <介绍页面/上下文的主要内容>" ].join("\n");
+  // Vision 补充：识别题型与版面元素的步骤说明
+    const VISION_GUIDE = [ "【视觉识别要求】", "A. 先判断是否为题目页面（是否有题干/选项/空格/问句等）", "B. 若是题目，尝试提取题干、选项与关键信息；", "C. 否则参考用户输入回答" ].join("\n");
+  // 通用 OpenAI 协议聊天请求封装（用于 Vision 两步调用）
+    function chatCompletion(profile, payload, debugLabel = "[AI OpenAI]", timeoutMs = 6e4) {
+    const url = makeChatUrl(profile);
+    return new Promise((resolve, reject) => {
+      gm.xhr({
+        method: "POST",
+        url: url,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${profile.apiKey}`
+        },
+        data: JSON.stringify(payload),
+        timeout: timeoutMs,
+        onload: res => {
+          try {
+            log.dbg(`[雨课堂助手]${debugLabel} Status:`, res.status);
+            log.dbg(`[雨课堂助手]${debugLabel} Response:`, res.responseText);
+            if (res.status !== 200) {
+              let errorMessage = `AI 请求失败: ${res.status}`;
+              try {
+                const errorData = JSON.parse(res.responseText);
+                if (errorData.error?.message) errorMessage += ` - ${errorData.error.message}`;
+                if (errorData.error?.code) errorMessage += ` (${errorData.error.code})`;
+              } catch {
+                errorMessage += ` - ${res.responseText}`;
+              }
+              reject(new Error(errorMessage));
+              return;
+            }
+            const data = JSON.parse(res.responseText);
+            resolve(data);
+          } catch (e) {
+            log.err(`[雨课堂助手]${debugLabel} 解析响应失败:`, e);
+            reject(new Error(`解析API响应失败: ${e.message}`));
+          }
+        },
+        onerror: err => {
+          log.err(`[雨课堂助手]${debugLabel} 网络请求失败:`, err);
+          reject(new Error("网络请求失败"));
+        }
+      });
+    });
+  }
+  async function singleStepVisionCall(profile, cleanBase64List, textPrompt, options = {}) {
+    const visionModel = profile.visionModel || profile.model;
+    const timeoutMs = options.timeout || 6e4;
+    const visionTextHeader = [ "【融合模式说明】你将看到一张课件/PPT截图与可选的附加文本。", VISION_GUIDE ].join("\n");
+    const imageBlocks = [];
+    for (const b64 of cleanBase64List) imageBlocks.push({
+      type: "image_url",
+      image_url: {
+        url: `data:image/png;base64,${b64}`
+      }
+    });
+    const messages = [ {
+      role: "system",
+      content: BASE_SYSTEM_PROMPT
+    }, {
+      role: "user",
+      content: [ ...imageBlocks, {
+        type: "text",
+        text: [ visionTextHeader, "【用户输入（优先级最高）】", textPrompt || "（无）" ].join("\n")
+      } ]
+    } ];
+    const data = await chatCompletion(profile, {
+      model: visionModel,
+      messages: messages,
+      temperature: .3
+    }, "[AI OpenAI Vision 单步]", timeoutMs);
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("AI返回内容为空");
+    log.dbg("[AI OpenAI Vision] 成功获取回答(单步)");
+    return content;
+  }
+  /**
+   * 通用 OpenAI 协议 Vision 模型（图像+文本）
+   */  async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}) {
+    const profile = getActiveProfile(aiCfg);
+    if (!profile || !profile.apiKey) throw new Error("请先在设置中配置 AI API Key");
+    // ===== 兼容单图 / 多图 =====
+        const inputList = Array.isArray(imageBase64) ? imageBase64 : [ imageBase64 ];
+    const cleanBase64List = inputList.filter(Boolean).map(x => String(x).replace(/^data:image\/[^;]+;base64,/, "")).filter(x => !!x);
+    if (cleanBase64List.length === 0) throw new Error("图像数据格式错误");
+    const visionModel = profile.visionModel || profile.model;
+    const textModel = profile.model;
+    const hasSeparateTextModel = !!textModel && textModel !== visionModel;
+    const {disableTwoStep: disableTwoStep = false, twoStepDebug: twoStepDebug = false, timeout: timeoutMs = 6e4, problemType: problemType = null} = options || {};
+    // -------- 0. 如果只有 VLM（或者显式关闭两步），回退到单步逻辑 --------
+        if (!hasSeparateTextModel || disableTwoStep) {
+      if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision] use single-step vision", {
+        hasSeparateTextModel: hasSeparateTextModel,
+        disableTwoStep: disableTwoStep
+      });
+      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
+        timeout: timeoutMs
+      });
+    }
+    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision] use TWO-STEP pipeline", {
+      visionModel: visionModel,
+      textModel: textModel
+    });
+    // ===================== Step 1: Vision 抽结构化题目 =====================
+        const STEP1_SYSTEM_PROMPT = `\n你是一个“题目结构化助手”。你将看到课件截图和可选的附加文本，请从中提取出清晰的题目结构，并以 JSON 格式输出。\n\n你不仅要识别文字（类似 OCR），还要理解图片里的内容（例如物体、颜色、形状、数量、相对位置等），并把这些与题目有关的信息转化为题干或补充说明的一部分。\n\n【题型识别优先级】\n1. 如果页面上出现了明确的题型标签文字，如：\n   - "单选题"、"多选题"、"投票题"、"填空题"、"主观题" 等，\n   请优先根据这些标签设置 question_type：\n   - 单选题 / 投票题 -> "single_choice"\n   - 多选题         -> "multiple_choice"\n   - 填空题         -> "fill_in"\n   - 主观题 / 简答题 / 论述题 -> "subjective"\n2. 当没有明显题型标签时，再根据题干语义和版面结构推断题型。\n\n【选项字母规则】\n- 只有在页面上出现了清晰的选项字母（通常为 "A."、"B."、"C."、"D." 等）并跟随选项内容时，才能将 question_type 设为 "single_choice" 或 "multiple_choice"（或投票题对应的 "single_choice"）。\n- 如果没有任何 A/B/C/D 这种选项字母，而问题又需要开放性自由回答，请优先将 question_type 设为 "subjective"。\n\n请尽量识别：\n- question_type: "single_choice" | "multiple_choice" | "fill_in" | "subjective" | "visual_only" | "unknown"\n- stem: 题干文本（如果题干主要依赖图片，请用自然语言描述图片中与题目相关的内容，可保留数学公式信息）\n- options: 一个对象，键为 "A"、"B"、"C"、"D" 等，值为选项内容文字（若不是选择题可为空对象）\n- image_facts: （可选）一个字符串数组，列出与解题有关的关键图像事实，例如 ["图中是一根黄色的香蕉", "背景是白色"]。\n- requires_image_for_solution: 布尔值。如果即使你尽力用文字描述图片，仍然很难仅凭文字保证答对（例如复杂几何图形或高度依赖精确位置关系的题目），请设为 true；如果你的文字描述已经足够让人类或文字模型解题，请设为 false。\n\n输出示例（仅示例，不是固定模板）：\n{\n  "question_type": "single_choice",\n  "stem": "根据图片中的水果，选择它的颜色。",\n  "options": {\n    "A": "红色",\n    "B": "黄色",\n    "C": "蓝色",\n    "D": "绿色"\n  },\n  "image_facts": [\n    "图片中是一根黄色的香蕉，背景为白色"\n  ],\n  "requires_image_for_solution": false\n}\n\n如果无法识别题目或截图并非题目，请尽量给出你能看到的内容，但仍然保持上述 JSON 结构（字段缺省时可以用 null、空对象或空数组）。\n仅输出 JSON，不要任何额外文字。\n`.trim();
+    const step1Messages = [ {
+      role: "system",
+      content: STEP1_SYSTEM_PROMPT
+    }, {
+      role: "user",
+      content: [ ...cleanBase64List.map(b64 => ({
+        type: "image_url",
+        image_url: {
+          url: `data:image/png;base64,${b64}`
+        }
+      })), textPrompt ? {
+        type: "text",
+        text: `【辅助文本】\n${textPrompt}`
+      } : {
+        type: "text",
+        text: "【辅助文本】（无额外文本，仅根据截图识别题目）"
+      } ]
+    } ];
+    let structuredQuestion;
+    try {
+      const data1 = await chatCompletion(profile, {
+        model: visionModel,
+        messages: step1Messages,
+        temperature: .1
+      }, "[AI OpenAI Vision Step1]", timeoutMs);
+      const content1 = data1.choices?.[0]?.message?.content || "";
+      if (twoStepDebug) log.dbg("[雨课堂助手][DEBUG][vision-step1] raw content:", content1);
+      const jsonMatch = content1.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("no JSON found in step1 result");
+      structuredQuestion = JSON.parse(jsonMatch[0]);
+    } catch (err) {
+      log.warn("[雨课堂助手][WARN][vision-step1] failed, fallback to single-step", err);
+      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
+        timeout: timeoutMs
+      });
+    }
+    if (!structuredQuestion || !structuredQuestion.stem) {
+      log.warn("[雨课堂助手][WARN][vision-step1] invalid structuredQuestion, fallback");
+      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
+        timeout: timeoutMs
+      });
+    }
+    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step1] structuredQuestion:", structuredQuestion);
+    // ========= 题型合并逻辑：后端 problemType 优先，其次 VLM 推断，全部缺失则回退 subjective =========
+        const backendQuestionType = mapProblemTypeToQuestionType(problemType);
+    const vlmQuestionType = structuredQuestion.question_type || null;
+    let finalQuestionType = backendQuestionType || vlmQuestionType || null;
+    // 如果 VLM 返回的是 unknown / visual_only 这类不太可用的类型，也当成“缺失”
+        if (finalQuestionType === "unknown" || finalQuestionType === "visual_only") finalQuestionType = null;
+    // 当后端和 VLM 都没有给出可用题型时，统一回退为主观题
+        if (!finalQuestionType) finalQuestionType = "subjective";
+    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step1] questionType merged:", {
+      problemType: problemType,
+      backendQuestionType: backendQuestionType,
+      vlmQuestionType: vlmQuestionType,
+      finalQuestionType: finalQuestionType
+    });
+    // 如果模型明确表示“必须依赖原始图像才能解题”，则回退到单步 Vision，避免纯文本推理丢失关键信息
+        if (structuredQuestion.requires_image_for_solution === true) {
+      log.warn("[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step");
+      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
+        timeout: timeoutMs
+      });
+    }
+    // ===================== Step 2: Text 模型纯文本推理解题 =====================
+        const {stem: stem, options: sqOptions = {}, image_facts: image_facts = []} = structuredQuestion;
+    let solvePrompt = "你是一个严谨的解题助手，请根据下面的题目进行推理解答：\n\n";
+    solvePrompt += `【题干】\n${stem}\n\n`;
+    const optionKeys = Object.keys(sqOptions);
+    if (optionKeys.length > 0) {
+      solvePrompt += "【选项】\n";
+      for (const key of optionKeys) solvePrompt += `${key}. ${sqOptions[key]}\n`;
+      solvePrompt += "\n";
+    }
+    solvePrompt += "请逐步推理，推理结果按以下格式输出：\n";
+    if (finalQuestionType === "single_choice") solvePrompt += "答案: [单个大写字母]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "multiple_choice") solvePrompt += "答案: [多个大写字母，用顿号分隔，如 A、C、D]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "fill_in") solvePrompt += "答案: [直接给出需要填入的内容，多个空用逗号分隔]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "subjective") solvePrompt += "答案: [完整回答]\n解释: [可选的补充说明]\n";
+    // 将图像关键信息一并提供给文本模型，用于弥补完全无图像输入的劣势
+        if (Array.isArray(image_facts) && image_facts.length > 0) {
+      solvePrompt += "【图像关键信息】\n";
+      for (const fact of image_facts) if (typeof fact === "string" && fact.trim()) solvePrompt += `- ${fact.trim()}\n`;
+      solvePrompt += "\n";
+    }
+    const step2Messages = [ {
+      role: "system",
+      content: "你是一个解题助手，请严格按照用户指定的输出格式作答，尽量保证答案正确。"
+    }, {
+      role: "user",
+      content: [ {
+        type: "text",
+        text: solvePrompt
+      } ]
+    } ];
+    try {
+      const data2 = await chatCompletion(profile, {
+        model: textModel,
+        messages: step2Messages,
+        temperature: .2
+      }, "[AI OpenAI Vision Step2]", timeoutMs);
+      const content2 = data2.choices?.[0]?.message?.content || "";
+      if (!content2) throw new Error("AI返回内容为空");
+      if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step2] final content:", content2);
+      return content2;
+    } catch (err) {
+      log.warn("[雨课堂助手][WARN][vision-step2] failed, fallback to single-step", err);
+      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
+        timeout: timeoutMs
+      });
+    }
+  }
   // src/ui/panels/auto-answer-popup.js
   // 简单 HTML 转义
     function esc(s) {
@@ -4371,6 +3949,315 @@
     }, autoDelay);
     // 入场动画
         requestAnimationFrame(() => popup.classList.add("visible"));
+  }
+  function cleanProblemBody(body, problemType, TYPE_MAP) {
+    if (!body) return "";
+    const typeLabel = TYPE_MAP[problemType];
+    if (!typeLabel) return body;
+    // 去除题目开头的类型标识，如 "填空题：" "单选题：" 等
+        const pattern = new RegExp(`^${typeLabel}[：:\\s]+`, "i");
+    return body.replace(pattern, "").trim();
+  }
+  // 改进的融合模式 prompt 格式化函数
+    function formatProblemForVision(problem, TYPE_MAP, hasTextInfo = false) {
+    const problemType = TYPE_MAP[problem.problemType] || "题目";
+    let basePrompt = hasTextInfo ? `结合文本信息和图片内容分析${problemType}，按格式回答：` : `观察图片内容，识别${problemType}并按格式回答：`;
+    if (hasTextInfo && problem.body) {
+      // ✅ 清理题目内容
+      const cleanBody = cleanProblemBody(problem.body, problem.problemType, TYPE_MAP);
+      basePrompt += `\n\n【文本信息】\n题目：${cleanBody}`;
+      if (problem.options?.length) {
+        basePrompt += "\n选项：";
+        for (const o of problem.options) basePrompt += `\n${o.key}. ${o.value}`;
+      }
+      basePrompt += "\n\n若图片内容与文本冲突，以图片为准。";
+    }
+    // 根据题目类型添加具体格式要求
+        switch (problem.problemType) {
+     case 1:
+      // 单选题
+      basePrompt += `\n\n格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A`;
+      break;
+
+     case 2:
+      // 多选题
+      basePrompt += `\n\n格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C`;
+      break;
+
+     case 3:
+      // 投票题
+      basePrompt += `\n\n格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项`;
+      break;
+
+     case 4:
+      // 填空题
+      basePrompt += `\n\n这是一道填空题。\n\n重要说明：\n- 题目内容已经处理，不含"填空题"等字样\n- 观察图片和文本，找出需要填入的内容\n- 答案中不要出现任何题目类型标识\n\n格式要求：\n答案: [直接给出填空内容]\n解释: [简要说明]\n\n示例：\n答案: 氧气,葡萄糖\n解释: 光合作用的产物\n\n多个填空用逗号分开`;
+      break;
+
+     case 5:
+      // 主观题
+      basePrompt += `\n\n格式要求：\n答案: [完整回答]\n解释: [补充说明]\n\n注意：直接回答，不要重复题目`;
+      break;
+
+     default:
+      basePrompt += `\n\n格式要求：\n答案: [你的答案]\n解释: [详细解释]`;
+    }
+    return basePrompt;
+  }
+  // 改进的答案解析函数
+    function parseAIAnswer(problem, aiAnswer) {
+    try {
+      const lines = String(aiAnswer || "").split("\n");
+      let answerLine = "";
+      let answerIdx = -1;
+      // 先定位“答案:”所在行
+            for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.includes("答案:") || line.includes("答案：")) {
+          answerLine = line.replace(/答案[:：]\s*/, "").trim();
+          answerIdx = i;
+          break;
+        }
+      }
+      // === 对填空题和主观题，允许多行答案 ===
+            if ((problem.problemType === 4 || problem.problemType === 5) && answerIdx >= 0) {
+        const block = [];
+        // 当前行如果有内容，先收进去
+                if (answerLine) block.push(answerLine);
+        // 继续向下收集，直到遇到“解释:”或文本结束
+                for (let i = answerIdx + 1; i < lines.length; i++) {
+          const l = lines[i];
+          if (/^\s*解释[:：]/.test(l)) break;
+          block.push((l || "").trimEnd());
+        }
+        const merged = block.join("\n").trim();
+        if (merged) answerLine = merged;
+      }
+      // 如果仍然没有任何答案内容，退回到第一行兜底
+            if (!answerLine) answerLine = (lines[0] || "").trim();
+      log.dbg("[雨课堂助手][INFO][parseAIAnswer] 题目类型:", problem.problemType, "原始答案行:", answerLine);
+      switch (problem.problemType) {
+       case 1:
+ // 单选题
+               case 3:
+        {
+          // 投票题
+          let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
+          if (m) {
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:", [ m[0] ]);
+            return [ m[0] ];
+          }
+          const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
+          if (chineseMatch) {
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票中文解析结果:", [ chineseMatch[1] ]);
+            return [ chineseMatch[1] ];
+          }
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析失败");
+          return null;
+        }
+
+       case 2:
+        {
+          // 多选题
+          if (answerLine.includes("、")) {
+            const options = answerLine.split("、").map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
+            if (options.length > 0) {
+              const result = [ ...new Set(options) ].sort();
+              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选顿号解析结果:", result);
+              return result;
+            }
+          }
+          if (answerLine.includes(",") || answerLine.includes("，")) {
+            const options = answerLine.split(/[,，]/).map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
+            if (options.length > 0) {
+              const result = [ ...new Set(options) ].sort();
+              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选逗号解析结果:", result);
+              return result;
+            }
+          }
+          const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
+          if (letters && letters.length > 1) {
+            const result = [ ...new Set(letters) ].sort();
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选连续解析结果:", result);
+            return result;
+          }
+          if (letters && letters.length === 1) {
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选单个解析结果:", letters);
+            return letters;
+          }
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选解析失败");
+          return null;
+        }
+
+       case 4:
+        {
+          // 填空题
+          // 更激进的清理策略
+          let cleanAnswer = answerLine.replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, "").trim();
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 清理后答案:", cleanAnswer);
+          // 如果清理后还包含这些词，继续清理
+                    if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
+            cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, "").trim();
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 二次清理后:", cleanAnswer);
+          }
+          const answerLength = cleanAnswer.length;
+          if (answerLength <= 50) {
+            cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, "").replace(/[^\w\u4e00-\u9fa5]+$/, "");
+            const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
+            if (blanks.length > 0) {
+              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:", blanks);
+              return blanks;
+            }
+          }
+          if (cleanAnswer) {
+            const result = {
+              content: cleanAnswer,
+              pics: []
+            };
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 简答题解析结果:", result);
+            return result;
+          }
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 填空/简答解析失败");
+          return null;
+        }
+
+       case 5:
+        {
+          // 主观题
+          const content = answerLine.replace(/^(主观题|论述题)[:：\s]*/i, "").trim();
+          if (content) {
+            const result = {
+              content: content,
+              pics: []
+            };
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 主观题解析结果:", result);
+            return result;
+          }
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 主观题解析失败");
+          return null;
+        }
+
+       default:
+        log.dbg("[雨课堂助手][INFO][parseAIAnswer] 未知题目类型:", problem.problemType);
+        return null;
+      }
+    } catch (e) {
+      log.err("[雨课堂助手][ERR][parseAIAnswer] 解析失败", e);
+      return null;
+    }
+  }
+  // src/capture/screenshot.js
+    async function captureProblemScreenshot() {
+    try {
+      const html2canvas = await ensureHtml2Canvas();
+      const el = document.querySelector(".ques-title") || document.querySelector(".problem-body") || document.querySelector(".ppt-inner") || document.querySelector(".ppt-courseware-inner") || document.body;
+      return await html2canvas(el, {
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: "#ffffff",
+        scale: 1,
+        width: Math.min(el.scrollWidth, 1200),
+        height: Math.min(el.scrollHeight, 800)
+      });
+    } catch (e) {
+      log.err("[captureProblemScreenshot] failed", e);
+      return null;
+    }
+  }
+  /**
+   * 获取指定幻灯片的截图
+   * @param {string} slideId - 幻灯片ID
+   * @returns {Promise<string|null>} base64图片数据
+   */  async function captureSlideImage(slideId) {
+    try {
+      log.dbg("[captureSlideImage] 获取幻灯片图片:", slideId);
+      const slide = repo.slides.get(slideId);
+      if (!slide) {
+        log.err("[captureSlideImage] 找不到幻灯片:", slideId);
+        return null;
+      }
+      // 使用 cover 或 coverAlt 图片URL
+            const imageUrl = slide.coverAlt || slide.cover || slide.image || slide.thumbnail;
+      if (!imageUrl) {
+        log.err("[captureSlideImage] 幻灯片没有图片URL");
+        return null;
+      }
+      log.dbg("[captureSlideImage] 图片URL:", imageUrl);
+      // 下载图片并转换为base64
+            const base64 = await downloadImageAsBase64(imageUrl);
+      if (!base64) {
+        log.err("[captureSlideImage] 下载图片失败");
+        return null;
+      }
+      log.dbg("[captureSlideImage] ✅ 成功获取图片, 大小:", Math.round(base64.length / 1024), "KB");
+      return base64;
+    } catch (e) {
+      log.err("[captureSlideImage] 失败:", e);
+      return null;
+    }
+  }
+  /**
+   * 下载图片并转换为base64
+   * @param {string} url - 图片URL
+   * @returns {Promise<string|null>}
+   */  async function downloadImageAsBase64(url) {
+    return new Promise(resolve => {
+      try {
+        const img = new Image;
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
+            if (base64.length > 1e6) {
+              log.dbg("[雨课堂助手][INFO][downloadImageAsBase64] 图片过大，进行压缩...");
+              const compressed = canvas.toDataURL("image/jpeg", .5).split(",")[1];
+              log.dbg("[雨课堂助手][INFO][downloadImageAsBase64] 压缩后大小:", Math.round(compressed.length / 1024), "KB");
+              resolve(compressed);
+            } else resolve(base64);
+          } catch (e) {
+            log.err("[雨课堂助手][ERR][downloadImageAsBase64] Canvas处理失败:", e);
+            resolve(null);
+          }
+        };
+        img.onerror = e => {
+          log.err("[雨课堂助手][ERR][downloadImageAsBase64] 图片加载失败:", e);
+          resolve(null);
+        };
+        img.src = url;
+      } catch (e) {
+        log.err("[雨课堂助手][ERR][downloadImageAsBase64] 失败:", e);
+        resolve(null);
+      }
+    });
+  }
+  // 原有的 captureProblemForVision
+    async function captureProblemForVision() {
+    try {
+      log.dbg("[captureProblemForVision] 开始截图...");
+      const canvas = await captureProblemScreenshot();
+      if (!canvas) {
+        log.err("[captureProblemForVision] 截图失败");
+        return null;
+      }
+      log.dbg("[captureProblemForVision] 截图成功，转换为base64...");
+      const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
+      log.dbg("[captureProblemForVision] base64 长度:", base64.length);
+      if (base64.length > 1e6) {
+        log.dbg("[captureProblemForVision] 图片过大，进行压缩...");
+        const smallerBase64 = canvas.toDataURL("image/jpeg", .5).split(",")[1];
+        log.dbg("[captureProblemForVision] 压缩后长度:", smallerBase64.length);
+        return smallerBase64;
+      }
+      return base64;
+    } catch (e) {
+      log.err("[captureProblemForVision] failed", e);
+      return null;
+    }
   }
   // src/net/xhr-interceptor.js
     function installXHRInterceptor() {
