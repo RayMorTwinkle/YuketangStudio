@@ -6,7 +6,6 @@ import { DEFAULT_CONFIG } from '../core/types.js';
 import { toast } from './toast.js';
 import * as AIPanel from './panels/ai.js';
 import * as PresPanel from './panels/presentation.js';
-import * as ProbListPanel from './panels/problem-list.js';
 import * as ActivePanel from './panels/active-problems.js';
 import * as Shell from './panels/shell.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
@@ -18,11 +17,6 @@ if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = fa
 if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;
 if (typeof _config.iftex === 'undefined') _config.iftex = true;
 if (typeof _config.ai === 'undefined' || !_config.ai) _config.ai = {};
-if (typeof _config.ai.ocrApi === 'undefined') _config.ai.ocrApi = '';
-if (typeof _config.ai.ocrApiKey === 'undefined') _config.ai.ocrApiKey = '';
-if (typeof _config.ai.translateApi === 'undefined') _config.ai.translateApi = '';
-if (typeof _config.ai.translateApiKey === 'undefined') _config.ai.translateApiKey = '';
-if (typeof _config.ai.translateModel === 'undefined') _config.ai.translateModel = '';
 if (typeof _config.notifyProblems === 'undefined') _config.notifyProblems = true;           
 if (typeof _config.notifyPopupDuration === 'undefined') _config.notifyPopupDuration = 5000; 
 if (typeof _config.notifyVolume === 'undefined') _config.notifyVolume = 0.6;                
@@ -98,7 +92,6 @@ export const ui = {
   updatePresentationList: PresPanel.updatePresentationList,
   updateSlideView: PresPanel.updateSlideView,
   askAIForCurrent: AIPanel.askAIForCurrent,
-  updateProblemList: ProbListPanel.updateProblemList,
   updateActiveProblems: ActivePanel.updateActiveProblems,
 
   // 提升面板层级的辅助函数
@@ -112,10 +105,6 @@ export const ui = {
   // 面板显示函数：统一走主面板 Shell 的 tab 切换（visible=false 关闭整个主面板）
   showPresentationPanel(visible = true) {
     Shell.openTab('pres', visible);
-  },
-
-  showProblemListPanel(visible = true) {
-    Shell.openTab('problems', visible);
   },
 
   showAIPanel(visible = true) {
@@ -142,7 +131,6 @@ export const ui = {
     Shell.mountShell();
     window.addEventListener('ykt:open-ai', () => this.showAIPanel(true));
     window.addEventListener('ykt:open-chat', () => this.showChatPanel(true));
-    window.addEventListener('ykt:open-problem-list', () => this.showProblemListPanel(true));
   },
 
   // 题目提醒

@@ -261,7 +261,6 @@ export const actions = {
       p.result = result;
       const i = repo.encounteredProblems.findIndex(e => e.problemId === problemId);
       if (i !== -1) repo.encounteredProblems[i].result = result;
-      ui.updateProblemList();
     }
   },
 

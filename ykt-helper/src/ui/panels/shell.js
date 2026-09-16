@@ -6,7 +6,6 @@ import { log } from '../../core/log.js';
 import * as ChatPanel from './chat.js';
 import * as AIPanel from './ai.js';
 import * as PresPanel from './presentation.js';
-import * as ProbListPanel from './problem-list.js';
 import * as SettingsPanel from './settings.js';
 import * as TutorialPanel from './tutorial.js';
 
@@ -18,7 +17,6 @@ const TABS = [
   { id: 'chat',      icon: 'fa-comments',       label: 'PPT对话',  panelId: 'ykt-chat-panel',          mount: () => ChatPanel.mountChatPanel() },
   { id: 'ai',        icon: 'fa-robot',          label: 'AI解答',   panelId: 'ykt-ai-answer-panel',     mount: () => AIPanel.mountAIPanel() },
   { id: 'pres',      icon: 'fa-file-powerpoint',label: '课件',     panelId: 'ykt-presentation-panel',  mount: () => PresPanel.mountPresentationPanel() },
-  { id: 'problems',  icon: 'fa-list-check',     label: '题目列表', panelId: 'ykt-problem-list-panel',  mount: () => ProbListPanel.mountProblemListPanel() },
   { id: 'settings',  icon: 'fa-gear',           label: '设置',     panelId: 'ykt-settings-panel',      mount: () => SettingsPanel.mountSettingsPanel() },
   { id: 'tutorial',  icon: 'fa-question-circle',label: '教程',     panelId: 'ykt-tutorial-panel',      mount: () => TutorialPanel.mountTutorialPanel() },
 ];

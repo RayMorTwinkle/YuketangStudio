@@ -2,19 +2,14 @@ import tpl from './presentation.html';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
-import { ensureHtml2Canvas, ensureJsPDF, fetchAsDataURL } from '../../core/env.js';
-import { captureSlideImage } from '../../capture/screenshoot.js';
-import { queryOCRVision, queryTranslationText } from '../../ai/openai.js';
+import { ensureJsPDF, fetchAsDataURL } from '../../core/env.js';
 import { importHistoryLesson, fetchClassActivities, currentClassId } from '../../core/history-capture.js';
 import { log } from '../../core/log.js';
 
 let mounted = false;
 let host;
 let staticReportReady = false; //已结束课程
-const selectedSlideIds = new Set();
-const ocrResults = new Map();
-const translationResults = new Map();
-let currentResultMode = 'original';
+
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
   return null;
@@ -71,280 +66,6 @@ function getCurrentSlideId() {
   return repo.currentSlideId != null ? String(repo.currentSlideId) : null;
 }
 
-function detectBrowserLanguage() {
-  const lang = navigator.languages?.[0] || navigator.language || 'en';
-  return String(lang).trim() || 'en';
-}
-
-function getTranslateTargetInput() {
-  return $('#ykt-translate-target');
-}
-
-function getCurrentTargetLanguage() {
-  const input = getTranslateTargetInput();
-  const value = String(input?.value || '').trim();
-  return value || detectBrowserLanguage();
-}
-
-
-// fetch静态PPT
-function getActiveOCRState() {
-  const currentSlideId = getCurrentSlideId();
-  return currentSlideId ? ocrResults.get(currentSlideId) || null : null;
-}
-
-function getActiveTranslationState() {
-  const currentSlideId = getCurrentSlideId();
-  return currentSlideId ? translationResults.get(currentSlideId) || null : null;
-}
-
-function renderSharedResult() {
-  const resultEl = $('#ykt-ocr-result');
-  if (!resultEl) return;
-
-  const ocrState = getActiveOCRState();
-  const translationState = getActiveTranslationState();
-  const currentTargetLanguage = getCurrentTargetLanguage();
-  const canShowTranslation = !!(
-    translationState &&
-    !translationState.loading &&
-    !translationState.error &&
-    translationState.targetLanguage === currentTargetLanguage &&
-    translationState.text
-  );
-
-  resultEl.value = currentResultMode === 'translated' && canShowTranslation
-    ? translationState.text || ''
-    : ocrState?.text || '';
-}
-
-function renderOCRState() {
-  const currentSlideId = getCurrentSlideId();
-  const statusEl = $('#ykt-ocr-status');
-  const tipEl = $('#ykt-ocr-tip');
-  if (!statusEl || !tipEl) return;
-
-  if (!currentSlideId) {
-    currentResultMode = 'original';
-    statusEl.textContent = '未选择';
-    statusEl.className = 'ocr-status';
-    tipEl.textContent = '选择课件页后点击“文字识别”。';
-    renderSharedResult();
-    return;
-  }
-
-  const state = ocrResults.get(currentSlideId);
-  if (!state) {
-    statusEl.textContent = '未开始';
-    statusEl.className = 'ocr-status';
-    tipEl.textContent = '当前页还没有识别结果。';
-    renderSharedResult();
-    return;
-  }
-
-  if (state.loading) {
-    statusEl.textContent = '识别中';
-    statusEl.className = 'ocr-status is-loading';
-    tipEl.textContent = '正在调用 OCR 模型识别当前课件页。';
-    renderSharedResult();
-    return;
-  }
-
-  if (state.error) {
-    currentResultMode = 'original';
-    statusEl.textContent = '失败';
-    statusEl.className = 'ocr-status is-error';
-    tipEl.textContent = state.error;
-    renderSharedResult();
-    return;
-  }
-
-  statusEl.textContent = '已完成';
-  statusEl.className = 'ocr-status is-success';
-  tipEl.textContent = currentResultMode === 'translated'
-    ? '当前正在显示翻译结果。'
-    : '当前正在显示原文识别结果。';
-  renderSharedResult();
-}
-
-function renderTranslationState() {
-  const currentSlideId = getCurrentSlideId();
-  const statusEl = $('#ykt-translate-status');
-  const tipEl = $('#ykt-translate-tip');
-  const btnEl = $('#ykt-translate-toggle');
-  if (!statusEl || !tipEl || !btnEl) return;
-
-  if (!currentSlideId) {
-    statusEl.textContent = '未翻译';
-    statusEl.className = 'ocr-status';
-    tipEl.textContent = '选择课件页后可翻译 OCR 结果。';
-    btnEl.textContent = '翻译';
-    renderSharedResult();
-    return;
-  }
-
-  const currentTargetLanguage = getCurrentTargetLanguage();
-  const state = translationResults.get(currentSlideId);
-  const hasCurrentTranslation = !!(
-    state &&
-    state.targetLanguage === currentTargetLanguage
-  );
-
-  if (!hasCurrentTranslation) {
-    if (currentResultMode === 'translated') currentResultMode = 'original';
-    statusEl.textContent = '未翻译';
-    statusEl.className = 'ocr-status';
-    tipEl.textContent = `当前目标语言：${currentTargetLanguage}`;
-    btnEl.textContent = '翻译';
-    renderSharedResult();
-    return;
-  }
-
-  if (state.loading) {
-    statusEl.textContent = '翻译中';
-    statusEl.className = 'ocr-status is-loading';
-    tipEl.textContent = `正在翻译为 ${state.targetLanguage}`;
-    btnEl.textContent = '翻译中...';
-    renderSharedResult();
-    return;
-  }
-
-  if (state.error) {
-    if (currentResultMode === 'translated') currentResultMode = 'original';
-    statusEl.textContent = '失败';
-    statusEl.className = 'ocr-status is-error';
-    tipEl.textContent = state.error;
-    btnEl.textContent = '翻译';
-    renderSharedResult();
-    return;
-  }
-
-  statusEl.textContent = '已翻译';
-  statusEl.className = 'ocr-status is-success';
-  tipEl.textContent = currentResultMode === 'translated'
-    ? `当前显示 ${state.targetLanguage} 翻译结果。`
-    : `已生成 ${state.targetLanguage} 翻译结果。`;
-  btnEl.textContent = currentResultMode === 'translated' ? '显示原文' : '翻译';
-  renderSharedResult();
-}
-
-async function recognizeCurrentSlideText(options = {}) {
-  const { silent = false } = options;
-  const slideId = getCurrentSlideId();
-  if (!slideId) {
-    if (!silent) ui.toast('请先选择要识别的课件页', 2500);
-    renderOCRState();
-    return '';
-  }
-
-  currentResultMode = 'original';
-  ocrResults.set(slideId, { loading: true, text: '', error: '' });
-  renderOCRState();
-  renderTranslationState();
-
-  try {
-    const imageBase64 = await captureSlideImage(slideId);
-    if (!imageBase64) {
-      throw new Error('当前课件页图片读取失败');
-    }
-
-    const text = await queryOCRVision(imageBase64, ui.config.ai);
-    ocrResults.set(slideId, {
-      loading: false,
-      text: text || '未识别到文字',
-      error: '',
-    });
-    renderOCRState();
-    renderTranslationState();
-    if (!silent) ui.toast('文字识别完成', 2000);
-    return text || '未识别到文字';
-  } catch (e) {
-    ocrResults.set(slideId, {
-      loading: false,
-      text: '',
-      error: `文字识别失败: ${e.message || e}`,
-    });
-    renderOCRState();
-    renderTranslationState();
-    if (!silent) ui.toast(`文字识别失败: ${e.message || e}`, 3500);
-    return '';
-  }
-}
-
-async function translateCurrentOCRText() {
-  const slideId = getCurrentSlideId();
-  if (!slideId) {
-    ui.toast('请先选择课件页', 2500);
-    renderTranslationState();
-    return;
-  }
-
-  const targetLanguage = getCurrentTargetLanguage();
-  const existingState = translationResults.get(slideId);
-  if (
-    currentResultMode === 'translated' &&
-    existingState &&
-    !existingState.loading &&
-    !existingState.error &&
-    existingState.targetLanguage === targetLanguage
-  ) {
-    currentResultMode = 'original';
-    renderOCRState();
-    renderTranslationState();
-    return;
-  }
-
-  const ocrState = ocrResults.get(slideId);
-  if (ocrState?.loading) {
-    ui.toast('文字识别进行中，请稍后再试', 2500);
-    return;
-  }
-
-  let sourceText = ocrState?.text || '';
-  if (!sourceText) {
-    sourceText = await recognizeCurrentSlideText({ silent: true });
-  }
-  if (!sourceText) {
-    ui.toast('没有可翻译的 OCR 文本', 2500);
-    renderTranslationState();
-    return;
-  }
-
-  currentResultMode = 'original';
-  translationResults.set(slideId, {
-    loading: true,
-    text: '',
-    error: '',
-    targetLanguage,
-  });
-  renderTranslationState();
-
-  try {
-    const translated = await queryTranslationText(sourceText, targetLanguage, ui.config.ai);
-    translationResults.set(slideId, {
-      loading: false,
-      text: translated || '',
-      error: '',
-      targetLanguage,
-    });
-    currentResultMode = 'translated';
-    renderOCRState();
-    renderTranslationState();
-    ui.toast(`翻译完成：${targetLanguage}`, 2000);
-  } catch (e) {
-    translationResults.set(slideId, {
-      loading: false,
-      text: '',
-      error: `翻译失败: ${e.message || e}`,
-      targetLanguage,
-    });
-    currentResultMode = 'original';
-    renderOCRState();
-    renderTranslationState();
-    ui.toast(`翻译失败: ${e.message || e}`, 3500);
-  }
-}
-
 function isStudentLessonReportPage() {
   return /\/v2\/web\/student-lesson-report\//.test(window.location.pathname);
 }
@@ -365,47 +86,19 @@ function getSlidesDocument() {
     try {
       const d = window.frames[i].document;
       if (d && d.querySelector('#content-page-wrap')) {
-        log.dbg('[雨课堂助手][DBG][presentation][static-report] 在子 frame 中找到了 content-page-wrap');
+        log.dbg('[presentation][static-report] 在子 frame 中找到了 content-page-wrap');
         return d;
       }
     } catch (e) {
     }
   }
 
-  log.dbg('[雨课堂助手][DBG][presentation][static-report] 所有 frame 中都没有 content-page-wrap，退回顶层 document');
+  log.dbg('[presentation][static-report] 所有 frame 中都没有 content-page-wrap，退回顶层 document');
   return document;
-}
-
-function debugCheckSingleSlideImg() {
-  const selector = "#content-page-wrap > div > aside > div.left-panel-scroll > div.left-panel-tab-content > div > section.slides-list > div.slide-item.f13.active-slide-item > div > img";
-  const doc = getSlidesDocument();
-  const img = doc.querySelector(selector);
-  log.dbg('[雨课堂助手][DBG][presentation][static-report][debugCheck]', {
-    href: window.location.href,
-    hasContentPageWrap: !!document.querySelector('#content-page-wrap'),
-    imgFound: !!img,
-    selector
-  });
-  if (img) {
-    log.dbg('[雨课堂助手][DBG][presentation][static-report][debugCheck] img.outerHTML =', img.outerHTML);
-    log.dbg('[雨课堂助手][DBG][presentation][static-report][debugCheck] img.src =', img.currentSrc || img.src || img.getAttribute('src'));
-  }
-  return img;
 }
 
 function collectStaticSlideURLsFromDom() {
   const urls = new Set();
-
-  // 先跑一遍最精确的 path 来看看当前 frame 到底有没有这张图
-  const debugImg = debugCheckSingleSlideImg();
-  if (debugImg) {
-    const src = debugImg.currentSrc || debugImg.src || debugImg.getAttribute('src') || '';
-    if (src &&
-        /thu-private-qn\.yuketang\.cn\/slide\/\d+\//.test(src) &&
-        /\.(png|jpg|jpeg|webp)(\?|#|$)/i.test(src)) {
-      urls.add(src);
-    }
-  }
 
   const doc = getSlidesDocument();
   const candidates = doc.querySelectorAll(
@@ -414,17 +107,10 @@ function collectStaticSlideURLsFromDom() {
     'img[alt="cover"]'
   );
 
-  log.dbg('[雨课堂助手][DBG][presentation][static-report] DOM 候选 img 数量 =', candidates.length);
+  log.dbg('[presentation][static-report] DOM 候选 img 数量 =', candidates.length);
 
-  candidates.forEach((img, idx) => {
+  candidates.forEach((img) => {
     const src = img.currentSrc || img.src || img.getAttribute('src') || '';
-
-    log.dbg('[雨课堂助手][DBG][presentation][static-report] 检查 img#' + idx, {
-      className: img.className,
-      outerHTML: img.outerHTML.slice(0, 200) + (img.outerHTML.length > 200 ? '…' : ''),
-      src
-    });
-
     if (!src) return;
 
     if (/thu-private-qn\.yuketang\.cn\/slide\/\d+\//.test(src) &&
@@ -434,7 +120,7 @@ function collectStaticSlideURLsFromDom() {
   });
 
   const arr = [...urls];
-  log.dbg('[雨课堂助手][DBG][presentation][static-report] DOM 收集到 slide URL：', arr);
+  log.dbg('[presentation][static-report] DOM 收集到 slide URL：', arr);
   return arr;
 }
 
@@ -453,7 +139,7 @@ function ensureStaticReportPresentation() {
   const urls = Array.from(new Set([...urlsFromDom]));
 
   if (!urls.length) {
-    log.dbg('[雨课堂助手][DBG][presentation][static-report] 依然没有发现任何 slide URL');
+    log.dbg('[presentation][static-report] 依然没有发现任何 slide URL');
     return false;
   }
 
@@ -485,7 +171,7 @@ function ensureStaticReportPresentation() {
 
   staticReportReady = true; // ★ 标记为已完成
 
-  log.dbg('[雨课堂助手][DBG][presentation][static-report] 已注入/更新 presentation', {
+  log.dbg('[presentation][static-report] 已注入/更新 presentation', {
     pid,
     title: presentation.title,
     slideCount: slides.length,
@@ -509,68 +195,24 @@ export function mountPresentationPanel() {
   host = document.getElementById('ykt-presentation-panel');
 
   $('#ykt-presentation-close')?.addEventListener('click', () => showPresentationPanel(false));
-  $('#ykt-open-problem-list')?.addEventListener('click', () => {
-    showPresentationPanel(false);
-    window.dispatchEvent(new CustomEvent('ykt:open-problem-list'));
-  });
 
-  $('#ykt-ask-current')?.addEventListener('click', () => {
-    if (selectedSlideIds.size > 0) {
-      const slides = [];
-      for (const sid of selectedSlideIds) {
-        const lookup = getSlideByAny(sid);
-        const imageUrl = getSlideImageUrl(lookup.slide);
-        if (imageUrl) slides.push({ slideId: sid, imageUrl });
-      }
-      L('点击“提问当前PPT”(多选)', { selectedCount: selectedSlideIds.size, slidesCount: slides.length });
-      if (slides.length === 0) return ui.toast('所选页面无可用图片', 2500);
-      window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slides', {
-        detail: { slides, source: 'manual' }
-      }));
-      window.dispatchEvent(new CustomEvent('ykt:open-ai'));
-      return;
-    }
-
-    // ===== 否则走旧逻辑：单页 =====
-    const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
-    const lookup = getSlideByAny(sid);
-    L('点击“提问当前PPT”', { currentSlideId: sid, lookupHit: lookup.hit, hasSlide: !!lookup.slide });
-    if (!sid) return ui.toast('请先在左侧选择一页PPT', 2500);
-    const imageUrl = getSlideImageUrl(lookup.slide);
-    window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slide', {
-      detail: { slideId: sid, imageUrl }
-    }));
-    window.dispatchEvent(new CustomEvent('ykt:open-ai'));
-  });
-
-  $('#ykt-download-current')?.addEventListener('click', downloadCurrentSlide);
-  $('#ykt-ocr-current')?.addEventListener('click', recognizeCurrentSlideText);
-  $('#ykt-translate-toggle')?.addEventListener('click', translateCurrentOCRText);
-  $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
-  $('#ykt-import-history')?.addEventListener('click', openHistoryImporter);
-
-  const translateTargetInput = getTranslateTargetInput();
-  if (translateTargetInput && !translateTargetInput.value.trim()) {
-    translateTargetInput.value = detectBrowserLanguage();
-  }
-  translateTargetInput?.addEventListener('change', () => {
-    if (currentResultMode === 'translated') currentResultMode = 'original';
-    renderOCRState();
-    renderTranslationState();
-  });
-
-  const cb = $('#ykt-show-all-slides');
-  cb.checked = !!ui.config.showAllSlides;
-  cb.addEventListener('change', () => {
-    ui.config.showAllSlides = !!cb.checked;
+  // 题目页筛选开关（原「题目列表」功能的替代：点一下只看题目页，再点恢复全部）
+  const filterBtn = $('#ykt-filter-problems');
+  const syncFilterBtn = () => filterBtn?.classList.toggle('active', !!ui.config.filterProblemsOnly);
+  syncFilterBtn();
+  filterBtn?.addEventListener('click', () => {
+    ui.config.filterProblemsOnly = !ui.config.filterProblemsOnly;
     ui.saveConfig();
-    L('切换 showAllSlides =', ui.config.showAllSlides);
+    syncFilterBtn();
+    ui.toast(ui.config.filterProblemsOnly ? '只显示带题目的页面' : '显示全部页面', 1500);
+    L('切换 filterProblemsOnly =', ui.config.filterProblemsOnly);
     updatePresentationList();
   });
 
+  $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
+  $('#ykt-import-history')?.addEventListener('click', openHistoryImporter);
+
   mounted = true;
-  renderOCRState();
-  renderTranslationState();
   L('mountPresentationPanel 完成');
   return host;
 }
@@ -603,12 +245,12 @@ export function updatePresentationList() {
 
     const mo = new MutationObserver(() => {
       if (!isStudentLessonReportPage()) return;
-      if (++times > 20) return; 
+      if (++times > 20) return;
 
-      log.dbg('[雨课堂助手][DBG][presentation][static-report] DOM 变更，尝试重新收集 slide URL (times =', times, ')');
+      log.dbg('[presentation][static-report] DOM 变更，尝试重新收集 slide URL (times =', times, ')');
       const injected = ensureStaticReportPresentation();
       if (injected) {
-        log.dbg('[雨课堂助手][DBG][presentation][static-report] DOM 中已找到 slide，停止监听并刷新面板');
+        log.dbg('[presentation][static-report] DOM 中已找到 slide，停止监听并刷新面板');
         try { mo.disconnect(); } catch (e) {}
         updatePresentationList();
       }
@@ -617,7 +259,7 @@ export function updatePresentationList() {
     const rootSelector = "#content-page-wrap > div > aside > div.left-panel-scroll > div.left-panel-tab-content > div > section.slides-list";
     let target = document.querySelector(rootSelector) || document.querySelector('section.slides-list') || document.body;
 
-    log.dbg('[雨课堂助手][DBG][presentation][static-report] MutationObserver 监听目标：', {
+    log.dbg('[presentation][static-report] MutationObserver 监听目标：', {
       useBody: target === document.body,
       hasSlidesList: target !== document.body
     });
@@ -692,9 +334,9 @@ export function updatePresentationList() {
     const slidesWrap = document.createElement('div');
     slidesWrap.className = 'slide-thumb-list';
 
-    const showAll = !!ui.config.showAllSlides;
     const slides = (presentation.slides || []);
-    const slidesToShow = showAll ? slides : slides.filter(s => s.problem);
+    const showProblemsOnly = !!ui.config.filterProblemsOnly;
+    const slidesToShow = showProblemsOnly ? slides.filter(s => s.problem) : slides;
 
     const currentIdStr = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
     L('渲染课件缩略图', {
@@ -721,33 +363,12 @@ export function updatePresentationList() {
         if (s.problem.result) thumb.classList.add('answered');
       }
 
-      thumb.addEventListener('click', (ev) => {
-        // ===== Ctrl/Cmd 多选：不改变 currentSlideId，不触发导航，仅切换 selected =====
-        if (ev && (ev.ctrlKey || ev.metaKey)) {
-          ev.preventDefault();
-          if (selectedSlideIds.has(slideIdStr)) {
-            selectedSlideIds.delete(slideIdStr);
-            thumb.classList.remove('selected');
-          } else {
-            selectedSlideIds.add(slideIdStr);
-            thumb.classList.add('selected');
-          }
-          L('缩略图多选切换', { slideIdStr, selectedCount: selectedSlideIds.size });
-          return;
-        }
-
-        // ===== 普通点击：沿用原逻辑，并清空多选 =====
-        selectedSlideIds.clear();
-        slidesWrap.querySelectorAll('.slide-thumb.selected').forEach(el => el.classList.remove('selected'));
-
+      thumb.addEventListener('click', () => {
         repo.currentPresentationId = presIdStr;
         repo.currentSlideId = slideIdStr;
 
         slidesWrap.querySelectorAll('.slide-thumb.active').forEach(el => el.classList.remove('active'));
         thumb.classList.add('active');
-        const actives = slidesWrap.querySelectorAll('.slide-thumb.active');
-        const allIds = Array.from(slidesWrap.querySelectorAll('.slide-thumb')).map(x => x.dataset.slideId);
-        L('高亮状态', { activeCount: actives.length, activeId: thumb.dataset.slideId, allIdsSample: allIds.slice(0, 10) });
 
         updateSlideView();
 
@@ -755,17 +376,9 @@ export function updatePresentationList() {
           const cross = findSlideAcrossPresentations(slideIdStr); if (cross) { repo.slides.set(slideIdStr, cross); L('click-fill repo.slides <- cross', { slideIdStr }); }
         }
 
-        try {
-          const keysSample = Array.from(repo.slides.keys()).slice(0, 8);
-          const typeDist = keysSample.reduce((m, k) => (m[typeof k] = (m[typeof k] || 0) + 1, m), {});
-          L('repo.slides keys sample:', keysSample, 'typeDist:', typeDist);
-        } catch {}
-
         const detail = { slideId: slideIdStr, presentationId: presIdStr };
-        L('派发事件 ykt:presentation:slide-selected', detail);
         window.dispatchEvent(new CustomEvent('ykt:presentation:slide-selected', { detail }));
 
-        L('调用 actions.navigateTo ->', { presIdStr, slideIdStr });
         actions.navigateTo(presIdStr, slideIdStr);
       });
 
@@ -806,8 +419,6 @@ export function updateSlideView() {
   const problemView = $('#ykt-problem-view');
   slideView.querySelector('.slide-cover')?.classList.add('hidden');
   problemView.innerHTML = '';
-  renderOCRState();
-  renderTranslationState();
 
   const curId = getCurrentSlideId();
   const lookup = getSlideByAny(curId);
@@ -815,14 +426,11 @@ export function updateSlideView() {
 
   if (!curId) {
     slideView.querySelector('.slide-cover')?.classList.remove('hidden');
-    renderOCRState();
-    renderTranslationState();
     return;
   }
   const slide = lookup.slide;
   if (!slide) {
     W('updateSlideView: 根据 curId 未取到 slide', { curId });
-    renderTranslationState();
     return;
   }
 
@@ -873,29 +481,6 @@ export function updateSlideView() {
   slideView.innerHTML = '';
   slideView.appendChild(cover);
   slideView.appendChild(problemView);
-  renderOCRState();
-  renderTranslationState();
-}
-
-async function downloadCurrentSlide() {
-  const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
-  const lookup = getSlideByAny(sid);
-  L('downloadCurrentSlide', { sid, lookupHit: lookup.hit, has: !!lookup.slide });
-  if (!sid) return ui.toast('请先选择一页课件/题目');
-  const slide = lookup.slide;
-  if (!slide) return;
-
-  try {
-    const html2canvas = await ensureHtml2Canvas();
-    const el = document.getElementById('ykt-slide-view');
-    const canvas = await html2canvas(el, { useCORS: true, allowTaint: false });
-    const a = document.createElement('a');
-    a.download = `slide-${sid}.png`;
-    a.href = canvas.toDataURL('image/png');
-    a.click();
-  } catch (e) {
-    ui.toast(`截图失败: ${e.message}`);
-  }
 }
 
 /** 历史课件导入：列出该班级全部课堂 → 选择 → 开收集页自动导出 PDF */
@@ -1013,9 +598,9 @@ async function downloadPresentationPDF() {
     return ui.toast('未找到该课件的页面');
   }
 
-  const showAll = !!ui.config.showAllSlides;
-  const slides = pres.slides.filter(s => showAll || s.problem);
-  if (slides.length === 0) return ui.toast('当前筛选下没有可导出的页面');
+  // 整册导出：不受「只看题目页」筛选影响（筛选只作用于浏览列表）
+  const slides = pres.slides;
+  if (slides.length === 0) return ui.toast('该课件没有页面');
 
   // 进度条元素
   const progressEl = document.getElementById('ykt-pdf-progress');

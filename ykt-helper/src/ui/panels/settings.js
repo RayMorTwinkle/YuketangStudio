@@ -100,11 +100,6 @@ export function mountSettingsPanel() {
   const $api = root.querySelector('#kimi-api-key');
   const $model = root.querySelector('#ykt-ai-model');
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
-  const $ocrApi = root.querySelector('#ykt-ai-ocr-api');
-  const $ocrApiKey = root.querySelector('#ykt-ai-ocr-api-key');
-  const $translateApi = root.querySelector('#ykt-ai-translate-api');
-  const $translateApiKey = root.querySelector('#ykt-ai-translate-api-key');
-  const $translateModel = root.querySelector('#ykt-ai-translate-model');
 
   // === 其他 UI 原有字段 ===
   const $auto = root.querySelector('#ykt-input-auto-answer');
@@ -149,11 +144,6 @@ export function mountSettingsPanel() {
     $api.value = p.apiKey || '';
     $model.value = p.model || '';
     $visionModel.value = p.visionModel || '';
-    $ocrApi.value = ui.config.ai.ocrApi || '';
-    $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
-    $translateApi.value = ui.config.ai.translateApi || '';
-    $translateApiKey.value = ui.config.ai.translateApiKey || '';
-    $translateModel.value = ui.config.ai.translateModel || '';
   }
 
   // 初始化 Profile 下拉框
@@ -306,11 +296,6 @@ export function mountSettingsPanel() {
       const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
       if (curOpt) curOpt.textContent = p.name || p.id;
     }
-    ai.ocrApi = $ocrApi.value.trim();
-    ai.ocrApiKey = $ocrApiKey.value.trim();
-    ai.translateApi = $translateApi.value.trim();
-    ai.translateApiKey = $translateApiKey.value.trim();
-    ai.translateModel = $translateModel.value.trim();
 
     if (p) {
       ai.kimiApiKey = p.apiKey;      // 兼容旧字段

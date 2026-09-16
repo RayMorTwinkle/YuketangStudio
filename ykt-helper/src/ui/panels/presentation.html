@@ -34,17 +34,26 @@
       min-width: 36px;
       text-align: right;
     }
+    /* 题目页筛选开关 */
+    #ykt-filter-problems {
+      border: 1px solid var(--ykt-border-strong, #ccc);
+      background: #f7f8fa;
+      border-radius: 6px;
+      cursor: pointer;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--ykt-fg, #222);
+    }
+    #ykt-filter-problems.active {
+      background: #1d63df;
+      border-color: #1d63df;
+      color: #fff;
+    }
   </style>
   <div class="panel-header">
     <h3>课件查看</h3>
     <div class="panel-controls">
-      <label>
-        <input type="checkbox" id="ykt-show-all-slides"> 切换全部页面/问题页面
-      </label>
-      <button id="ykt-ask-current">提问当前PPT</button>
-      <button id="ykt-ocr-current">文字识别</button>
-      <button id="ykt-open-problem-list">题目列表</button>
-      <button id="ykt-download-current">截图下载</button>
+      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>
       <button id="ykt-download-pdf">整册下载(PDF)</button>
       <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>
       <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>
@@ -67,21 +76,6 @@
           <div class="empty-message">选择左侧的幻灯片查看详情</div>
         </div>
         <div id="ykt-problem-view" class="problem-view"></div>
-      </div>
-      <div id="ykt-ocr-panel" class="ocr-panel">
-        <div class="ocr-head">
-          <span>文字结果</span>
-          <span id="ykt-ocr-status" class="ocr-status">未开始</span>
-        </div>
-        <div id="ykt-ocr-tip" class="ocr-tip">选择课件页后点击“文字识别”。</div>
-        <textarea id="ykt-ocr-result" class="ocr-result" readonly placeholder="识别结果会显示在这里，支持直接复制。"></textarea>
-        <div class="ocr-translate-bar">
-          <label for="ykt-translate-target">目标语言</label>
-          <input type="text" id="ykt-translate-target" class="ocr-target-input" placeholder="默认使用浏览器语言">
-          <button id="ykt-translate-toggle">翻译</button>
-          <span id="ykt-translate-status" class="ocr-status">未翻译</span>
-        </div>
-        <div id="ykt-translate-tip" class="ocr-tip">默认翻译到浏览器语言，也可手动修改目标语言。</div>
       </div>
     </div>
   </div>
