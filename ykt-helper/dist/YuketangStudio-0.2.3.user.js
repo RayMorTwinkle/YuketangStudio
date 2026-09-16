@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.2.2
+// @version      0.2.3
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
@@ -3513,8 +3513,8 @@
   function mountTutorialPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // 注入构建版本号（"0.2.2" 由 rollup 从 package.json 替换，单一来源）
-        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.2.2"}<`);
+    // 注入构建版本号（"0.2.3" 由 rollup 从 package.json 替换，单一来源）
+        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.2.3"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-tutorial-panel");
     $("#ykt-tutorial-close")?.addEventListener("click", () => showTutorialPanel(false));
@@ -5727,13 +5727,40 @@
   }
   function showSwitchToDesktopGuide() {
     if (document.getElementById("ykt-desktop-guide")) return;
+    // 用户点过「直接前往桌面版」但又被弹回移动版 → 浏览器桌面模式不彻底（UA-CH 泄露）
+        const retried = (() => {
+      try {
+        return sessionStorage.getItem("yktDesktopRetry") === "1";
+      } catch {
+        return false;
+      }
+    })();
     const tip = document.createElement("div");
     tip.id = "ykt-desktop-guide";
     tip.style.cssText = [ "position:fixed", "left:8px", "right:8px", "bottom:8px", "z-index:10000002", "background:#fff8e1", "color:#7a4f01", "border:1px solid #f0c36d", "border-radius:8px", "padding:10px 12px", "font-size:12px", "line-height:1.5", "box-shadow:0 4px 16px rgba(0,0,0,.12)" ].join(";");
-    tip.innerHTML = `\n    <div style="font-weight:600;margin-bottom:4px">⚠️ 当前是雨课堂「移动版」，功能受限</div>\n    <div>请点浏览器菜单（<b>···</b>）→ 勾选 <b>请求桌面网站</b> → 然后访问 <b>changjiang.yuketang.cn/v2/web/index</b> 登录使用。</div>\n    <div style="margin-top:6px;display:flex;gap:8px">\n      <button id="ykt-guide-goto" style="flex:1;padding:6px;border:none;border-radius:6px;background:#1d63df;color:#fff;font-size:12px">直接前往桌面版</button>\n      <button id="ykt-guide-close" style="padding:6px 10px;border:1px solid #e2c98b;border-radius:6px;background:transparent;color:#7a4f01;font-size:12px">知道了</button>\n    </div>`;
+    if (!retried) tip.innerHTML = `\n      <div style="font-weight:600;margin-bottom:4px">⚠️ 当前是雨课堂「移动版」，功能受限</div>\n      <div>请点浏览器菜单（<b>···</b>）→ 勾选 <b>请求桌面网站</b> → 然后访问 <b>changjiang.yuketang.cn/v2/web/index</b> 登录使用。</div>\n      <div style="margin-top:6px;display:flex;gap:8px">\n        <button id="ykt-guide-goto" style="flex:1;padding:6px;border:none;border-radius:6px;background:#1d63df;color:#fff;font-size:12px">直接前往桌面版</button>\n        <button id="ykt-guide-close" style="padding:6px 10px;border:1px solid #e2c98b;border-radius:6px;background:transparent;color:#7a4f01;font-size:12px">知道了</button>\n      </div>`; else 
+    // 二次引导：此浏览器的桌面模式不彻底，推荐 Firefox
+    tip.innerHTML = `\n      <div style="font-weight:600;margin-bottom:4px">⚠️ 此浏览器的「桌面模式」不彻底，雨课堂仍识别为手机</div>\n      <div>原因：Edge 安卓的桌面模式不会修改 <code>Sec-CH-UA-Mobile</code> 请求头，雨课堂服务端据此强制跳回移动版。<b>推荐改用 Firefox 安卓版</b>（它的桌面模式会连同请求头一起切换，已验证可行）：</div>\n      <div style="margin:6px 0">1. 应用商店安装 <b>Firefox</b><br/>2. Firefox 内安装 <b>篡改猴</b> 扩展（addons.mozilla.org 搜 Tampermonkey）<br/>3. 安装本脚本 → 菜单勾选 <b>桌面版网站</b> → 访问雨课堂</div>\n      <div style="margin-top:6px;display:flex;gap:8px">\n        <button id="ykt-guide-firefox" style="flex:1;padding:6px;border:none;border-radius:6px;background:#ff7139;color:#fff;font-size:12px">获取 Firefox</button>\n        <button id="ykt-guide-copy" style="padding:6px 10px;border:1px solid #e2c98b;border-radius:6px;background:transparent;color:#7a4f01;font-size:12px">复制桌面版网址</button>\n        <button id="ykt-guide-close" style="padding:6px 10px;border:1px solid #e2c98b;border-radius:6px;background:transparent;color:#7a4f01;font-size:12px">关闭</button>\n      </div>`;
     document.body.appendChild(tip);
     tip.querySelector("#ykt-guide-goto")?.addEventListener("click", () => {
+      try {
+        sessionStorage.setItem("yktDesktopRetry", "1");
+      } catch {}
       window.location.href = "/v2/web/index";
+    });
+    tip.querySelector("#ykt-guide-firefox")?.addEventListener("click", () => {
+      window.open("https://www.mozilla.org/firefox/android/", "_blank");
+    });
+    tip.querySelector("#ykt-guide-copy")?.addEventListener("click", e => {
+      const btn = e.target;
+      navigator.clipboard?.writeText("https://changjiang.yuketang.cn/v2/web/index").then(() => {
+        btn.textContent = "已复制";
+        setTimeout(() => {
+          btn.textContent = "复制桌面版网址";
+        }, 1500);
+      }).catch(() => {
+        ui.toast?.("复制失败，请手动输入 changjiang.yuketang.cn/v2/web/index");
+      });
     });
     tip.querySelector("#ykt-guide-close")?.addEventListener("click", () => tip.remove());
   }

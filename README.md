@@ -3,7 +3,7 @@
   <h1>YuketangStudio</h1>
   <p><b>雨课堂学习增强助手</b> —— 让每一页课件都为你所用</p>
   <a href="https://github.com/RayMorTwinkle/YuketangStudio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/></a>
-  <img src="https://img.shields.io/badge/version-0.2.2-blue.svg" alt="版本"/>
+  <img src="https://img.shields.io/badge/version-0.2.3-blue.svg" alt="版本"/>
   <img src="https://img.shields.io/badge/platform-Tampermonkey-green.svg" alt="平台"/>
   <img src="https://img.shields.io/badge/学校-长江雨课堂%20%7C%20通用-orange.svg" alt="适配"/>
   <br/><br/>
@@ -62,7 +62,7 @@
 | 平台 | 推荐 | 说明 |
 |---|---|---|
 | **电脑** | **Chrome（谷歌浏览器）**、**Edge（微软浏览器）** | 两者都原生支持篡改猴扩展；Edge 是 Windows 自带，不用额外下载，**新手最省事** |
-| **手机** | **Edge（安卓）** | 手机端极少有浏览器支持扩展，Edge 安卓版是目前最靠谱的选择（详见下方手机教程） |
+| **手机** | **Firefox（安卓）** | 手机端极少有浏览器支持扩展；Firefox 安卓官方支持篡改猴，且它的「桌面模式」最彻底（详见下方说明） |
 
 > Firefox 同样支持篡改猴，但扩展安装与 Chrome 系略有差异，本文以 Chrome / Edge 为准。
 
@@ -93,19 +93,15 @@
 
 **安装后必做的一步**：点击扩展详情 → 确认「**允许访问文件网址**」和「**开发者模式**」处于开启状态（部分浏览器需要，用于让脚本在页面上正常工作）。
 
-#### 📱 手机端（Edge 安卓版）
+#### 📱 手机端（首选 Firefox 安卓版）
 
-手机端能用篡改猴的浏览器极少，**Edge 安卓版是目前最省事的选择**（2025 年 3 月起微软为安卓版 Edge 提供了专属扩展页，内置篡改猴）：
+手机端能用篡改猴的浏览器很少，**Firefox 安卓版是最可靠的选择**（官方支持篡改猴，且桌面模式切得最干净）：
 
-1. 在应用商店（或 [Edge 官网](https://www.microsoft.com/edge)）安装 **Microsoft Edge**
-2. 打开 Edge，点**右下角的「···」菜单**
-3. 在菜单里找到「**扩展**」（Extensions，部分版本在「···」→「设置」附近）
-4. 在扩展列表里找到 **Tampermonkey**，点「安装」/「获取」
-5. 授权后，地址栏旁边会出现猴子图标
+1. 应用商店安装 **Firefox**（或 [mozilla.org/firefox/android](https://www.mozilla.org/firefox/android/)）
+2. Firefox 内打开 [addons.mozilla.org](https://addons.mozilla.org/) → 搜索 **Tampermonkey** → 「添加到 Firefox」
+3. 点篡改猴图标 → 继续第三步安装本脚本
 
-> 如果菜单里找不到「扩展」：说明 Edge 版本过低，请在应用商店更新到最新版（要求版本号 ≥ 90，实际建议用最新版）。
->
-> 其他可行方案：**Firefox 安卓版**（官方支持篡改猴）、**Kiwi Browser**（基于 Chromium，可直接装 Chrome 扩展）。不推荐用手机自带浏览器或微信内置浏览器——它们基本都不支持扩展。
+> 其他方案：**Edge 安卓版**也有扩展页（「···」菜单 → 扩展），**但其桌面模式不彻底**（见第四步的说明），可能装好后仍无法使用；不推荐手机自带浏览器或微信内置浏览器——不支持扩展。
 
 ### 第三步：安装 YuketangStudio 脚本
 
@@ -119,19 +115,17 @@
 
 ### 第四步：在手机上打开雨课堂
 
-**这是手机端最关键的一步**：雨课堂会根据你的浏览器标识**自动跳转到移动版**（`/m/v2`，功能受限、课件与 AI 功能不可用）。
+**这是手机端最关键的一步**：雨课堂会根据浏览器请求头**自动跳转到移动版**（`/m/v2`，功能受限、课件与 AI 功能全部不可用）。
 
-打开 Edge 后，**先**点右下角「···」菜单 → 勾选「**请求桌面网站**」(Request desktop site)，**再**在地址栏输入 `changjiang.yuketang.cn/v2/web/index` 访问、登录。
+**Firefox 上**：菜单 → 勾选「**桌面版网站**」→ 访问 `changjiang.yuketang.cn/v2/web/index` → 登录 → 左下角出现工具栏即成功。
 
-> ⚠️ **注意顺序**：如果你已经打开过移动版（地址栏显示 `/m/v2`），再勾「请求桌面网站」**是无效的**——雨课堂服务端会记住移动入口，只把字缩小而不切换界面。此时请：
-> 1. 点地址栏**清空并重新输入** `changjiang.yuketang.cn/v2/web/index` 回车，或
-> 2. 关掉标签页重开，或
-> 3. 看到页面底部出现我们的**黄色提示条**「当前是雨课堂移动版，功能受限」时，直接点上面的「**直接前往桌面版**」按钮（我们已内置这个快捷入口，无需手动输网址）
+> ⚠️ **如果你用的是 Edge 且出现「开了桌面模式还是手机界面、只是字变小」**：
+> 这不是操作问题——Edge 安卓的桌面模式不修改 `Sec-CH-UA-Mobile` 请求头，雨课堂服务端依据它强制把已登录的移动设备弹回移动版，**网页脚本无法拦截服务端跳转**。
+> 解决办法：**换 Firefox**（上面的推荐），或使用脚本内置的引导条——进入移动版时页面底部会出现黄色提示条，点「获取 Firefox」直接下载，装好后按上面步骤迁移。
 
 成功标志：页面变成**电脑版布局**，左下角出现我们的工具栏。
 
 > 📌 我们已针对手机屏幕做了专门适配：工具栏自动变纵向大按钮、主面板 tab 移到顶部、内容区铺满屏宽（详见下方「手机端体验」）。
-
 ## 📖 使用教程
 
 <div align="center">
