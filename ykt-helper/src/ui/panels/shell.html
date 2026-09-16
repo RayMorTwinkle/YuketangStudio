@@ -1,6 +1,10 @@
 <div id="ykt-shell-panel" class="ykt-panel ykt-shell">
   <style>
-    #ykt-shell-panel { display: none; flex-direction: column; width: 760px; height: 78vh; max-height: 78vh; padding: 0; }
+    #ykt-shell-panel { display: none; flex-direction: column;
+      width: min(760px, calc(100vw - 48px));       /* 窄窗口不溢出 */
+      height: min(78vh, calc(100vh - 140px));      /* 留出工具栏与边距 */
+      max-height: calc(100vh - 120px);
+      padding: 0; }
     #ykt-shell-panel.visible { display: flex; }
     .ykt-shell-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--ykt-border, #ddd); }
     .ykt-shell-header .shell-title { font-weight: 600; font-size: 14px; color: var(--ykt-accent, #1d63df); flex: 1; }
@@ -19,8 +23,20 @@
       position: static !important;
       width: 100% !important; max-height: none !important; height: 100% !important;
       border: none !important; box-shadow: none !important; border-radius: 0 !important;
-      overflow: auto;
+      overflow: hidden;               /* 滚动交给内部区域，避免双层滚动条 */
     }
+    /* 对话类面板：log 区在 shell 内撑满可用高度，消除底部空白 */
+    #ykt-shell-content #ykt-chat-log,
+    #ykt-shell-content #ykt-ai-log { flex: 1 1 auto; max-height: none; min-height: 120px; }
+    #ykt-shell-content #ykt-chat-panel .panel-body,
+    #ykt-shell-content #ykt-ai-answer-panel .panel-body { flex: 1; min-height: 0; }
+    /* 课件面板在 shell 内填满：两列各自滚动，不再受独立弹窗的 72vh 限制 */
+    #ykt-shell-content #ykt-presentation-panel .panel-body { height: 100%; grid-template-columns: minmax(220px, 300px) 1fr; }
+    #ykt-shell-content #ykt-presentation-panel .panel-left,
+    #ykt-shell-content #ykt-presentation-panel .panel-right { max-height: none; height: 100%; overflow: auto; position: static; }
+    #ykt-shell-content #ykt-presentation-panel .slide-view { max-height: none; height: auto; min-height: 240px; }
+    /* 设置面板在 shell 内整体滚动 */
+    #ykt-shell-content #ykt-settings-panel { overflow: auto; }
     /* 非当前 tab 的面板无条件隐藏（压过面板自身 ID 样式） */
     #ykt-shell-content > .ykt-panel:not(.active-tab) { display: none !important; }
   </style>
