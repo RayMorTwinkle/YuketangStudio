@@ -5,6 +5,7 @@ import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
 import { unlockDevMode, getDevConfig } from '../../core/devmode.js';
+import { DEFAULT_SYSTEM_PROMPT_CHAT, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
 let mounted = false;
 let root;
@@ -149,6 +150,37 @@ export function mountSettingsPanel() {
   // 初始化 Profile 下拉框
   refreshProfileSelect();
   loadProfileToForm(ui.config.ai.activeProfileId);
+
+  // === 提示词设置（空 = 内置默认；可编辑可恢复） ===
+  const $promptChat = root.querySelector('#ykt-prompt-chat');
+  const $promptAI = root.querySelector('#ykt-prompt-ai');
+  const fillPrompts = () => {
+    if ($promptChat) $promptChat.value = String(ui.config.systemPromptChat ?? '').trim() || DEFAULT_SYSTEM_PROMPT_CHAT;
+    if ($promptAI) $promptAI.value = String(ui.config.systemPromptAI ?? '').trim() || DEFAULT_SYSTEM_PROMPT_AI;
+  };
+  const savePrompts = () => {
+    if ($promptChat) { ui.config.systemPromptChat = $promptChat.value.trim() === DEFAULT_SYSTEM_PROMPT_CHAT.trim() ? '' : $promptChat.value; }
+    if ($promptAI) { ui.config.systemPromptAI = $promptAI.value.trim() === DEFAULT_SYSTEM_PROMPT_AI.trim() ? '' : $promptAI.value; }
+    ui.saveConfig();
+  };
+  // 编辑即暂存（blur 由通用自动保存覆盖不了 textarea value 判空逻辑，这里显式处理）
+  $promptChat?.addEventListener('change', savePrompts);
+  $promptAI?.addEventListener('change', savePrompts);
+  // 恢复默认 = 直接填入默认值并落盘（空串 → 运行时走内置常量）
+  root.querySelector('#ykt-prompt-chat-reset')?.addEventListener('click', () => {
+    ui.config.systemPromptChat = '';
+    ui.saveConfig();
+    if ($promptChat) $promptChat.value = DEFAULT_SYSTEM_PROMPT_CHAT;
+    ui.toast('PPT对话提示词已恢复默认', 2000);
+  });
+  root.querySelector('#ykt-prompt-ai-reset')?.addEventListener('click', () => {
+    ui.config.systemPromptAI = '';
+    ui.saveConfig();
+    if ($promptAI) $promptAI.value = DEFAULT_SYSTEM_PROMPT_AI;
+    ui.toast('AI解答提示词已恢复默认', 2000);
+  });
+  // 初始填充（后续切 tab 由 syncFormFromConfig 统一刷新）
+  fillPrompts();
 
   // === 解锁入口（低调：仅一行，位于设置最底部） ===
   const DEV_PROFILE_ID = 'agnes-dev';
@@ -354,6 +386,7 @@ export function mountSettingsPanel() {
     $audioName.textContent = ui.config.customNotifyAudioName
       ? `当前：${ui.config.customNotifyAudioName}`
       : '当前：使用内置“叮-咚”提示音';
+    fillPrompts();
   }
   // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
   root.__yksOnShow = syncFormFromConfig;   // shell 切 tab 时刷新表单

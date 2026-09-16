@@ -157,6 +157,21 @@
       </div>
 
       <div class="setting-group">
+        <h4>提示词设置</h4>
+        <div class="setting-item" style="flex-direction:column;align-items:stretch">
+          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>
+          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>
+          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>
+        </div>
+        <div class="setting-item" style="flex-direction:column;align-items:stretch">
+          <label>AI解答提示词（优先快速、准确给答案）：</label>
+          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>
+          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>
+        </div>
+        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>
+      </div>
+
+      <div class="setting-group">
         <div class="setting-item" style="display:flex;align-items:center;gap:8px">
           <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">
           <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>

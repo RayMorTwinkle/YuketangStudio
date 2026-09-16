@@ -63,6 +63,16 @@ export async function ensureJsPDF() {
   return window.jspdf;
 }
 
+/** mermaid 按需加载（AI 回复里出现 ```mermaid 块时才拉取 CDN） */
+export async function ensureMermaid() {
+  if (window.mermaid?.render) return window.mermaid;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js');
+  const m = window.mermaid;
+  if (!m?.render) throw new Error('mermaid 未正确加载');
+  m.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' });
+  return m;
+}
+
 export function randInt(l, r) {
   return l + Math.floor(Math.random() * (r - l + 1));
 }

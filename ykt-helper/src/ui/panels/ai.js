@@ -11,7 +11,8 @@ import { repo } from '../../state/repo.js';
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { resolveCurrentSlideImage } from '../slide-image.js';
-import { PROBLEM_TYPE_MAP } from '../../core/types.js';
+import { ensureMermaid } from '../../core/env.js';
+import { PROBLEM_TYPE_MAP, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
 const L = (...a) => log.dbg('[ai]', ...a);
 const W = (...a) => log.warn('[ai]', ...a);
@@ -24,17 +25,23 @@ let history = [];           // OpenAI 格式消息
 let streaming = false;      // 防并发发送
 let abortCtrl = null;
 
-const SYSTEM_PROMPT = [
-  '你是「YuketangStudio」雨课堂学习助手，专注解答课堂题目与讲解课件内容。',
-  '规则：',
-  '1) 用户消息可能附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；',
-  '2) 若是选择题，先给答案再给理由，格式：答案: [字母]\\n解释: [理由]；填空/主观题给完整答案与解题思路；',
-  '3) 若消息明确说明页面不是题目，直接回答用户的问题；',
-  '4) 回答使用简体中文，简洁准确，数学公式用 $...$；',
-  '5) 图片或文本无法识别时直接说明，不要编造。',
-].join('\n');
+const systemPrompt = () => String(ui?.config?.systemPromptAI || '').trim() || DEFAULT_SYSTEM_PROMPT_AI;
 
 const DEFAULT_ANALYZE_PROMPT = '请解答此页的题目：先给答案，再给简要解题过程。若页面不是题目页，请概述页面内容。';
+
+function ensureMathJax() {
+  const mj = window.MathJax;
+  const ok = !!(mj && mj.typesetPromise);
+  if (!ok) log.warn('[ai] MathJax 未就绪（未通过 @require 预置？）');
+  return Promise.resolve(ok);
+}
+
+function typesetTexIn(el) {
+  const mj = window.MathJax;
+  if (!el || !mj || typeof mj.typesetPromise !== 'function') return Promise.resolve(false);
+  const ready = mj.startup && mj.startup.promise ? mj.startup.promise : Promise.resolve();
+  return ready.then(() => mj.typesetPromise([el]).then(() => true).catch(() => false));
+}
 
 function $sel(sel) { return root.querySelector(sel); }
 
@@ -366,7 +373,7 @@ async function sendCurrent({ auto = false } = {}) {
 
     abortCtrl = new AbortController();
     const res = await agnesChat({
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history],
+      messages: [{ role: "system", content: systemPrompt() }, ...history],
       stream: true,
       thinking: true,
       signal: abortCtrl.signal,
@@ -380,6 +387,7 @@ async function sendCurrent({ auto = false } = {}) {
     aiBubble.innerHTML =
       (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : '')
       + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
+    renderRich(aiBubble);
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {
@@ -408,7 +416,8 @@ export async function askAITextOnly() {
   return sendCurrent({ auto: true });
 }
 
-// ---------------- Markdown 渲染（chat 面板也引用） ----------------
+// ---------------- Markdown / 富媒体渲染 ----------------
+
 function safeLink(url = '') {
   try {
     const u = new URL(url, location.origin);
@@ -417,13 +426,41 @@ function safeLink(url = '') {
   return null;
 }
 
-export function mdToHtml(mdRaw = '') {
-  let md = escapeHtml(mdRaw).replace(/\r\n?/g, '\n');
+/** 清洗 AI 产出的 HTML/SVG：去除脚本、事件属性与 javascript: 协议 */
+export function sanitizeHtml(html) {
+  try {
+    const doc = new DOMParser().parseFromString(String(html), 'text/html');
+    doc.querySelectorAll('script, style, iframe, object, embed, link, meta, base, form').forEach(n => n.remove());
+    doc.querySelectorAll('*').forEach(n => {
+      for (const a of [...n.attributes]) {
+        const name = a.name.toLowerCase();
+        const val = String(a.value || '');
+        if (name.startsWith('on')) { n.removeAttribute(a.name); continue; }
+        if ((name === 'href' || name === 'src' || name === 'xlink:href') && /^\s*javascript:/i.test(val)) {
+          n.removeAttribute(a.name);
+        }
+      }
+    });
+    return doc.body.innerHTML;
+  } catch {
+    return '';
+  }
+}
 
-  md = md.replace(/```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (_, lang, code) => {
-    const l = lang ? ` data-lang="${lang}"` : '';
-    return `<pre class="ykt-md-code"><code${l}>${code}</code></pre>`;
+/**
+ * Markdown → HTML。
+ * fenced 代码块先提取占位（```mermaid / ```svg / ```html 会渲染为可视化元素，
+ * 其余保持普通代码块），避免整体转义把可视化内容变成纯文本。
+ */
+export function mdToHtml(mdRaw = '') {
+  const blocks = [];
+  const raw = String(mdRaw ?? '');
+  const withPlaceholders = raw.replace(/```([a-zA-Z0-9_-]+)?[ \t]*\r?\n([\s\S]*?)```/g, (_, lang, code) => {
+    blocks.push({ lang: String(lang || '').toLowerCase(), code: code.replace(/\n$/, '') });
+    return `\uE000B${blocks.length - 1}\uE001`;
   });
+
+  let md = escapeHtml(withPlaceholders).replace(/\r\n?/g, '\n');
 
   md = md.replace(/`([^`]+?)`/g, (_, code) => `<code class="ykt-md-inline">${code}</code>`);
 
@@ -469,7 +506,7 @@ export function mdToHtml(mdRaw = '') {
   md = md.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
   md = md.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
   md = md.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
-  md = md.replace(/_([^_]+?)_/g, '<em>$1</em>');
+  md = md.replace(/(^|[^\\])_([^_]+?)_/g, '$1<em>$2</em>');
   md = md.replace(/^\s*([-*_]){3,}\s*$/gm, '<hr/>');
 
   md = md.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, text, url) => {
@@ -478,6 +515,19 @@ export function mdToHtml(mdRaw = '') {
     return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
   });
 
+  // 还原代码块占位符
+  md = md.replace(/\uE000B(\d+)\uE000/g, (_, i) => {
+    const b = blocks[Number(i)];
+    if (!b) return '';
+    const esc = escapeHtml(b.code);
+    if (b.lang === 'mermaid') return `<div class="ykt-mermaid" data-raw="${escapeHtml(b.code).replace(/"/g, '&quot;')}"></div>`;
+    if (b.lang === 'svg' || b.lang === 'html') {
+      return `<div class="ykt-embed" data-raw="${escapeHtml(b.code).replace(/"/g, '&quot;')}"></div>`;
+    }
+    return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ''}>${esc}</code></pre>`;
+  });
+
+  // 段落包裹（占位符块按块级处理）
   const lines = md.split('\n');
   const out = [];
   let buf = [];
@@ -486,7 +536,7 @@ export function mdToHtml(mdRaw = '') {
     out.push(`<p>${buf.join('<br/>')}</p>`);
     buf = [];
   };
-  const isBlock = (s) => /^(<h[1-6]|<ul>|<ol>|<pre |<blockquote>|<hr\/>|<p>|<table|<div)/.test(s);
+  const isBlock = (s) => /^(<h[1-6]|<ul>|<ol>|<pre |<blockquote>|<hr\/>|<p>|<table|<div|\uE000B\d+\uE001$)/.test(s.trim());
   for (const ln of lines) {
     if (!ln.trim()) { flush(); continue; }
     if (isBlock(ln)) { flush(); out.push(ln); }
@@ -494,4 +544,62 @@ export function mdToHtml(mdRaw = '') {
   }
   flush();
   return out.join('\n');
+}
+
+/**
+ * 富媒体后处理：把 mdToHtml 产出的可视化占位渲染出来 + MathJax 公式。
+ * - .ykt-mermaid → mermaid 图（按需加载 CDN，失败回退显示源码）
+ * - .ykt-embed   → sanitize 后的 HTML/SVG
+ * - $...$ 公式   → MathJax（ui.config.iftex 开启时）
+ */
+export async function renderRich(el) {
+  if (!el) return;
+  try {
+    // 1) mermaid
+    const mermaidEls = [...el.querySelectorAll('.ykt-mermaid[data-raw]')];
+    if (mermaidEls.length) {
+      try {
+        const mermaid = await ensureMermaid();
+        for (const node of mermaidEls) {
+          const src = node.getAttribute('data-raw') || '';
+          try {
+            const { svg } = await mermaid.render(`ykmmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, src);
+            const wrap = document.createElement('div');
+            wrap.className = 'ykt-mermaid-render';
+            wrap.innerHTML = sanitizeHtml(svg);
+            node.replaceWith(wrap);
+          } catch (e) {
+            log.warn('[Rich] mermaid 渲染失败，显示源码:', e?.message);
+            const pre = document.createElement('pre');
+            pre.className = 'ykt-md-code';
+            pre.textContent = src;
+            node.replaceWith(pre);
+          }
+        }
+      } catch (e) {
+        log.warn('[Rich] mermaid 加载失败:', e?.message);
+        mermaidEls.forEach(node => {
+          const pre = document.createElement('pre');
+          pre.className = 'ykt-md-code';
+          pre.textContent = node.getAttribute('data-raw') || '';
+          node.replaceWith(pre);
+        });
+      }
+    }
+    // 2) svg/html 嵌入
+    for (const node of [...el.querySelectorAll('.ykt-embed[data-raw]')]) {
+      const raw = node.getAttribute('data-raw') || '';
+      node.innerHTML = sanitizeHtml(raw);
+      node.removeAttribute('data-raw');
+    }
+    // 3) mermaid 容器清理 data-raw（已渲染）
+    el.querySelectorAll('.ykt-mermaid[data-raw]').forEach(n => n.removeAttribute('data-raw'));
+    // 4) MathJax
+    if (ui?.config?.iftex) {
+      const ok = await ensureMathJax();
+      if (ok) { el.classList.add('tex-enabled'); await typesetTexIn(el); }
+    }
+  } catch (e) {
+    log.warn('[Rich] renderRich 失败:', e);
+  }
 }

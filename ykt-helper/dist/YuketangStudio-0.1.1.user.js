@@ -113,6 +113,18 @@
     if (!window.jspdf?.jsPDF) throw new Error("jsPDF 未加载成功");
     return window.jspdf;
   }
+  /** mermaid 按需加载（AI 回复里出现 ```mermaid 块时才拉取 CDN） */  async function ensureMermaid() {
+    if (window.mermaid?.render) return window.mermaid;
+    await loadScriptOnce("https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js");
+    const m = window.mermaid;
+    if (!m?.render) throw new Error("mermaid 未正确加载");
+    m.initialize({
+      startOnLoad: false,
+      theme: "default",
+      securityLevel: "strict"
+    });
+    return m;
+  }
   function randInt(l, r) {
     return l + Math.floor(Math.random() * (r - l + 1));
   }
@@ -190,12 +202,18 @@
     4: "填空题",
     5: "主观题"
   };
+  /** 内置默认提示词（设置里可覆盖；空 = 使用默认） */  const DEFAULT_SYSTEM_PROMPT_CHAT = [ "你是「YuketangStudio」雨课堂学习助手，通过对话帮助学生理解课件与解决问题。", "要求：", "1) 用户消息可能附带课件截图与题目文本，优先依据文本、结合图片回答；", "2) 回答使用简体中文，生动形象、条理清晰，善用类比和例子；", "3) 鼓励使用多种可视化形式帮助理解，在适合的场景主动使用：mermaid 流程图/思维导图（```mermaid 代码块）、表格、SVG 示意图（```svg）、HTML 片段（```html）；", "4) 数学公式用 $...$（行内）与 $$...$$（独立成行）；", "5) 解题类问题给出思路与关键步骤，不要只给结论；", "6) 无法识别图片或文本时直接说明，不要编造。" ].join("\n");
+  const DEFAULT_SYSTEM_PROMPT_AI = [ "你是「YuketangStudio」雨课堂学习助手，专注快速、准确地解答课堂题目。", "要求：", "1) 用户消息附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；", "2) 优先确保答案快速且准确：选择题先给答案再给理由（格式：答案: [字母] / 解释: [理由]）；填空/主观题直接给完整答案与必要思路；", "3) 回答简洁直接，避免冗长铺垫；", "4) 数学公式用 $...$；无法识别时直接说明，不要编造。" ].join("\n");
   const DEFAULT_CONFIG = {
     notifyProblems: true,
     autoAnswer: false,
     autoAnswerDelay: 3e3,
     autoAnswerRandomDelay: 2e3,
     iftex: true,
+    systemPromptChat: "",
+    // 空 = 使用 DEFAULT_SYSTEM_PROMPT_CHAT
+    systemPromptAI: "",
+    // 空 = 使用 DEFAULT_SYSTEM_PROMPT_AI
     ai: {
       provider: "kimi",
       kimiApiKey: "",
@@ -842,8 +860,20 @@
     let streaming$1 = false;
  // 防并发发送
     let abortCtrl$1 = null;
-  const SYSTEM_PROMPT$1 = [ "你是「YuketangStudio」雨课堂学习助手，专注解答课堂题目与讲解课件内容。", "规则：", "1) 用户消息可能附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；", "2) 若是选择题，先给答案再给理由，格式：答案: [字母]\\n解释: [理由]；填空/主观题给完整答案与解题思路；", "3) 若消息明确说明页面不是题目，直接回答用户的问题；", "4) 回答使用简体中文，简洁准确，数学公式用 $...$；", "5) 图片或文本无法识别时直接说明，不要编造。" ].join("\n");
+  const systemPrompt$1 = () => String(ui?.config?.systemPromptAI || "").trim() || DEFAULT_SYSTEM_PROMPT_AI;
   const DEFAULT_ANALYZE_PROMPT = "请解答此页的题目：先给答案，再给简要解题过程。若页面不是题目页，请概述页面内容。";
+  function ensureMathJax() {
+    const mj = window.MathJax;
+    const ok = !!(mj && mj.typesetPromise);
+    if (!ok) log.warn("[ai] MathJax 未就绪（未通过 @require 预置？）");
+    return Promise.resolve(ok);
+  }
+  function typesetTexIn(el) {
+    const mj = window.MathJax;
+    if (!el || !mj || typeof mj.typesetPromise !== "function") return Promise.resolve(false);
+    const ready = mj.startup && mj.startup.promise ? mj.startup.promise : Promise.resolve();
+    return ready.then(() => mj.typesetPromise([ el ]).then(() => true).catch(() => false));
+  }
   function $sel$1(sel) {
     return root$5.querySelector(sel);
   }
@@ -1175,7 +1205,7 @@
       const res = await agnesChat({
         messages: [ {
           role: "system",
-          content: SYSTEM_PROMPT$1
+          content: systemPrompt$1()
         }, ...history$2 ],
         stream: true,
         thinking: true,
@@ -1193,6 +1223,7 @@
       acc.content = res.content || acc.content;
       acc.reasoning = res.reasoning || acc.reasoning;
       aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml$1(acc.reasoning)}</div></details>` : "") + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
+      renderRich(aiBubble);
       history$2.push({
         role: "assistant",
         content: acc.content || "（无内容）"
@@ -1213,7 +1244,7 @@
       auto: true
     });
   }
-  // ---------------- Markdown 渲染（chat 面板也引用） ----------------
+  // ---------------- Markdown / 富媒体渲染 ----------------
     function safeLink(url = "") {
     try {
       const u = new URL(url, location.origin);
@@ -1221,12 +1252,41 @@
     } catch (_) {}
     return null;
   }
-  function mdToHtml(mdRaw = "") {
-    let md = escapeHtml$1(mdRaw).replace(/\r\n?/g, "\n");
-    md = md.replace(/```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (_, lang, code) => {
-      const l = lang ? ` data-lang="${lang}"` : "";
-      return `<pre class="ykt-md-code"><code${l}>${code}</code></pre>`;
+  /** 清洗 AI 产出的 HTML/SVG：去除脚本、事件属性与 javascript: 协议 */  function sanitizeHtml(html) {
+    try {
+      const doc = (new DOMParser).parseFromString(String(html), "text/html");
+      doc.querySelectorAll("script, style, iframe, object, embed, link, meta, base, form").forEach(n => n.remove());
+      doc.querySelectorAll("*").forEach(n => {
+        for (const a of [ ...n.attributes ]) {
+          const name = a.name.toLowerCase();
+          const val = String(a.value || "");
+          if (name.startsWith("on")) {
+            n.removeAttribute(a.name);
+            continue;
+          }
+          if ((name === "href" || name === "src" || name === "xlink:href") && /^\s*javascript:/i.test(val)) n.removeAttribute(a.name);
+        }
+      });
+      return doc.body.innerHTML;
+    } catch {
+      return "";
+    }
+  }
+  /**
+   * Markdown → HTML。
+   * fenced 代码块先提取占位（```mermaid / ```svg / ```html 会渲染为可视化元素，
+   * 其余保持普通代码块），避免整体转义把可视化内容变成纯文本。
+   */  function mdToHtml(mdRaw = "") {
+    const blocks = [];
+    const raw = String(mdRaw ?? "");
+    const withPlaceholders = raw.replace(/```([a-zA-Z0-9_-]+)?[ \t]*\r?\n([\s\S]*?)```/g, (_, lang, code) => {
+      blocks.push({
+        lang: String(lang || "").toLowerCase(),
+        code: code.replace(/\n$/, "")
+      });
+      return `B${blocks.length - 1}`;
     });
+    let md = escapeHtml$1(withPlaceholders).replace(/\r\n?/g, "\n");
     md = md.replace(/`([^`]+?)`/g, (_, code) => `<code class="ykt-md-inline">${code}</code>`);
     md = md.replace(/^######\s+(.*)$/gm, "<h6>$1</h6>").replace(/^#####\s+(.*)$/gm, "<h5>$1</h5>").replace(/^####\s+(.*)$/gm, "<h4>$1</h4>").replace(/^###\s+(.*)$/gm, "<h3>$1</h3>").replace(/^##\s+(.*)$/gm, "<h2>$1</h2>").replace(/^#\s+(.*)$/gm, "<h1>$1</h1>");
     md = md.replace(/^(?:&gt;\s?.+(\n(?!\n).+)*)/gm, block => {
@@ -1244,14 +1304,24 @@
     md = md.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
     md = md.replace(/\*([^*]+?)\*/g, "<em>$1</em>");
     md = md.replace(/__([^_]+?)__/g, "<strong>$1</strong>");
-    md = md.replace(/_([^_]+?)_/g, "<em>$1</em>");
+    md = md.replace(/(^|[^\\])_([^_]+?)_/g, "$1<em>$2</em>");
     md = md.replace(/^\s*([-*_]){3,}\s*$/gm, "<hr/>");
     md = md.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, text, url) => {
       const safe = safeLink(url);
       if (!safe) return text;
       return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
     });
-    const lines = md.split("\n");
+    // 还原代码块占位符
+        md = md.replace(/\uE000B(\d+)\uE000/g, (_, i) => {
+      const b = blocks[Number(i)];
+      if (!b) return "";
+      const esc = escapeHtml$1(b.code);
+      if (b.lang === "mermaid") return `<div class="ykt-mermaid" data-raw="${escapeHtml$1(b.code).replace(/"/g, "&quot;")}"></div>`;
+      if (b.lang === "svg" || b.lang === "html") return `<div class="ykt-embed" data-raw="${escapeHtml$1(b.code).replace(/"/g, "&quot;")}"></div>`;
+      return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ""}>${esc}</code></pre>`;
+    });
+    // 段落包裹（占位符块按块级处理）
+        const lines = md.split("\n");
     const out = [];
     let buf = [];
     const flush = () => {
@@ -1259,7 +1329,7 @@
       out.push(`<p>${buf.join("<br/>")}</p>`);
       buf = [];
     };
-    const isBlock = s => /^(<h[1-6]|<ul>|<ol>|<pre |<blockquote>|<hr\/>|<p>|<table|<div)/.test(s);
+    const isBlock = s => /^(<h[1-6]|<ul>|<ol>|<pre |<blockquote>|<hr\/>|<p>|<table|<div|\uE000B\d+\uE001$)/.test(s.trim());
     for (const ln of lines) {
       if (!ln.trim()) {
         flush();
@@ -1272,6 +1342,63 @@
     }
     flush();
     return out.join("\n");
+  }
+  /**
+   * 富媒体后处理：把 mdToHtml 产出的可视化占位渲染出来 + MathJax 公式。
+   * - .ykt-mermaid → mermaid 图（按需加载 CDN，失败回退显示源码）
+   * - .ykt-embed   → sanitize 后的 HTML/SVG
+   * - $...$ 公式   → MathJax（ui.config.iftex 开启时）
+   */  async function renderRich(el) {
+    if (!el) return;
+    try {
+      // 1) mermaid
+      const mermaidEls = [ ...el.querySelectorAll(".ykt-mermaid[data-raw]") ];
+      if (mermaidEls.length) try {
+        const mermaid = await ensureMermaid();
+        for (const node of mermaidEls) {
+          const src = node.getAttribute("data-raw") || "";
+          try {
+            const {svg: svg} = await mermaid.render(`ykmmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, src);
+            const wrap = document.createElement("div");
+            wrap.className = "ykt-mermaid-render";
+            wrap.innerHTML = sanitizeHtml(svg);
+            node.replaceWith(wrap);
+          } catch (e) {
+            log.warn("[Rich] mermaid 渲染失败，显示源码:", e?.message);
+            const pre = document.createElement("pre");
+            pre.className = "ykt-md-code";
+            pre.textContent = src;
+            node.replaceWith(pre);
+          }
+        }
+      } catch (e) {
+        log.warn("[Rich] mermaid 加载失败:", e?.message);
+        mermaidEls.forEach(node => {
+          const pre = document.createElement("pre");
+          pre.className = "ykt-md-code";
+          pre.textContent = node.getAttribute("data-raw") || "";
+          node.replaceWith(pre);
+        });
+      }
+      // 2) svg/html 嵌入
+            for (const node of [ ...el.querySelectorAll(".ykt-embed[data-raw]") ]) {
+        const raw = node.getAttribute("data-raw") || "";
+        node.innerHTML = sanitizeHtml(raw);
+        node.removeAttribute("data-raw");
+      }
+      // 3) mermaid 容器清理 data-raw（已渲染）
+            el.querySelectorAll(".ykt-mermaid[data-raw]").forEach(n => n.removeAttribute("data-raw"));
+      // 4) MathJax
+            if (ui?.config?.iftex) {
+        const ok = await ensureMathJax();
+        if (ok) {
+          el.classList.add("tex-enabled");
+          await typesetTexIn(el);
+        }
+      }
+    } catch (e) {
+      log.warn("[Rich] renderRich 失败:", e);
+    }
   }
   var tpl$5 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.selected {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 */\n    #ykt-filter-problems {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // src/core/pdf-export.js
@@ -2397,7 +2524,7 @@
     let streaming = false;
  // 防并发发送
     let abortCtrl = null;
-  const SYSTEM_PROMPT = [ "你是「YuketangStudio」雨课堂学习助手，帮助学生理解课堂 PPT 与回答课程相关问题。", "规则：", "1) 用户消息可能附带当前 PPT 页截图，回答时优先结合图片内容；", "2) 回答使用简体中文，简洁准确，适当使用 Markdown（列表/粗体/公式用 $...$）；", "3) 若是数学/算法题，给出思路与关键步骤，不要只给结论；", "4) 图片无法识别时直接说明，不要编造。" ].join("\n");
+  const systemPrompt = () => String(ui?.config?.systemPromptChat || "").trim() || DEFAULT_SYSTEM_PROMPT_CHAT;
   function $sel(sel) {
     return root$3.querySelector(sel);
   }
@@ -2582,7 +2709,7 @@
       const res = await agnesChat({
         messages: [ {
           role: "system",
-          content: SYSTEM_PROMPT
+          content: systemPrompt()
         }, ...history$1 ],
         stream: true,
         thinking: true,
@@ -2599,6 +2726,7 @@
       acc.content = res.content || acc.content;
       acc.reasoning = res.reasoning || acc.reasoning;
       aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : "") + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
+      renderRich(aiBubble);
       history$1.push({
         role: "assistant",
         content: acc.content || "（无内容）"
@@ -2622,7 +2750,7 @@
       "'": "&#39;"
     }[c]));
   }
-  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 预设模板 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-preset-select">快速预设：</label>\n          <select id="ykt-ai-preset-select">\n            <option value="">-- 选择预设模板 --</option>\n            <option value="longcat-flash">LongCat Flash (通用对话)</option>\n            <option value="longcat-omni">LongCat Omni (多模态) [测试中]</option>\n            <option value="longcat-thinking">LongCat Thinking (深度思考)</option>\n            <option value="kimi">Kimi (Moonshot)</option>\n            <option value="openai">OpenAI GPT-4o</option>\n            <option value="deepseek">DeepSeek</option>\n          </select>\n          <small>选择预设后自动填充配置，仍需手动输入 API Key</small>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">\n          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">文本模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-vision-model">图像模型 ID:</label>\n          <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <div class="setting-item">\n          <label>自定义提示音（其一即可）</label>\n          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n            <button id="ykt-btn-apply-audio-url">应用URL</button>\n            <button id="ykt-btn-preview-audio">预览</button>\n            <button id="ykt-btn-clear-audio">清除自定义音频</button>\n          </div>\n          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 预设模板 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-preset-select">快速预设：</label>\n          <select id="ykt-ai-preset-select">\n            <option value="">-- 选择预设模板 --</option>\n            <option value="longcat-flash">LongCat Flash (通用对话)</option>\n            <option value="longcat-omni">LongCat Omni (多模态) [测试中]</option>\n            <option value="longcat-thinking">LongCat Thinking (深度思考)</option>\n            <option value="kimi">Kimi (Moonshot)</option>\n            <option value="openai">OpenAI GPT-4o</option>\n            <option value="deepseek">DeepSeek</option>\n          </select>\n          <small>选择预设后自动填充配置，仍需手动输入 API Key</small>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">\n          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">文本模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-vision-model">图像模型 ID:</label>\n          <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <div class="setting-item">\n          <label>自定义提示音（其一即可）</label>\n          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n            <button id="ykt-btn-apply-audio-url">应用URL</button>\n            <button id="ykt-btn-preview-audio">预览</button>\n            <button id="ykt-btn-clear-audio">清除自定义音频</button>\n          </div>\n          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // settings.js (new version)
     let mounted$2 = false;
   let root$2;
@@ -2746,6 +2874,36 @@
     // 初始化 Profile 下拉框
         refreshProfileSelect();
     loadProfileToForm(ui.config.ai.activeProfileId);
+    // === 提示词设置（空 = 内置默认；可编辑可恢复） ===
+        const $promptChat = root$2.querySelector("#ykt-prompt-chat");
+    const $promptAI = root$2.querySelector("#ykt-prompt-ai");
+    const fillPrompts = () => {
+      if ($promptChat) $promptChat.value = String(ui.config.systemPromptChat ?? "").trim() || DEFAULT_SYSTEM_PROMPT_CHAT;
+      if ($promptAI) $promptAI.value = String(ui.config.systemPromptAI ?? "").trim() || DEFAULT_SYSTEM_PROMPT_AI;
+    };
+    const savePrompts = () => {
+      if ($promptChat) ui.config.systemPromptChat = $promptChat.value.trim() === DEFAULT_SYSTEM_PROMPT_CHAT.trim() ? "" : $promptChat.value;
+      if ($promptAI) ui.config.systemPromptAI = $promptAI.value.trim() === DEFAULT_SYSTEM_PROMPT_AI.trim() ? "" : $promptAI.value;
+      ui.saveConfig();
+    };
+    // 编辑即暂存（blur 由通用自动保存覆盖不了 textarea value 判空逻辑，这里显式处理）
+        $promptChat?.addEventListener("change", savePrompts);
+    $promptAI?.addEventListener("change", savePrompts);
+    // 恢复默认 = 直接填入默认值并落盘（空串 → 运行时走内置常量）
+        root$2.querySelector("#ykt-prompt-chat-reset")?.addEventListener("click", () => {
+      ui.config.systemPromptChat = "";
+      ui.saveConfig();
+      if ($promptChat) $promptChat.value = DEFAULT_SYSTEM_PROMPT_CHAT;
+      ui.toast("PPT对话提示词已恢复默认", 2e3);
+    });
+    root$2.querySelector("#ykt-prompt-ai-reset")?.addEventListener("click", () => {
+      ui.config.systemPromptAI = "";
+      ui.saveConfig();
+      if ($promptAI) $promptAI.value = DEFAULT_SYSTEM_PROMPT_AI;
+      ui.toast("AI解答提示词已恢复默认", 2e3);
+    });
+    // 初始填充（后续切 tab 由 syncFormFromConfig 统一刷新）
+        fillPrompts();
     // === 解锁入口（低调：仅一行，位于设置最底部） ===
         const DEV_PROFILE_ID = "agnes-dev";
     const $devPass = root$2.querySelector("#ykt-devmode-pass");
@@ -2941,6 +3099,7 @@
       $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5e3) / 1e3);
       $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? .6));
       $audioName.textContent = ui.config.customNotifyAudioName ? `当前：${ui.config.customNotifyAudioName}` : "当前：使用内置“叮-咚”提示音";
+      fillPrompts();
     }
     // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
         root$2.__yksOnShow = syncFormFromConfig;

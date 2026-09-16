@@ -3,8 +3,9 @@
 import tpl from './chat.html';
 import { ui } from '../ui-api.js';
 import { agnesChat } from '../../ai/agnes.js';
-import { mdToHtml } from './ai.js';
+import { mdToHtml, renderRich } from './ai.js';
 import { resolveCurrentSlideImage } from '../slide-image.js';
+import { DEFAULT_SYSTEM_PROMPT_CHAT } from '../../core/types.js';
 
 let mounted = false;
 let root;
@@ -13,14 +14,7 @@ let history = [];           // OpenAI 格式消息
 let streaming = false;      // 防并发发送
 let abortCtrl = null;
 
-const SYSTEM_PROMPT = [
-  '你是「YuketangStudio」雨课堂学习助手，帮助学生理解课堂 PPT 与回答课程相关问题。',
-  '规则：',
-  '1) 用户消息可能附带当前 PPT 页截图，回答时优先结合图片内容；',
-  '2) 回答使用简体中文，简洁准确，适当使用 Markdown（列表/粗体/公式用 $...$）；',
-  '3) 若是数学/算法题，给出思路与关键步骤，不要只给结论；',
-  '4) 图片无法识别时直接说明，不要编造。',
-].join('\n');
+const systemPrompt = () => String(ui?.config?.systemPromptChat || '').trim() || DEFAULT_SYSTEM_PROMPT_CHAT;
 
 function $sel(sel) { return root.querySelector(sel); }
 
@@ -216,7 +210,7 @@ async function sendCurrent() {
 
     abortCtrl = new AbortController();
     const res = await agnesChat({
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history],
+      messages: [{ role: "system", content: systemPrompt() }, ...history],
       stream: true,
       thinking: true,
       signal: abortCtrl.signal,
@@ -229,6 +223,7 @@ async function sendCurrent() {
     aiBubble.innerHTML =
       (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : '')
       + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
+    renderRich(aiBubble);
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {
