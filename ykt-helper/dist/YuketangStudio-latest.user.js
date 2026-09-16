@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.1.1
+// @version      0.2.0
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
+// @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
 // @match        https://pro.yuketang.cn/web/*
 // @match        https://pro.yuketang.cn/web
 // @match        https://changjiang.yuketang.cn/web/*
@@ -2100,6 +2100,8 @@
     $$2("#ykt-import-history")?.addEventListener("click", openHistoryImporter);
     mounted$5 = true;
     L("mountPresentationPanel 完成");
+    // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
+        host.__yksOnShow = () => updatePresentationList();
     return host;
   }
   /** 跟随高亮：把 active 标到当前页缩略图上并滚动到可见 */  function updateFollowHighlight() {
@@ -3499,7 +3501,7 @@
     // 每次打开时从 config 重新拉取（解锁开发者模式、其他面板改配置后保持一致）
         if (visible) panel.__yksOnShow?.();
   }
-  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 使用教程</h3>\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>版本</h4>\n      <p class="ykt-tutorial-version">…</p>\n\n      <h4>项目介绍</h4>\n      <p>YuketangStudio 是一个为雨课堂提供辅助功能的工具：PPT 提取导出、答题提醒、AI 解答、PPT 多轮对话。</p>\n      <p>项目仓库：<a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">GitHub</a></p>\n      <p>安装：本脚本通过源码构建分发，未上架任何脚本市场，安装方式见仓库 README。</p>\n\n      <h4>主面板</h4>\n      <p>点击工具栏左侧第一个按钮（<i class="fas fa-briefcase"></i>）打开主面板，左侧标签切换功能：</p>\n      <ul>\n        <li><b>💬 PPT对话</b>：截取当前 PPT 页与 AI 多轮连续追问（思考链可折叠，流式输出）。</li>\n        <li><b>🤖 AI解答</b>：对当前题目提取文字/选项，可选附图询问 AI。</li>\n        <li><b>📑 课件</b>：浏览课堂幻灯片；「📥 历史课件」可从往期课堂报告一键导出横屏 PDF（自动去重）。</li>\n        <li><b>📋 题目列表</b>：查看本课所有题目与状态。</li>\n        <li><b>⚙️ 设置</b>：AI 配置、自动作答与提醒参数。</li>\n        <li><b>❓ 教程</b>：本页。</li>\n      </ul>\n\n      <h4>工具栏快捷开关</h4>\n      <ul>\n        <li><i class="fas fa-briefcase"></i> <b>主面板</b>：打开/关闭主面板。</li>\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：新习题出现时弹窗+提示音（蓝色=开启）。</li>\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\n      </ul>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) AI 解答需要调用 LLM API，注意费用；</p>\n      <p>3) AI 答案不保证正确；</p>\n      <p>4) 自动作答有风险，谨慎开启。</p>\n\n      <h4>致谢与反馈</h4>\n      <p>本项目基于 <a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">ZaytsevZY/yuketang-helper-auto</a> 重构而来。</p>\n      <p>问题反馈：<a href="https://github.com/RayMorTwinkle/YuketangStudio/issues" target="_blank" rel="noopener">GitHub Issues</a></p>\n    </div>\n  </div>\n</div>\n';
+  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 使用教程</h3>\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>版本</h4>\n      <p class="ykt-tutorial-version">…</p>\n\n      <h4>项目介绍</h4>\n      <p>YuketangStudio 是一个为雨课堂提供辅助功能的工具：PPT 提取导出、答题提醒、AI 解答、PPT 多轮对话。</p>\n      <p>项目仓库：<a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">GitHub</a></p>\n      <p>安装：本脚本通过源码构建分发，未上架任何脚本市场，安装方式见仓库 README。</p>\n\n      <h4>主面板</h4>\n      <p>点击工具栏左侧第一个按钮（<i class="fas fa-briefcase"></i>）打开主面板，左侧标签切换功能：</p>\n      <ul>\n        <li><b>💬 PPT对话</b>：像聊天一样对任何一页课件连续追问。左下 <b>＋</b> 可选择多张 PPT 页面或上传图片一起问；AI 回复中的 mermaid 流程图、表格、公式、HTML 片段会直接渲染成图。思考过程流式展开，正文出现后自动折叠。</li>\n        <li><b>🤖 AI解答</b>：自动识别当前题目页，题干文本 + 课件截图一起发给 AI。<b>输入留空点发送 = 解答此页</b>；输入内容则针对题目追问。提示词可在设置里自定义。</li>\n        <li><b>📑 课件</b>：「🎯 跟随当前页」默认开启——选中项自动跟着老师翻页；手动点缩略图会脱离跟随，点按钮恢复。「📝 只看题目页」筛选题目页。「整册下载(PDF)」永远导出全部页面（横屏零白边）。「📥 历史课件」支持多选批量下载往期课堂。</li>\n        <li><b>⚙️ 设置</b>：AI 配置、自动作答与提醒参数、提示词编辑（可恢复默认）。</li>\n        <li><b>❓ 教程</b>：本页。</li>\n      </ul>\n\n      <h4>工具栏快捷开关</h4>\n      <ul>\n        <li><i class="fas fa-briefcase"></i> <b>主面板</b>：打开/关闭主面板。</li>\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：新习题出现时弹窗+提示音（蓝色=开启）。</li>\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\n      </ul>\n\n      <h4>小技巧</h4>\n      <ul>\n        <li>AI 回复里出现 <b>```mermaid</b> 代码块会自动渲染成图；故意不写围栏的流程图文本也会被识别渲染。</li>\n        <li>排查问题时在控制台执行 <code>localStorage.setItem(\'yksDebug\',\'1\')</code> 后刷新，可看到全量日志。</li>\n        <li>历史课件批量下载时单节课失败不会中断整批，结束后有成功/失败汇总。</li>\n      </ul>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) AI 解答需要调用 LLM API，注意费用；</p>\n      <p>3) AI 答案不保证正确；</p>\n      <p>4) 自动作答有风险，谨慎开启。</p>\n\n      <h4>致谢与反馈</h4>\n      <p>本项目基于 <a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">ZaytsevZY/yuketang-helper-auto</a> 重构而来。</p>\n      <p>问题反馈：<a href="https://github.com/RayMorTwinkle/YuketangStudio/issues" target="_blank" rel="noopener">GitHub Issues</a></p>\n    </div>\n  </div>\n</div>\n';
   // src/ui/panels/tutorial.js
     let mounted$1 = false;
   let root$1;
@@ -3509,8 +3511,8 @@
   function mountTutorialPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // 注入构建版本号（"0.1.1" 由 rollup 从 package.json 替换，单一来源）
-        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.1.1"}<`);
+    // 注入构建版本号（"0.2.0" 由 rollup 从 package.json 替换，单一来源）
+        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.2.0"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-tutorial-panel");
     $("#ykt-tutorial-close")?.addEventListener("click", () => showTutorialPanel(false));

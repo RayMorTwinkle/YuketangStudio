@@ -14,7 +14,7 @@ export const meta = `
 // @version      ${version}
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
+// @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
 // @match        https://pro.yuketang.cn/web/*
 // @match        https://pro.yuketang.cn/web
 // @match        https://changjiang.yuketang.cn/web/*
