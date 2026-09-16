@@ -3,7 +3,7 @@
   <h1>YuketangStudio</h1>
   <p><b>雨课堂学习增强助手</b> —— 让每一页课件都为你所用</p>
   <a href="https://github.com/RayMorTwinkle/YuketangStudio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/></a>
-  <img src="https://img.shields.io/badge/version-0.2.0-blue.svg" alt="版本"/>
+  <img src="https://img.shields.io/badge/version-0.2.1-blue.svg" alt="版本"/>
   <img src="https://img.shields.io/badge/platform-Tampermonkey-green.svg" alt="平台"/>
   <img src="https://img.shields.io/badge/学校-长江雨课堂%20%7C%20通用-orange.svg" alt="适配"/>
   <br/><br/>
@@ -55,15 +55,77 @@
   <p><i>PPT 对话：左下 ＋ 可添加 PPT 页面/上传图片；AI 回复中的图表与公式直接渲染</i></p>
 </div>
 
-## 📦 安装（30 秒）
+## 📦 安装（3 分钟）
 
-1. 给浏览器装上 [篡改猴 (Tampermonkey)](https://www.tampermonkey.net/) 扩展
-2. 点这里 → **[📥 一键安装 YuketangStudio](https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js)**，油猴会自动弹出安装界面，点「安装」
-3. 打开雨课堂网页版，左下角出现工具栏就成功了
+### 第一步：选一个浏览器
 
-> 手动导入：下载 [`ykt-helper/dist/YuketangStudio-latest.user.js`](https://github.com/RayMorTwinkle/YuketangStudio/blob/main/ykt-helper/dist/YuketangStudio-latest.user.js)，在篡改猴「实用工具 → 导入」或新建脚本粘贴。
+| 平台 | 推荐 | 说明 |
+|---|---|---|
+| **电脑** | **Chrome（谷歌浏览器）**、**Edge（微软浏览器）** | 两者都原生支持篡改猴扩展；Edge 是 Windows 自带，不用额外下载，**新手最省事** |
+| **手机** | **Edge（安卓）** | 手机端极少有浏览器支持扩展，Edge 安卓版是目前最靠谱的选择（详见下方手机教程） |
+
+> Firefox 同样支持篡改猴，但扩展安装与 Chrome 系略有差异，本文以 Chrome / Edge 为准。
+
+### 第二步：安装篡改猴（Tampermonkey）
+
+篡改猴是一个「用户脚本管理器」，我们的脚本要装在它里面运行。
+
+#### 🖥 电脑端（Chrome / Edge）
+
+**方式 A：扩展商店（推荐，最简单）**
+
+1. 打开浏览器，访问扩展商店：
+   - Chrome：[Chrome 应用商店 - 篡改猴](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
+   - Edge：[Edge 加载项 - 篡改猴](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
+2. 点击「添加到 Chrome」/「获取」→ 弹窗点「添加扩展」
+3. 地址栏右侧出现一个**灰色/黑色的猴子图标**，就装好了
+
+> ⚠️ **国内网络提示**：如果 Chrome 应用商店打不开或一直转圈，说明网络无法访问 Google 服务。此时请用下面的**方式 B**，或改在 Edge 上安装（Edge 商店在国内可直连，这是 Edge 的最大优势）。
+
+**方式 B：离线安装（商店打不开时用）**
+
+1. 在国内镜像站（如 [Crx4Chrome](https://www.crx4chrome.com/crx/1200/) 或 [扩展迷](https://www.extfans.com/)）搜索 `Tampermonkey`，下载 `.crx` 文件
+2. 在 Chrome 地址栏输入 `chrome://extensions` 回车（Edge 输入 `edge://extensions`）
+3. 打开右上角的「**开发者模式**」开关
+4. 把下载的 `.crx` 文件**直接拖进这个页面** → 松手 → 点「添加扩展」
+
+> 💡 提示：Chrome 从新版开始会拦截商店外安装的扩展。如果拖拽后提示「无法安装」，改用 Edge 方式 A，或用 Firefox 安装（Firefox 的 `about:debugging` 可直接加载本地扩展）。
+
+**安装后必做的一步**：点击扩展详情 → 确认「**允许访问文件网址**」和「**开发者模式**」处于开启状态（部分浏览器需要，用于让脚本在页面上正常工作）。
+
+#### 📱 手机端（Edge 安卓版）
+
+手机端能用篡改猴的浏览器极少，**Edge 安卓版是目前最省事的选择**（2025 年 3 月起微软为安卓版 Edge 提供了专属扩展页，内置篡改猴）：
+
+1. 在应用商店（或 [Edge 官网](https://www.microsoft.com/edge)）安装 **Microsoft Edge**
+2. 打开 Edge，点**右下角的「···」菜单**
+3. 在菜单里找到「**扩展**」（Extensions，部分版本在「···」→「设置」附近）
+4. 在扩展列表里找到 **Tampermonkey**，点「安装」/「获取」
+5. 授权后，地址栏旁边会出现猴子图标
+
+> 如果菜单里找不到「扩展」：说明 Edge 版本过低，请在应用商店更新到最新版（要求版本号 ≥ 90，实际建议用最新版）。
 >
-> 从源码构建：`git clone` → `cd ykt-helper` → `npm i` → `npm run check`（lint + 构建 + 测试一条龙）。
+> 其他可行方案：**Firefox 安卓版**（官方支持篡改猴）、**Kiwi Browser**（基于 Chromium，可直接装 Chrome 扩展）。不推荐用手机自带浏览器或微信内置浏览器——它们基本都不支持扩展。
+
+### 第三步：安装 YuketangStudio 脚本
+
+点这里 → **[📥 一键安装 YuketangStudio](https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js)**
+
+浏览器会打开脚本源码，篡改猴自动弹出**安装界面**，点「安装」即可。
+
+> 如果没弹出安装界面：说明篡改猴没装好或未启用。回到上一步检查猴子图标是否存在、是否为彩色（灰色=已禁用）。
+>
+> 手动导入：下载 [`ykt-helper/dist/YuketangStudio-latest.user.js`](https://github.com/RayMorTwinkle/YuketangStudio/blob/main/ykt-helper/dist/YuketangStudio-latest.user.js)，在篡改猴面板「实用工具 → 从文件导入」选择它。
+
+### 第四步：在手机上打开雨课堂
+
+**这是手机端最关键的一步**：雨课堂手机端会**自动跳转到移动版页面**（功能受限，我们的脚本不工作在移动版上）。需要强制它显示桌面版：
+
+**Edge 安卓版**：打开雨课堂后 → 点「···」菜单 → 勾选「**请求桌面网站**」(Request desktop site) → 页面刷新为桌面版
+
+然后照常登录、进入课堂，左下角出现工具栏就成功了。
+
+> 📌 我们已针对手机屏幕做了专门适配：工具栏自动变纵向大按钮、主面板 tab 移到顶部、内容区铺满屏宽（详见下方「手机端体验」）。
 
 ## 📖 使用教程
 
@@ -90,6 +152,33 @@
 ### 下课后
 
 **📑 课件 → 📥 历史课件**：勾选任意多节课（支持全选）→「⬇️ 下载选中」→ 喝口水，PDF 逐个自动生成。单节课失败不会中断整批，最后给出成功/失败汇总。
+
+### 📱 手机端体验
+
+手机端（Edge 安卓 + 请求桌面网站）界面会自动切换为触控友好布局：
+
+<div align="center">
+  <img src="static/mobile-shell.png" width="320" alt="手机端主面板"/>
+  <p><i>手机端：tab 移到顶部横向排列，内容区铺满屏宽</i></p>
+</div>
+
+- **工具栏**：从横排变为纵排，每个按钮放大到 40×40，方便拇指点击
+- **主面板**：侧栏 tab 转为顶部横排图标条，内容区从 ~220px 扩大到 ~372px
+- **课件面板**：列表与预览改为上下单列堆叠，不再左右挤压
+- **触控优化**：所有按钮、缩略图、tab 项的高度都放大到 ≥40px（移动端可点标准）
+
+> 手机端同样支持全部功能（AI 解答、PPT 对话、课件导出 PDF、历史课件批量下载）。导出 PDF 时手机会提示下载，用系统 PDF 阅读器打开即可。
+
+### 从源码构建
+
+```bash
+git clone https://github.com/RayMorTwinkle/YuketangStudio.git
+cd YuketangStudio/ykt-helper
+npm i
+npm run check     # lint + 构建 + 三组回归测试
+```
+
+产物在 `ykt-helper/dist/`（`YuketangStudio-latest.user.js` 始终指向最新构建）。
 
 ---
 
