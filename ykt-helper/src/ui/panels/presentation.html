@@ -34,8 +34,9 @@
       min-width: 36px;
       text-align: right;
     }
-    /* 题目页筛选开关 */
-    #ykt-filter-problems {
+    /* 题目页筛选开关 / 跟随当前页开关 */
+    #ykt-filter-problems,
+    #ykt-follow-current {
       border: 1px solid var(--ykt-border-strong, #ccc);
       background: #f7f8fa;
       border-radius: 6px;
@@ -44,7 +45,8 @@
       font-size: 12px;
       color: var(--ykt-fg, #222);
     }
-    #ykt-filter-problems.active {
+    #ykt-filter-problems.active,
+    #ykt-follow-current.active {
       background: #1d63df;
       border-color: #1d63df;
       color: #fff;
@@ -53,6 +55,7 @@
   <div class="panel-header">
     <h3>课件查看</h3>
     <div class="panel-controls">
+      <button id="ykt-follow-current" title="选中项自动跟随课堂翻页；手动选择页面会脱离跟随">🎯 跟随当前页</button>
       <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>
       <button id="ykt-download-pdf">整册下载(PDF)</button>
       <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>

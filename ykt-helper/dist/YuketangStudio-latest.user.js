@@ -1449,7 +1449,7 @@
     }).catch(e => log.warn("[Rich] marked 预热失败", e?.message));
     ensureDOMPurify().catch(e => log.warn("[Rich] DOMPurify 预热失败", e?.message));
   }
-  var tpl$5 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.selected {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 */\n    #ykt-filter-problems {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$5 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.selected {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 / 跟随当前页开关 */\n    #ykt-filter-problems,\n    #ykt-follow-current {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active,\n    #ykt-follow-current.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-follow-current" title="选中项自动跟随课堂翻页；手动选择页面会脱离跟随">🎯 跟随当前页</button>\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // src/core/pdf-export.js
   // 公共 PDF 导出：页面尺寸跟随图片实际宽高比（零白边），GM_xhr 下载图片绕 CORS
   /**
@@ -1887,6 +1887,8 @@
   let host;
   let staticReportReady = false;
  //已结束课程
+    let followCurrent = true;
+ // 跟随课堂翻页：true=选中项自动跟随当前页；用户手动点缩略图后脱离
     function findSlideAcrossPresentations(idStr) {
     for (const [, pres] of repo.presentations) {
       const arr = pres?.slides || [];
@@ -2068,12 +2070,62 @@
       L("切换 filterProblemsOnly =", ui.config.filterProblemsOnly);
       updatePresentationList();
     });
+    // 跟随当前页开关：开启时选中项自动跟随课堂翻页；手动点缩略图会脱离
+        const followBtn = $$2("#ykt-follow-current");
+    const syncFollowBtn = () => followBtn?.classList.toggle("active", followCurrent);
+    syncFollowBtn();
+    followBtn?.addEventListener("click", () => {
+      followCurrent = !followCurrent;
+      syncFollowBtn();
+      ui.toast(followCurrent ? "已跟随课堂翻页" : "已脱离跟随（点「回到当前页」恢复）", 1500);
+      if (followCurrent) {
+        updateFollowHighlight();
+        updateSlideView();
+      }
+    });
+    // 课堂翻页时（Vue watcher）：跟随模式自动高亮 + 滚动
+        waitForVueReady().then(() => {
+      watchMainPageChange(slideId => {
+        L("课堂翻页事件", {
+          slideId: slideId,
+          followCurrent: followCurrent
+        });
+        if (followCurrent) {
+          updateFollowHighlight();
+          updateSlideView();
+        } else renderFollowBadge();
+      });
+    }).catch(e => W("Vue 初始化失败，跟随功能降级:", e));
     $$2("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
     $$2("#ykt-import-history")?.addEventListener("click", openHistoryImporter);
     mounted$5 = true;
     L("mountPresentationPanel 完成");
     return host;
   }
+  /** 跟随高亮：把 active 标到当前页缩略图上并滚动到可见 */  function updateFollowHighlight() {
+    const listEl = document.getElementById("ykt-presentation-list");
+    if (!listEl) return;
+    const currentIdStr = getCurrentSlideId();
+    if (!currentIdStr) return;
+    let active = null;
+    for (const t of listEl.querySelectorAll(".slide-thumb")) {
+      const isActive = t.dataset.slideId === currentIdStr;
+      t.classList.toggle("active", isActive);
+      if (isActive) active = t;
+    }
+    active?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth"
+    });
+    L("跟随高亮", {
+      currentIdStr: currentIdStr
+    });
+  }
+  /** 面板顶部的小徽标：非跟随模式下提示当前课堂页码 */  function renderFollowBadge() {
+    const btn = document.getElementById("ykt-follow-current");
+    if (!btn) return;
+    // 按钮文案由 CSS/结构固定，这里不做额外渲染（跟随状态在按钮 active 类上）
+    }
   function showPresentationPanel(visible = true) {
     mountPresentationPanel();
     host.classList.toggle("visible", !!visible);
@@ -2202,6 +2254,11 @@
           if (s.problem.result) thumb.classList.add("answered");
         }
         thumb.addEventListener("click", () => {
+          // 用户手动选择 → 脱离跟随模式
+          if (followCurrent) {
+            followCurrent = false;
+            document.getElementById("ykt-follow-current")?.classList.remove("active");
+          }
           repo.currentPresentationId = presIdStr;
           repo.currentSlideId = slideIdStr;
           slidesWrap.querySelectorAll(".slide-thumb.active").forEach(el => el.classList.remove("active"));
@@ -2319,7 +2376,7 @@
     slideView.appendChild(cover);
     slideView.appendChild(problemView);
   }
-  /** 历史课件导入：列出该班级全部课堂 → 选择 → 开收集页自动导出 PDF */  async function openHistoryImporter() {
+  /** 历史课件导入：列出该班级全部课堂 → 多选 → 逐个自动收集导出 PDF */  async function openHistoryImporter() {
     const classId = currentClassId();
     if (!classId) return ui.toast("请先进入课程的「学习日志」页（含班级 ID），再使用历史课件导入");
     ui.toast("正在获取课堂列表…");
@@ -2330,49 +2387,97 @@
       return ui.toast("获取课堂列表失败：" + (e?.message || e));
     }
     if (!activities.length) return ui.toast("该班级没有可导入的课堂");
-    // 构建选择浮层
+    // 构建多选浮层
         const mask = document.createElement("div");
     mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
     box.style.cssText = "background:#fff;border-radius:10px;max-width:520px;max-height:70vh;overflow:auto;padding:16px 20px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);";
-    box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂</div>`;
+    box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂（可多选）</div>`;
+    const chosen = new Set;
+    const rowEls = [];
     for (const a of activities) {
       const d = new Date(a.create_time || 0);
       const t = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      const row = document.createElement("div");
-      row.style.cssText = "padding:9px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;";
-      row.innerHTML = `<span style="flex:1">${a.title || "未命名课堂"}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? " ✅" : ""}</span>`;
-      row.addEventListener("mouseenter", () => row.style.background = "#f0f4ff");
-      row.addEventListener("mouseleave", () => row.style.background = "");
-      row.addEventListener("click", () => {
-        mask.remove();
-        const bar = showImportProgressBar(a.title || "未命名课堂");
-        importHistoryLesson(classId, a, {
-          onProgress: p => {
-            if (p.phase === "error") {
-              bar.fail(p.text || "失败");
-              return;
-            }
-            const bits = [];
-            if (p.skipped) bits.push(`去重 ${p.skipped}`);
-            if (p.failed) bits.push(`失败 ${p.failed}`);
-            bar.update(p.pct, `${a.title || ""} ${p.pct}% · ${p.text || ""}${bits.length ? `（${bits.join("，")}）` : ""}`);
-          }
-        }).then(r => {
-          if (r?.ok) {
-            const bits = [ `${r.pages} 页` ];
-            if (r.skipped) bits.push(`去重 ${r.skipped} 页`);
-            if (r.failed) bits.push(`失败 ${r.failed} 页`);
-            bar.done(`✅「${r.title}」完成：${bits.join("，")}，PDF 已下载`);
-            ui.toast(`✅「${r.title}」导出成功：${bits.join("，")}`);
-          } else bar.fail(r?.error || "未知错误");
-        }).catch(e => {
-          bar.fail(e?.message || e);
-          ui.toast("❌ " + (e?.message || e));
-        });
+      const row = document.createElement("label");
+      row.style.cssText = "padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;";
+      row.innerHTML = `<input type="checkbox" data-id="${a.id}" style="flex:0 0 auto"><span style="flex:1">${a.title || "未命名课堂"}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? " ✅" : ""}</span>`;
+      const cb = row.querySelector("input");
+      cb.addEventListener("change", () => {
+        if (cb.checked) chosen.add(a); else chosen.delete(a);
+        downloadBtn.textContent = chosen.size ? `⬇️ 下载选中 (${chosen.size})` : "⬇️ 下载选中";
+        downloadBtn.style.opacity = chosen.size ? "1" : ".5";
       });
+      rowEls.push(row);
       box.appendChild(row);
     }
+    // 全选/清空
+        const selectBar = document.createElement("div");
+    selectBar.style.cssText = "display:flex;gap:8px;margin:6px 0;";
+    const mkSel = (text, all) => {
+      const b = document.createElement("button");
+      b.textContent = text;
+      b.style.cssText = "flex:1;padding:5px;border:1px solid #e5e7eb;border-radius:6px;background:#f7f8fa;cursor:pointer;font-size:12px;";
+      b.addEventListener("click", () => {
+        chosen.clear();
+        for (const row of rowEls) {
+          const cb = row.querySelector("input");
+          cb.checked = all;
+          if (all) {
+            const a = activities.find(x => String(x.id) === cb.dataset.id);
+            if (a) chosen.add(a);
+          }
+        }
+        downloadBtn.textContent = chosen.size ? `⬇️ 下载选中 (${chosen.size})` : "⬇️ 下载选中";
+        downloadBtn.style.opacity = chosen.size ? "1" : ".5";
+      });
+      return b;
+    };
+    selectBar.appendChild(mkSel("全选", true));
+    selectBar.appendChild(mkSel("清空", false));
+    box.appendChild(selectBar);
+    // 下载按钮
+        const downloadBtn = document.createElement("button");
+    downloadBtn.textContent = "⬇️ 下载选中";
+    downloadBtn.style.cssText = "width:100%;padding:9px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-size:14px;font-weight:600;cursor:pointer;opacity:.5;";
+    downloadBtn.addEventListener("click", async () => {
+      const list = [ ...chosen ];
+      if (!list.length) return ui.toast("请先勾选要下载的课堂", 2e3);
+      mask.remove();
+      const bar = showImportProgressBar(`批量 ${list.length} 个课堂`);
+      const okList = [], failList = [];
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i];
+        bar.update(Math.round(i / list.length * 100), `(${i + 1}/${list.length}) ${a.title || "未命名课堂"} · 打开收集页…`);
+        try {
+          const r = await importHistoryLesson(classId, a, {
+            onProgress: p => {
+              if (p.phase === "error") {
+                bar.update(Math.round((i + .9) / list.length * 100), `(${i + 1}/${list.length}) ${p.text || "失败"}`);
+                return;
+              }
+              // 混合进度：前 i 个已完成 + 当前课件的 pct
+                            const overall = Math.round((i + (p.pct || 0) / 100) / list.length * 100);
+              const bits = [];
+              if (p.skipped) bits.push(`去重 ${p.skipped}`);
+              if (p.failed) bits.push(`失败 ${p.failed}`);
+              bar.update(overall, `(${i + 1}/${list.length}) ${p.text || ""}${bits.length ? ` · ${bits.join("，")}` : ""}`);
+            }
+          });
+          if (r?.ok) {
+            okList.push(r.title || a.title || "未命名");
+            ui.toast(`✅「${r.title || a.title}」完成：${r.pages} 页${r.skipped ? `（去重 ${r.skipped}）` : ""}`, 2500);
+          } else failList.push(`${a.title || "未命名"}：${r?.error || "未知错误"}`);
+        } catch (e) {
+          failList.push(`${a.title || "未命名"}：${e?.message || e}`);
+        }
+      }
+      // 汇总
+            const summary = [ `完成 ${okList.length} 个，失败 ${failList.length} 个` ];
+      if (failList.length) summary.push(`失败明细：${failList.join("；")}`);
+      if (okList.length) bar.done(`✅ 批量导入完成：${summary[0]}`); else bar.fail(summary.join("  "));
+      ui.toast(summary[0], 4e3);
+    });
+    box.appendChild(downloadBtn);
     const closeBtn = document.createElement("div");
     closeBtn.textContent = "取消";
     closeBtn.style.cssText = "text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;";
@@ -2563,7 +2668,7 @@
     if (!hasActiveProblems) root$4.style.display = "none"; else root$4.style.display = "";
   }
   var tpl$3 = '<div id="ykt-shell-panel" class="ykt-panel ykt-shell">\n  <style>\n    #ykt-shell-panel { display: none; flex-direction: column;\n      width: min(760px, calc(100vw - 48px));       /* 窄窗口不溢出 */\n      height: min(78vh, calc(100vh - 140px));      /* 留出工具栏与边距 */\n      max-height: calc(100vh - 120px);\n      padding: 0; }\n    #ykt-shell-panel.visible { display: flex; }\n    .ykt-shell-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--ykt-border, #ddd); }\n    .ykt-shell-header .shell-title { font-weight: 600; font-size: 14px; color: var(--ykt-accent, #1d63df); flex: 1; }\n    .ykt-shell-header .shell-close { cursor: pointer; color: #607190; padding: 2px 6px; }\n    .ykt-shell-header .shell-close:hover { color: #222; }\n    .ykt-shell-body { flex: 1; display: flex; min-height: 0; }\n    .ykt-shell-tabs { width: 118px; border-right: 1px solid var(--ykt-border, #ddd); padding: 8px 6px; display: flex; flex-direction: column; gap: 2px; background: #f7f9fc; }\n    .ykt-shell-tab { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: #44506b; font-size: 13px; user-select: none; }\n    .ykt-shell-tab:hover { background: #eaeffa; }\n    .ykt-shell-tab.active { background: var(--ykt-accent, #1d63df); color: #fff; }\n    .ykt-shell-tab i { width: 16px; text-align: center; }\n    .ykt-shell-content { flex: 1; overflow: hidden; position: relative; display: flex; }\n    /* 迁移进来的原面板：从 fixed 弹窗变为 tab 内容。\n       display 交给面板自身规则（chat 需 flex，其余 block），shell 只负责： */\n    #ykt-shell-content > .ykt-panel {\n      position: static !important;\n      width: 100% !important; max-height: none !important; height: 100% !important;\n      border: none !important; box-shadow: none !important; border-radius: 0 !important;\n      overflow: hidden;               /* 滚动交给内部区域，避免双层滚动条 */\n    }\n    /* 对话类面板：log 区在 shell 内撑满可用高度，消除底部空白 */\n    #ykt-shell-content #ykt-chat-log,\n    #ykt-shell-content #ykt-ai-log { flex: 1 1 auto; max-height: none; min-height: 120px; }\n    #ykt-shell-content #ykt-chat-panel .panel-body,\n    #ykt-shell-content #ykt-ai-answer-panel .panel-body { flex: 1; min-height: 0; }\n    /* 课件面板在 shell 内填满：两列各自滚动，不再受独立弹窗的 72vh 限制 */\n    #ykt-shell-content #ykt-presentation-panel .panel-body { height: 100%; grid-template-columns: minmax(220px, 300px) 1fr; }\n    #ykt-shell-content #ykt-presentation-panel .panel-left,\n    #ykt-shell-content #ykt-presentation-panel .panel-right { max-height: none; height: 100%; overflow: auto; position: static; }\n    #ykt-shell-content #ykt-presentation-panel .slide-view { max-height: none; height: auto; min-height: 240px; }\n    /* 设置面板在 shell 内整体滚动 */\n    #ykt-shell-content #ykt-settings-panel { overflow: auto; }\n    /* 非当前 tab 的面板无条件隐藏（压过面板自身 ID 样式） */\n    #ykt-shell-content > .ykt-panel:not(.active-tab) { display: none !important; }\n  </style>\n  <div class="ykt-shell-header">\n    <span class="shell-title"><i class="fas fa-briefcase"></i> YuketangStudio</span>\n    <span class="shell-close" id="ykt-shell-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="ykt-shell-body">\n    <div class="ykt-shell-tabs" id="ykt-shell-tabs"></div>\n    <div class="ykt-shell-content" id="ykt-shell-content"></div>\n  </div>\n</div>\n';
-  var tpl$2 = '<div id="ykt-chat-panel" class="ykt-panel">\n  <style>\n    #ykt-chat-panel { display: none; flex-direction: column; }\n    #ykt-chat-panel.visible { display: flex; }\n    #ykt-chat-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-chat-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 240px; max-height: 52vh; }\n    .ykt-chat-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-chat-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-chat-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-chat-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-chat-msg.ai p { margin: 0 0 6px; }\n    .ykt-chat-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-chat-msg.ai details { margin-bottom: 6px; }\n    .ykt-chat-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-chat-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    #ykt-chat-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    .ykt-chat-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-chat-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-chat-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-chat-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; }\n    #ykt-chat-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-chat-clear { padding: 3px 8px; font-size: 12px; }\n    .ykt-chat-msg.ai .err { color: #c0392b; }\n    .ykt-chat-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-chat-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n  </style>\n  <div class="panel-header">\n    <h3>💬 PPT 对话</h3>\n    <button id="ykt-chat-clear">清空会话</button>\n    <span class="close-btn" id="ykt-chat-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-chat-log"></div>\n    <div id="ykt-chat-ctx"><label><input type="checkbox" id="ykt-chat-attach" checked> 每条消息附带当前 PPT 页</label><span id="ykt-chat-ctx-thumb"></span></div>\n    <div class="ykt-chat-inputbar">\n      <textarea id="ykt-chat-input" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>\n      <button id="ykt-chat-send">发送</button>\n    </div>\n  </div>\n</div>\n';
+  var tpl$2 = '<div id="ykt-chat-panel" class="ykt-panel">\n  <style>\n    #ykt-chat-panel { display: none; flex-direction: column; }\n    #ykt-chat-panel.visible { display: flex; }\n    #ykt-chat-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-chat-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 240px; max-height: 52vh; }\n    .ykt-chat-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-chat-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-chat-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-chat-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-chat-msg.ai p { margin: 0 0 6px; }\n    .ykt-chat-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-chat-msg.ai details { margin-bottom: 6px; }\n    .ykt-chat-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-chat-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    #ykt-chat-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    .ykt-chat-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-chat-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-chat-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-chat-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; }\n    #ykt-chat-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-chat-clear { padding: 3px 8px; font-size: 12px; }\n    #ykt-chat-plus { width: 30px; height: 30px; border: 1px dashed var(--ykt-border-strong, #ccc); border-radius: 6px; background: #f7f8fa; cursor: pointer; font-size: 16px; color: #607190; flex: 0 0 auto; }\n    #ykt-chat-plus:hover { border-color: var(--ykt-accent, #1d63df); color: var(--ykt-accent, #1d63df); }\n    /* 附件预览条 */\n    #ykt-chat-atts { display: none; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-chat-atts .att { position: relative; width: 56px; height: 42px; border-radius: 4px; overflow: hidden; border: 1px solid #ddd; }\n    #ykt-chat-atts .att img { width: 100%; height: 100%; object-fit: cover; display: block; }\n    #ykt-chat-atts .att .rm { position: absolute; top: 0; right: 0; width: 16px; height: 16px; line-height: 14px; text-align: center; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 11px; border-radius: 0 0 0 4px; }\n    /* 加号菜单 */\n    #ykt-chat-plus-menu { position: fixed; z-index: 10000001; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 6px; display: none; flex-direction: column; min-width: 160px; }\n    #ykt-chat-plus-menu button { border: none; background: transparent; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }\n    #ykt-chat-plus-menu button:hover { background: #eef3ff; }\n    .ykt-chat-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-chat-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n  </style>\n  <div class="panel-header">\n    <h3>💬 PPT 对话</h3>\n    <button id="ykt-chat-clear">清空会话</button>\n    <span class="close-btn" id="ykt-chat-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-chat-log"></div>\n    <div id="ykt-chat-atts"></div>\n    <div id="ykt-chat-ctx"><label><input type="checkbox" id="ykt-chat-attach" checked> 每条消息附带当前 PPT 页</label><span id="ykt-chat-ctx-thumb"></span></div>\n    <div class="ykt-chat-inputbar">\n      <button id="ykt-chat-plus" title="添加 PPT 页面或图片">＋</button>\n      <textarea id="ykt-chat-input" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>\n      <button id="ykt-chat-send">发送</button>\n    </div>\n    <input type="file" id="ykt-chat-file" accept="image/*" multiple style="display:none">\n    <div id="ykt-chat-plus-menu">\n      <button id="ykt-chat-plus-slides">📑 选择 PPT 页面</button>\n      <button id="ykt-chat-plus-upload">🖼 上传图片</button>\n    </div>\n  </div>\n</div>\n';
   // src/ui/panels/chat.js
   // PPT 多轮对话面板：截取/读取当前 PPT 页 + 连续追问，思考链折叠显示，流式输出
     let mounted$3 = false;
@@ -2598,6 +2703,46 @@
         e.preventDefault();
         sendCurrent();
       }
+    });
+    // ── 加号菜单：选 PPT 页面 / 上传图片 ──
+        const $plus = $sel("#ykt-chat-plus");
+    const $menu = $sel("#ykt-chat-plus-menu");
+    const $file = $sel("#ykt-chat-file");
+    const hideMenu = () => {
+      if ($menu) $menu.style.display = "none";
+    };
+    $plus?.addEventListener("click", e => {
+      e.stopPropagation();
+      if (!$menu) return;
+      const on = $menu.style.display === "flex";
+      $menu.style.display = on ? "none" : "flex";
+      if (!on) {
+        const r = $plus.getBoundingClientRect();
+        $menu.style.left = `${r.left}px`;
+        $menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
+        $menu.style.top = "auto";
+      }
+    });
+    document.addEventListener("click", e => {
+      if ($menu && !$menu.contains(e.target) && e.target !== $plus) hideMenu();
+    });
+    $sel("#ykt-chat-plus-upload")?.addEventListener("click", () => {
+      hideMenu();
+      $file?.click();
+    });
+    $file?.addEventListener("change", e => {
+      for (const f of e.target.files || []) {
+        const reader = new FileReader;
+        reader.onload = () => {
+          addAttachment(reader.result);
+        };
+        reader.readAsDataURL(f);
+      }
+      $file.value = "";
+    });
+    $sel("#ykt-chat-plus-slides")?.addEventListener("click", () => {
+      hideMenu();
+      openSlidePicker();
     });
     mounted$3 = true;
     return root$3;
@@ -2677,6 +2822,106 @@
       abortCtrl.abort(reason);
     } catch {/* 旧浏览器不支持带参 abort */}
   }
+  // ---------------- 附件（手动添加的 PPT 页 / 上传图片） ----------------
+    let attachments = [];
+ // dataURL 列表
+    function addAttachment(dataUrl) {
+    if (!dataUrl) return;
+    attachments.push(dataUrl);
+    renderAttachments();
+  }
+  function removeAttachment(i) {
+    attachments.splice(i, 1);
+    renderAttachments();
+  }
+  function renderAttachments() {
+    const box = $sel("#ykt-chat-atts");
+    if (!box) return;
+    box.innerHTML = "";
+    box.style.display = attachments.length ? "flex" : "none";
+    attachments.forEach((src, i) => {
+      const d = document.createElement("div");
+      d.className = "att";
+      const img = document.createElement("img");
+      img.src = src;
+      const rm = document.createElement("span");
+      rm.className = "rm";
+      rm.textContent = "×";
+      rm.title = "移除";
+      rm.addEventListener("click", () => removeAttachment(i));
+      d.appendChild(img);
+      d.appendChild(rm);
+      box.appendChild(d);
+    });
+  }
+  /** PPT 页面多选浮层：从所有已收集课件里挑页，确认后加入附件 */  function openSlidePicker() {
+    const slides = [];
+    for (const [, pres] of repo.presentations) for (const s of pres?.slides || []) {
+      const url = slideImageUrl(s);
+      if (url) slides.push({
+        slide: s,
+        url: url,
+        presTitle: pres.title || ""
+      });
+    }
+    if (!slides.length) return ui.toast?.("暂无可选的 PPT 页面（先在课堂里翻页收集）", 2500);
+    const mask = document.createElement("div");
+    mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "background:#fff;border-radius:10px;max-width:640px;max-height:76vh;overflow:auto;padding:14px 16px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);";
+    box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:8px">📑 选择 PPT 页面（点击多选）</div>`;
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;";
+    const picked = new Set;
+    for (const {slide: slide, url: url} of slides) {
+      const cell = document.createElement("div");
+      cell.style.cssText = "border:2px solid #e5e7eb;border-radius:6px;overflow:hidden;cursor:pointer;position:relative;";
+      const img = document.createElement("img");
+      img.src = url;
+      img.style.cssText = "width:100%;height:80px;object-fit:cover;display:block;";
+      const idx = document.createElement("span");
+      idx.textContent = slide.index ?? "";
+      idx.style.cssText = "position:absolute;top:2px;left:2px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:1px 5px;border-radius:3px;";
+      cell.appendChild(img);
+      cell.appendChild(idx);
+      cell.addEventListener("click", () => {
+        if (picked.has(cell)) {
+          picked.delete(cell);
+          cell.style.borderColor = "#e5e7eb";
+        } else {
+          picked.add(cell);
+          cell.style.borderColor = "#1d63df";
+        }
+        confirmBtn.textContent = picked.size ? `✓ 添加 ${picked.size} 张` : "✓ 添加";
+      });
+      grid.appendChild(cell);
+      cell.__url = url;
+    }
+    box.appendChild(grid);
+    const confirmBtn = document.createElement("button");
+    confirmBtn.textContent = "✓ 添加";
+    confirmBtn.style.cssText = "width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-weight:600;cursor:pointer;";
+    confirmBtn.addEventListener("click", async () => {
+      mask.remove();
+      const cells = [ ...grid.children ].filter(c => picked.has(c));
+      ui.toast?.(`正在获取 ${cells.length} 张页面图片…`, 2e3);
+      for (const c of cells) try {
+        const dataUrl = await fetchAsDataURL(c.__url);
+        if (dataUrl) addAttachment(dataUrl);
+      } catch (e) {
+        log.warn("[Chat] 附件图片获取失败:", e?.message);
+      }
+      ui.toast?.("已加入附件，发送时一并传给 AI", 2e3);
+    });
+    box.appendChild(confirmBtn);
+    const cancel = document.createElement("div");
+    cancel.textContent = "取消";
+    cancel.style.cssText = "text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;";
+    cancel.addEventListener("click", () => mask.remove());
+    box.appendChild(cancel);
+    mask.appendChild(box);
+    document.body.appendChild(mask);
+  }
   async function sendCurrent() {
     if (streaming) return;
     const $input = $sel("#ykt-chat-input");
@@ -2707,6 +2952,13 @@
         // 明确告知用户本条没有附图，而不是静默降级
         attachFailed = reason || "未取到当前 PPT 页";
       }
+      // 手动附件（加号添加的 PPT 页 / 上传图片）
+            for (const att of attachments) content.push({
+        type: "image_url",
+        image_url: {
+          url: att
+        }
+      });
       history$1.push({
         role: "user",
         content: content
@@ -2727,6 +2979,9 @@
         userBubble.appendChild(warn);
       }
       $input.value = "";
+      attachments = [];
+ // 附件随消息发出，清空待下次添加
+            renderAttachments();
       // AI 气泡（流式）
             const aiBubble = addBubble("ai", "<em>思考中…</em>");
       const acc = {

@@ -5,10 +5,12 @@ import { actions } from '../../state/actions.js';
 import { ensureJsPDF, fetchAsDataURL } from '../../core/env.js';
 import { importHistoryLesson, fetchClassActivities, currentClassId } from '../../core/history-capture.js';
 import { log } from '../../core/log.js';
+import { waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 
 let mounted = false;
 let host;
 let staticReportReady = false; //已结束课程
+let followCurrent = true;      // 跟随课堂翻页：true=选中项自动跟随当前页；用户手动点缩略图后脱离
 
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
@@ -209,12 +211,62 @@ export function mountPresentationPanel() {
     updatePresentationList();
   });
 
+  // 跟随当前页开关：开启时选中项自动跟随课堂翻页；手动点缩略图会脱离
+  const followBtn = $('#ykt-follow-current');
+  const syncFollowBtn = () => followBtn?.classList.toggle('active', followCurrent);
+  syncFollowBtn();
+  followBtn?.addEventListener('click', () => {
+    followCurrent = !followCurrent;
+    syncFollowBtn();
+    ui.toast(followCurrent ? '已跟随课堂翻页' : '已脱离跟随（点「回到当前页」恢复）', 1500);
+    if (followCurrent) {
+      updateFollowHighlight();
+      updateSlideView();
+    }
+  });
+
+  // 课堂翻页时（Vue watcher）：跟随模式自动高亮 + 滚动
+  waitForVueReady().then(() => {
+    watchMainPageChange((slideId) => {
+      L('课堂翻页事件', { slideId, followCurrent });
+      if (followCurrent) {
+        updateFollowHighlight();
+        updateSlideView();
+      } else {
+        renderFollowBadge();
+      }
+    });
+  }).catch(e => W('Vue 初始化失败，跟随功能降级:', e));
+
   $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
   $('#ykt-import-history')?.addEventListener('click', openHistoryImporter);
 
   mounted = true;
   L('mountPresentationPanel 完成');
   return host;
+}
+
+/** 跟随高亮：把 active 标到当前页缩略图上并滚动到可见 */
+function updateFollowHighlight() {
+  const listEl = document.getElementById('ykt-presentation-list');
+  if (!listEl) return;
+  const currentIdStr = getCurrentSlideId();
+  if (!currentIdStr) return;
+  let active = null;
+  for (const t of listEl.querySelectorAll('.slide-thumb')) {
+    const isActive = t.dataset.slideId === currentIdStr;
+    t.classList.toggle('active', isActive);
+    if (isActive) active = t;
+  }
+  active?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  L('跟随高亮', { currentIdStr });
+}
+
+/** 面板顶部的小徽标：非跟随模式下提示当前课堂页码 */
+function renderFollowBadge() {
+  const btn = document.getElementById('ykt-follow-current');
+  if (!btn) return;
+  // 按钮文案由 CSS/结构固定，这里不做额外渲染（跟随状态在按钮 active 类上）
 }
 
 export function showPresentationPanel(visible = true) {
@@ -364,6 +416,11 @@ export function updatePresentationList() {
       }
 
       thumb.addEventListener('click', () => {
+        // 用户手动选择 → 脱离跟随模式
+        if (followCurrent) {
+          followCurrent = false;
+          document.getElementById('ykt-follow-current')?.classList.remove('active');
+        }
         repo.currentPresentationId = presIdStr;
         repo.currentSlideId = slideIdStr;
 
@@ -483,7 +540,7 @@ export function updateSlideView() {
   slideView.appendChild(problemView);
 }
 
-/** 历史课件导入：列出该班级全部课堂 → 选择 → 开收集页自动导出 PDF */
+/** 历史课件导入：列出该班级全部课堂 → 多选 → 逐个自动收集导出 PDF */
 async function openHistoryImporter() {
   const classId = currentClassId();
   if (!classId) {
@@ -498,47 +555,100 @@ async function openHistoryImporter() {
   }
   if (!activities.length) return ui.toast('该班级没有可导入的课堂');
 
-  // 构建选择浮层
+  // 构建多选浮层
   const mask = document.createElement('div');
   mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;';
   const box = document.createElement('div');
   box.style.cssText = 'background:#fff;border-radius:10px;max-width:520px;max-height:70vh;overflow:auto;padding:16px 20px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);';
-  box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂</div>`;
+  box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂（可多选）</div>`;
+  const chosen = new Set();
+  const rowEls = [];
   for (const a of activities) {
     const d = new Date(a.create_time || 0);
     const t = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const row = document.createElement('div');
-    row.style.cssText = 'padding:9px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;';
-    row.innerHTML = `<span style="flex:1">${a.title || '未命名课堂'}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? ' ✅' : ''}</span>`;
-    row.addEventListener('mouseenter', () => row.style.background = '#f0f4ff');
-    row.addEventListener('mouseleave', () => row.style.background = '');
-    row.addEventListener('click', () => {
-      mask.remove();
-      const bar = showImportProgressBar(a.title || '未命名课堂');
-      importHistoryLesson(classId, a, {
-        onProgress: (p) => {
-          if (p.phase === 'error') { bar.fail(p.text || '失败'); return; }
-          const bits = [];
-          if (p.skipped) bits.push(`去重 ${p.skipped}`);
-          if (p.failed) bits.push(`失败 ${p.failed}`);
-          bar.update(p.pct, `${a.title || ''} ${p.pct}% · ${p.text || ''}${bits.length ? `（${bits.join('，')}）` : ''}`);
-        },
-      })
-        .then(r => {
-          if (r?.ok) {
-            const bits = [`${r.pages} 页`];
-            if (r.skipped) bits.push(`去重 ${r.skipped} 页`);
-            if (r.failed) bits.push(`失败 ${r.failed} 页`);
-            bar.done(`✅「${r.title}」完成：${bits.join('，')}，PDF 已下载`);
-            ui.toast(`✅「${r.title}」导出成功：${bits.join('，')}`);
-          } else {
-            bar.fail(r?.error || '未知错误');
-          }
-        })
-        .catch(e => { bar.fail(e?.message || e); ui.toast('❌ ' + (e?.message || e)); });
+    const row = document.createElement('label');
+    row.style.cssText = 'padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;';
+    row.innerHTML = `<input type="checkbox" data-id="${a.id}" style="flex:0 0 auto"><span style="flex:1">${a.title || '未命名课堂'}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? ' ✅' : ''}</span>`;
+    const cb = row.querySelector('input');
+    cb.addEventListener('change', () => {
+      if (cb.checked) chosen.add(a); else chosen.delete(a);
+      downloadBtn.textContent = chosen.size ? `⬇️ 下载选中 (${chosen.size})` : '⬇️ 下载选中';
+      downloadBtn.style.opacity = chosen.size ? '1' : '.5';
     });
+    rowEls.push(row);
     box.appendChild(row);
   }
+  // 全选/清空
+  const selectBar = document.createElement('div');
+  selectBar.style.cssText = 'display:flex;gap:8px;margin:6px 0;';
+  const mkSel = (text, all) => {
+    const b = document.createElement('button');
+    b.textContent = text;
+    b.style.cssText = 'flex:1;padding:5px;border:1px solid #e5e7eb;border-radius:6px;background:#f7f8fa;cursor:pointer;font-size:12px;';
+    b.addEventListener('click', () => {
+      chosen.clear();
+      for (const row of rowEls) {
+        const cb = row.querySelector('input');
+        cb.checked = all;
+        if (all) {
+          const a = activities.find(x => String(x.id) === cb.dataset.id);
+          if (a) chosen.add(a);
+        }
+      }
+      downloadBtn.textContent = chosen.size ? `⬇️ 下载选中 (${chosen.size})` : '⬇️ 下载选中';
+      downloadBtn.style.opacity = chosen.size ? '1' : '.5';
+    });
+    return b;
+  };
+  selectBar.appendChild(mkSel('全选', true));
+  selectBar.appendChild(mkSel('清空', false));
+  box.appendChild(selectBar);
+  // 下载按钮
+  const downloadBtn = document.createElement('button');
+  downloadBtn.textContent = '⬇️ 下载选中';
+  downloadBtn.style.cssText = 'width:100%;padding:9px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-size:14px;font-weight:600;cursor:pointer;opacity:.5;';
+  downloadBtn.addEventListener('click', async () => {
+    const list = [...chosen];
+    if (!list.length) return ui.toast('请先勾选要下载的课堂', 2000);
+    mask.remove();
+    const bar = showImportProgressBar(`批量 ${list.length} 个课堂`);
+    const okList = [], failList = [];
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      bar.update(Math.round((i / list.length) * 100), `(${i + 1}/${list.length}) ${a.title || '未命名课堂'} · 打开收集页…`);
+      try {
+        const r = await importHistoryLesson(classId, a, {
+          onProgress: (p) => {
+            if (p.phase === 'error') { bar.update(Math.round(((i + 0.9) / list.length) * 100), `(${i + 1}/${list.length}) ${p.text || '失败'}`); return; }
+            // 混合进度：前 i 个已完成 + 当前课件的 pct
+            const overall = Math.round(((i + (p.pct || 0) / 100) / list.length) * 100);
+            const bits = [];
+            if (p.skipped) bits.push(`去重 ${p.skipped}`);
+            if (p.failed) bits.push(`失败 ${p.failed}`);
+            bar.update(overall, `(${i + 1}/${list.length}) ${p.text || ''}${bits.length ? ` · ${bits.join('，')}` : ''}`);
+          },
+        });
+        if (r?.ok) {
+          okList.push(r.title || a.title || '未命名');
+          ui.toast(`✅「${r.title || a.title}」完成：${r.pages} 页${r.skipped ? `（去重 ${r.skipped}）` : ''}`, 2500);
+        } else {
+          failList.push(`${a.title || '未命名'}：${r?.error || '未知错误'}`);
+        }
+      } catch (e) {
+        failList.push(`${a.title || '未命名'}：${e?.message || e}`);
+      }
+    }
+    // 汇总
+    const summary = [`完成 ${okList.length} 个，失败 ${failList.length} 个`];
+    if (failList.length) summary.push(`失败明细：${failList.join('；')}`);
+    if (okList.length) {
+      bar.done(`✅ 批量导入完成：${summary[0]}`);
+    } else {
+      bar.fail(summary.join('  '));
+    }
+    ui.toast(summary[0], 4000);
+  });
+  box.appendChild(downloadBtn);
   const closeBtn = document.createElement('div');
   closeBtn.textContent = '取消';
   closeBtn.style.cssText = 'text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;';

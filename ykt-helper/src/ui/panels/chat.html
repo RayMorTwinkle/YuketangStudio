@@ -22,7 +22,17 @@
     #ykt-chat-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; }
     #ykt-chat-send:disabled { opacity: .5; cursor: not-allowed; }
     #ykt-chat-clear { padding: 3px 8px; font-size: 12px; }
-    .ykt-chat-msg.ai .err { color: #c0392b; }
+    #ykt-chat-plus { width: 30px; height: 30px; border: 1px dashed var(--ykt-border-strong, #ccc); border-radius: 6px; background: #f7f8fa; cursor: pointer; font-size: 16px; color: #607190; flex: 0 0 auto; }
+    #ykt-chat-plus:hover { border-color: var(--ykt-accent, #1d63df); color: var(--ykt-accent, #1d63df); }
+    /* 附件预览条 */
+    #ykt-chat-atts { display: none; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--ykt-border, #ddd); }
+    #ykt-chat-atts .att { position: relative; width: 56px; height: 42px; border-radius: 4px; overflow: hidden; border: 1px solid #ddd; }
+    #ykt-chat-atts .att img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #ykt-chat-atts .att .rm { position: absolute; top: 0; right: 0; width: 16px; height: 16px; line-height: 14px; text-align: center; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 11px; border-radius: 0 0 0 4px; }
+    /* 加号菜单 */
+    #ykt-chat-plus-menu { position: fixed; z-index: 10000001; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 6px; display: none; flex-direction: column; min-width: 160px; }
+    #ykt-chat-plus-menu button { border: none; background: transparent; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    #ykt-chat-plus-menu button:hover { background: #eef3ff; }
     .ykt-chat-msg .muted { color: #607190; font-size: 12px; }
     .ykt-chat-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }
   </style>
@@ -33,10 +43,17 @@
   </div>
   <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">
     <div id="ykt-chat-log"></div>
+    <div id="ykt-chat-atts"></div>
     <div id="ykt-chat-ctx"><label><input type="checkbox" id="ykt-chat-attach" checked> 每条消息附带当前 PPT 页</label><span id="ykt-chat-ctx-thumb"></span></div>
     <div class="ykt-chat-inputbar">
+      <button id="ykt-chat-plus" title="添加 PPT 页面或图片">＋</button>
       <textarea id="ykt-chat-input" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
       <button id="ykt-chat-send">发送</button>
+    </div>
+    <input type="file" id="ykt-chat-file" accept="image/*" multiple style="display:none">
+    <div id="ykt-chat-plus-menu">
+      <button id="ykt-chat-plus-slides">📑 选择 PPT 页面</button>
+      <button id="ykt-chat-plus-upload">🖼 上传图片</button>
     </div>
   </div>
 </div>
