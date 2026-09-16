@@ -276,13 +276,21 @@ async function sendCurrent() {
     const aiBubble = addBubble('ai', '<em>思考中…</em>');
     const acc = { content: '', reasoning: '' };
     let raf = 0;
+    let phase = 'waiting';          // waiting → thinking → answering
     const paint = () => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
+        // 阶段推进：thinking = 有思考无正文；answering = 正文开始
+        if (phase !== 'answering' && acc.content) phase = 'answering';
+        else if (phase === 'waiting' && acc.reasoning) phase = 'thinking';
+        const thinking = phase === 'thinking';
+        // 思考阶段自动展开流式滚动；正文开始自动折叠展示正文
         aiBubble.innerHTML =
-          (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body"></div></details>` : '')
-          + (acc.content ? mdToHtml(acc.content) : '<em>…</em>');
+          (acc.reasoning
+            ? `<details ${thinking ? 'open' : ''}><summary>💭 思考过程${thinking ? '（进行中…）' : '（点击展开）'}</summary><div class="reasoning-body"></div></details>`
+            : '')
+          + (acc.content ? mdToHtml(acc.content) : (thinking ? '' : '<em>…</em>'));
         const rBody = aiBubble.querySelector('.reasoning-body');
         if (rBody) { rBody.textContent = acc.reasoning; rBody.scrollTop = rBody.scrollHeight; }
         const $log = $sel('#ykt-chat-log');
