@@ -243,6 +243,8 @@ export function mountPresentationPanel() {
 
   mounted = true;
   L('mountPresentationPanel 完成');
+  // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
+  root.__yksOnShow = () => updatePresentationList();
   return host;
 }
 
