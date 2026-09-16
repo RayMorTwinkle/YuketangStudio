@@ -114,9 +114,11 @@
     return window.jspdf;
   }
   /** mermaid 按需加载（AI 回复里出现 ```mermaid 块时才拉取 CDN） */  async function ensureMermaid() {
-    if (window.mermaid?.render) return window.mermaid;
+    const w = gm.uw || window;
+ // 脚本标签注入主世界，属性也挂在主世界——与 ensureJsPDF 同理
+        if (w.mermaid?.render) return w.mermaid;
     await loadScriptOnce("https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js");
-    const m = window.mermaid;
+    const m = w.mermaid;
     if (!m?.render) throw new Error("mermaid 未正确加载");
     m.initialize({
       startOnLoad: false,
@@ -124,6 +126,20 @@
       securityLevel: "strict"
     });
     return m;
+  }
+  /** marked（专业 Markdown 解析）按需加载（v9：renderer.code(code, lang) 旧签名稳定） */  async function ensureMarked() {
+    const w = gm.uw || window;
+    if (w.marked?.parse) return w.marked;
+    await loadScriptOnce("https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js");
+    if (!w.marked?.parse) throw new Error("marked 未正确加载");
+    return w.marked;
+  }
+  /** DOMPurify（HTML 清洗）按需加载 */  async function ensureDOMPurify() {
+    const w = gm.uw || window;
+    if (w.DOMPurify?.sanitize) return w.DOMPurify;
+    await loadScriptOnce("https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js");
+    if (!w.DOMPurify?.sanitize) throw new Error("DOMPurify 未正确加载");
+    return w.DOMPurify;
   }
   function randInt(l, r) {
     return l + Math.floor(Math.random() * (r - l + 1));
@@ -925,6 +941,7 @@
     window.addEventListener("ykt:open-ai", () => {
       showAIPanel(true);
     });
+    warmupRichAssets();
     mounted$6 = true;
     renderCtxStatus();
     // shell 切到本 tab 时刷新（数据晚于挂载到达的场景：WS 课件、页面切换）
@@ -1222,7 +1239,12 @@
       });
       acc.content = res.content || acc.content;
       acc.reasoning = res.reasoning || acc.reasoning;
-      aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml$1(acc.reasoning)}</div></details>` : "") + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+ // 防止挂起的 paint 覆盖 renderRich 成果
+            aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml$1(acc.reasoning)}</div></details>` : "") + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
       renderRich(aiBubble);
       history$2.push({
         role: "assistant",
@@ -1245,26 +1267,21 @@
     });
   }
   // ---------------- Markdown / 富媒体渲染 ----------------
-    function safeLink(url = "") {
-    try {
-      const u = new URL(url, location.origin);
-      if (u.protocol === "http:" || u.protocol === "https:") return u.href;
-    } catch (_) {}
-    return null;
+  // ---------------- Markdown / 富媒体渲染 ----------------
+    const MERMAID_LOOSE_RE = /^\s*(graph\s|flowchart\s|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie\b|mindmap|timeline|gitGraph)/i;
+  /** 行级剥离 HTML 包裹标签（AI 偶尔把 mermaid 包在 <p>/<br/> 里输出） */  function stripHtmlWrappers(text) {
+    return String(text ?? "").split("\n").map(l => l.replace(/<\/?p[^>]*>/gi, "").replace(/<br\s*\/?>/gi, "\n")).join("\n").replace(/\n{3,}/g, "\n\n");
   }
-  /** 清洗 AI 产出的 HTML/SVG：去除脚本、事件属性与 javascript: 协议 */  function sanitizeHtml(html) {
+  const blocks = [];
+ // 代码块暂存（占位符 → 原文）
+  /** 同步清洗（DOMPurify 未就绪时的回退） */  function sanitizeHtml(html) {
     try {
       const doc = (new DOMParser).parseFromString(String(html), "text/html");
       doc.querySelectorAll("script, style, iframe, object, embed, link, meta, base, form").forEach(n => n.remove());
       doc.querySelectorAll("*").forEach(n => {
         for (const a of [ ...n.attributes ]) {
           const name = a.name.toLowerCase();
-          const val = String(a.value || "");
-          if (name.startsWith("on")) {
-            n.removeAttribute(a.name);
-            continue;
-          }
-          if ((name === "href" || name === "src" || name === "xlink:href") && /^\s*javascript:/i.test(val)) n.removeAttribute(a.name);
+          if (name.startsWith("on") || [ "href", "src", "xlink:href" ].includes(name) && /^\s*javascript:/i.test(String(a.value || ""))) n.removeAttribute(a.name);
         }
       });
       return doc.body.innerHTML;
@@ -1272,55 +1289,60 @@
       return "";
     }
   }
+  /** marked 解析前预处理：AI 偶尔输出「裸 mermaid + HTML 包裹」混合体，剥壳后围栏化 */  function preprocessRaw(raw) {
+    if (/```/.test(raw)) return raw;
+ // 有围栏的交给 marked
+        const stripped = stripHtmlWrappers(raw).trim();
+    if (stripped && MERMAID_LOOSE_RE.test(stripped) && stripped.split("\n").length >= 2 && stripped.length < 5e3) return "```mermaid\n" + stripped + "\n```";
+    return raw;
+  }
   /**
-   * Markdown → HTML。
-   * fenced 代码块先提取占位（```mermaid / ```svg / ```html 会渲染为可视化元素，
-   * 其余保持普通代码块），避免整体转义把可视化内容变成纯文本。
+   * Markdown → HTML（同步，供流式 paint 使用）。
+   * 富媒体占位：mermaid/svg/html 代码块转占位 div，真正渲染在 renderRich。
+   * marked 未就绪时回退内置简化解析。
    */  function mdToHtml(mdRaw = "") {
-    const blocks = [];
-    const raw = String(mdRaw ?? "");
-    const withPlaceholders = raw.replace(/```([a-zA-Z0-9_-]+)?[ \t]*\r?\n([\s\S]*?)```/g, (_, lang, code) => {
-      blocks.push({
-        lang: String(lang || "").toLowerCase(),
-        code: code.replace(/\n$/, "")
+    const raw = preprocessRaw(String(mdRaw ?? ""));
+    let md;
+    if (window.marked?.parse) {
+      const marked = window.marked;
+      md = marked.parse(raw, {
+        breaks: true,
+        gfm: true,
+        renderer: {
+          code(code, lang) {
+            const l = String(lang || "").toLowerCase().trim();
+            blocks.push({
+              lang: l,
+              code: String(code ?? "")
+            });
+            return `B${blocks.length - 1}`;
+          }
+        }
       });
-      return `B${blocks.length - 1}`;
-    });
-    let md = escapeHtml$1(withPlaceholders).replace(/\r\n?/g, "\n");
-    md = md.replace(/`([^`]+?)`/g, (_, code) => `<code class="ykt-md-inline">${code}</code>`);
-    md = md.replace(/^######\s+(.*)$/gm, "<h6>$1</h6>").replace(/^#####\s+(.*)$/gm, "<h5>$1</h5>").replace(/^####\s+(.*)$/gm, "<h4>$1</h4>").replace(/^###\s+(.*)$/gm, "<h3>$1</h3>").replace(/^##\s+(.*)$/gm, "<h2>$1</h2>").replace(/^#\s+(.*)$/gm, "<h1>$1</h1>");
-    md = md.replace(/^(?:&gt;\s?.+(\n(?!\n).+)*)/gm, block => {
-      const inner = block.replace(/^&gt;\s?/gm, "");
-      return `<blockquote>${inner}</blockquote>`;
-    });
-    md = md.replace(/(^(-|\*|\+)\s+.+(\n(?!\n).+)*)/gm, block => {
-      const items = block.split("\n").map(l => l.trim()).filter(l => /^(-|\*|\+)\s+/.test(l)).map(l => `<li>${l.replace(/^(-|\*|\+)\s+/, "")}</li>`).join("");
-      return `<ul>${items}</ul>`;
-    });
-    md = md.replace(/(^\d+\.\s+.+(\n(?!\n).+)*)/gm, block => {
-      const items = block.split("\n").map(l => l.trim()).filter(l => /^\d+\.\s+/.test(l)).map(l => `<li>${l.replace(/^\d+\.\s+/, "")}</li>`).join("");
-      return `<ol>${items}</ol>`;
-    });
-    md = md.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
-    md = md.replace(/\*([^*]+?)\*/g, "<em>$1</em>");
-    md = md.replace(/__([^_]+?)__/g, "<strong>$1</strong>");
-    md = md.replace(/(^|[^\\])_([^_]+?)_/g, "$1<em>$2</em>");
-    md = md.replace(/^\s*([-*_]){3,}\s*$/gm, "<hr/>");
-    md = md.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, text, url) => {
-      const safe = safeLink(url);
-      if (!safe) return text;
-      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
-    });
-    // 还原代码块占位符
-        md = md.replace(/\uE000B(\d+)\uE000/g, (_, i) => {
+    } else {
+      md = raw.replace(/```([a-zA-Z0-9_-]+)?[ \t]*\r?\n([\s\S]*?)```/g, (_, lang, code) => {
+        blocks.push({
+          lang: String(lang || "").toLowerCase(),
+          code: code.replace(/\n$/, "")
+        });
+        return `B${blocks.length - 1}`;
+      });
+      md = escapeHtml$1(md).replace(/\r\n?/g, "\n");
+      md = md.replace(/`([^`]+?)`/g, (_, code) => `<code class="ykt-md-inline">${code}</code>`);
+      md = md.replace(/^######\s+(.*)$/gm, "<h6>$1</h6>").replace(/^#####\s+(.*)$/gm, "<h5>$1</h5>").replace(/^####\s+(.*)$/gm, "<h4>$1</h4>").replace(/^###\s+(.*)$/gm, "<h3>$1</h3>").replace(/^##\s+(.*)$/gm, "<h2>$1</h2>").replace(/^#\s+(.*)$/gm, "<h1>$1</h1>");
+      md = md.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>").replace(/\*([^*]+?)\*/g, "<em>$1</em>");
+    }
+    const MERMAID_START_RE = /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie\b|mindmap|timeline|gitGraph)\b/i;
+    md = md.replace(/\uE000B(\d+)\uE001/g, (_, i) => {
       const b = blocks[Number(i)];
       if (!b) return "";
-      const esc = escapeHtml$1(b.code);
-      if (b.lang === "mermaid") return `<div class="ykt-mermaid" data-raw="${escapeHtml$1(b.code).replace(/"/g, "&quot;")}"></div>`;
+      const looksMermaid = b.lang === "mermaid" || !b.lang && MERMAID_START_RE.test(b.code);
+      if (looksMermaid) return `<div class="ykt-mermaid" data-raw="${escapeHtml$1(b.code).replace(/"/g, "&quot;")}"></div>`;
       if (b.lang === "svg" || b.lang === "html") return `<div class="ykt-embed" data-raw="${escapeHtml$1(b.code).replace(/"/g, "&quot;")}"></div>`;
-      return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ""}>${esc}</code></pre>`;
+      return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ""}>${escapeHtml$1(b.code)}</code></pre>`;
     });
-    // 段落包裹（占位符块按块级处理）
+    if (window.marked?.parse) return md;
+    // 回退路径的段落包裹
         const lines = md.split("\n");
     const out = [];
     let buf = [];
@@ -1343,25 +1365,36 @@
     flush();
     return out.join("\n");
   }
+  /** 裸 mermaid 兜底：AI 不守规矩直接输出流程图文本时（含被 <p>/<br/> 包裹的） */  function rescueLooseMermaid(el) {
+    for (const p of [ ...el.querySelectorAll("p") ]) {
+      const text = stripHtmlWrappers(p.textContent || "");
+      if (MERMAID_LOOSE_RE.test(text) && text.split("\n").length >= 2) {
+        const div = document.createElement("div");
+        div.className = "ykt-mermaid";
+        div.setAttribute("data-raw", text);
+        p.replaceWith(div);
+      }
+    }
+  }
   /**
-   * 富媒体后处理：把 mdToHtml 产出的可视化占位渲染出来 + MathJax 公式。
-   * - .ykt-mermaid → mermaid 图（按需加载 CDN，失败回退显示源码）
-   * - .ykt-embed   → sanitize 后的 HTML/SVG
-   * - $...$ 公式   → MathJax（ui.config.iftex 开启时）
+   * 富媒体后处理（异步）：mermaid 图、HTML/SVG 嵌入、MathJax 公式。
+   * 在流式完成的最终 innerHTML 之后调用。
    */  async function renderRich(el) {
     if (!el) return;
     try {
-      // 1) mermaid
-      const mermaidEls = [ ...el.querySelectorAll(".ykt-mermaid[data-raw]") ];
+      rescueLooseMermaid(el);
+      // 1) mermaid → SVG
+            const mermaidEls = [ ...el.querySelectorAll(".ykt-mermaid[data-raw]") ];
       if (mermaidEls.length) try {
         const mermaid = await ensureMermaid();
         for (const node of mermaidEls) {
-          const src = node.getAttribute("data-raw") || "";
+          // AI 偶尔在 mermaid 源码里混入 <p>/<br/> 等标签导致解析失败——渲染前剥掉
+          const src = stripHtmlWrappers(node.getAttribute("data-raw") || "");
           try {
             const {svg: svg} = await mermaid.render(`ykmmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, src);
             const wrap = document.createElement("div");
             wrap.className = "ykt-mermaid-render";
-            wrap.innerHTML = sanitizeHtml(svg);
+            wrap.innerHTML = svg;
             node.replaceWith(wrap);
           } catch (e) {
             log.warn("[Rich] mermaid 渲染失败，显示源码:", e?.message);
@@ -1380,15 +1413,20 @@
           node.replaceWith(pre);
         });
       }
-      // 2) svg/html 嵌入
+      // 2) svg/html 嵌入 → DOMPurify 清洗后渲染
             for (const node of [ ...el.querySelectorAll(".ykt-embed[data-raw]") ]) {
-        const raw = node.getAttribute("data-raw") || "";
-        node.innerHTML = sanitizeHtml(raw);
+        const rawHtml = node.getAttribute("data-raw") || "";
+        try {
+          const purify = await ensureDOMPurify();
+          node.innerHTML = purify.sanitize(rawHtml, {
+            ADD_ATTR: [ "target" ]
+          });
+        } catch {
+          node.innerHTML = sanitizeHtml(rawHtml);
+        }
         node.removeAttribute("data-raw");
       }
-      // 3) mermaid 容器清理 data-raw（已渲染）
-            el.querySelectorAll(".ykt-mermaid[data-raw]").forEach(n => n.removeAttribute("data-raw"));
-      // 4) MathJax
+      // 3) MathJax 公式
             if (ui?.config?.iftex) {
         const ok = await ensureMathJax();
         if (ok) {
@@ -1399,6 +1437,17 @@
     } catch (e) {
       log.warn("[Rich] renderRich 失败:", e);
     }
+  }
+  /** 预热富媒体依赖（面板挂载时后台拉 CDN） */  function warmupRichAssets() {
+    ensureMarked().then(m => {
+      try {
+        m.setOptions({
+          breaks: true,
+          gfm: true
+        });
+      } catch {}
+    }).catch(e => log.warn("[Rich] marked 预热失败", e?.message));
+    ensureDOMPurify().catch(e => log.warn("[Rich] DOMPurify 预热失败", e?.message));
   }
   var tpl$5 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.selected {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 */\n    #ykt-filter-problems {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // src/core/pdf-export.js
@@ -2725,7 +2774,12 @@
       });
       acc.content = res.content || acc.content;
       acc.reasoning = res.reasoning || acc.reasoning;
-      aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : "") + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+ // 防止挂起的 paint 覆盖 renderRich 成果
+            aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : "") + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
       renderRich(aiBubble);
       history$1.push({
         role: "assistant",

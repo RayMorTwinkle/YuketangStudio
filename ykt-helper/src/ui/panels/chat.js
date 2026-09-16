@@ -220,6 +220,7 @@ async function sendCurrent() {
 
     acc.content = res.content || acc.content;
     acc.reasoning = res.reasoning || acc.reasoning;
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }   // 防止挂起的 paint 覆盖 renderRich 成果
     aiBubble.innerHTML =
       (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : '')
       + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');

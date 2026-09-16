@@ -65,12 +65,31 @@ export async function ensureJsPDF() {
 
 /** mermaid 按需加载（AI 回复里出现 ```mermaid 块时才拉取 CDN） */
 export async function ensureMermaid() {
-  if (window.mermaid?.render) return window.mermaid;
+  const w = gm.uw || window;   // 脚本标签注入主世界，属性也挂在主世界——与 ensureJsPDF 同理
+  if (w.mermaid?.render) return w.mermaid;
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js');
-  const m = window.mermaid;
+  const m = w.mermaid;
   if (!m?.render) throw new Error('mermaid 未正确加载');
   m.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' });
   return m;
+}
+
+/** marked（专业 Markdown 解析）按需加载（v9：renderer.code(code, lang) 旧签名稳定） */
+export async function ensureMarked() {
+  const w = gm.uw || window;
+  if (w.marked?.parse) return w.marked;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js');
+  if (!w.marked?.parse) throw new Error('marked 未正确加载');
+  return w.marked;
+}
+
+/** DOMPurify（HTML 清洗）按需加载 */
+export async function ensureDOMPurify() {
+  const w = gm.uw || window;
+  if (w.DOMPurify?.sanitize) return w.DOMPurify;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js');
+  if (!w.DOMPurify?.sanitize) throw new Error('DOMPurify 未正确加载');
+  return w.DOMPurify;
 }
 
 export function randInt(l, r) {
