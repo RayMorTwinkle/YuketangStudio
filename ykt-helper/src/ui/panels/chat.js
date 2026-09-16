@@ -108,6 +108,7 @@ async function resolveCurrentSlideImage() {
       const dataUrl = await fetchAsDataURL(url);
       if (dataUrl) return { dataUrl, source: 'repo' };
     } catch (e) {
+      try { (window.unsafeWindow || window).__yksImgErr = `repo(${String(url).slice(0, 70)}): ${String(e?.message || e).slice(0, 100)}`; } catch {}
       log.warn('[Chat] repo slide 图下载失败，尝试 DOM 兜底:', e?.message);
     }
   }
@@ -119,6 +120,7 @@ async function resolveCurrentSlideImage() {
       const dataUrl = await fetchAsDataURL(domUrl);
       if (dataUrl) return { dataUrl, source: 'dom' };
     } catch (e) {
+      try { (window.unsafeWindow || window).__yksImgErr = `dom(${String(domUrl).slice(0, 70)}): ${String(e?.message || e).slice(0, 100)}`; } catch {}
       log.warn('[Chat] DOM slide 图下载失败:', e?.message);
     }
   }
@@ -134,6 +136,7 @@ async function resolveCurrentSlideImage() {
 function findSlideUrlInDom() {
   try {
     const selectors = [
+      'img[src*="/slide/"]',           // 课堂 fullscreen 页的主 PPT 图
       '.slide-item.active-slide-item img',
       '.slide-item img',
       '.swiper-slide-active img',
@@ -252,6 +255,15 @@ async function sendCurrent() {
     history.push({ role: 'user', content });
     trimOldImages(1);
     const userBubble = addBubble('user', escapeHtml(text));
+    // 把附带的 PPT 截图也画进气泡（AI 实际收到了，之前只显示文本）
+    for (const c of content) {
+      if (c.type === 'image_url') {
+        const img = document.createElement('img');
+        img.src = c.image_url.url;
+        img.alt = '当前 PPT 页';
+        userBubble.appendChild(img);
+      }
+    }
     if (attachFailed) {
       const warn = document.createElement('div');
       warn.className = 'ykt-chat-warn';

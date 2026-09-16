@@ -52,7 +52,10 @@ export const meta = `
 // @connect      generativelanguage.googleapis.com
 // @connect      api.longcat.chat
 // @connect      api.agnes-ai.cn
+// @connect      yuketang.cn
 // @connect      *.yuketang.cn
+// @connect      changjiang-private-qn.yuketang.cn
+// @connect      thu-private-qn.yuketang.cn
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
 // @require      https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js

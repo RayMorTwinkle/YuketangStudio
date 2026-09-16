@@ -997,9 +997,17 @@ function showImportProgressBar(title) {
   };
 }
 
-async function downloadPresentationPDF() {  const pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
-  L('downloadPresentationPDF', { pid, hasPres: pid ? repo.presentations.has(pid) : false });
-  if (!pid) return ui.toast('请先在左侧选择一份课件');
+async function downloadPresentationPDF() {
+  let pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
+  // 回退：用户没点过缩略图/课件标题时，自动选用列表里的课件（通常只有一份），
+  // 而不是让他「请先选择」再点一次——37 页都收好了却导不出，纯属多一步
+  if (!pid || !repo.presentations.has(pid)) {
+    const first = repo.presentations.entries().next();
+    if (first.done) return ui.toast('当前没有可导出的课件（等课件加载后重试）');
+    pid = first.value[0];
+    repo.currentPresentationId = pid;
+    L('downloadPresentationPDF: 自动回退到课件', { pid });
+  }
   const pres = repo.presentations.get(pid);
   if (!pres || !Array.isArray(pres.slides) || pres.slides.length === 0) {
     return ui.toast('未找到该课件的页面');

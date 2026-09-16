@@ -42,7 +42,10 @@
 // @connect      generativelanguage.googleapis.com
 // @connect      api.longcat.chat
 // @connect      api.agnes-ai.cn
+// @connect      yuketang.cn
 // @connect      *.yuketang.cn
+// @connect      changjiang-private-qn.yuketang.cn
+// @connect      thu-private-qn.yuketang.cn
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
 // @require      https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js
@@ -3063,12 +3066,18 @@
     };
   }
   async function downloadPresentationPDF() {
-    const pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
-    L$1("downloadPresentationPDF", {
-      pid: pid,
-      hasPres: pid ? repo.presentations.has(pid) : false
-    });
-    if (!pid) return ui.toast("请先在左侧选择一份课件");
+    let pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
+    // 回退：用户没点过缩略图/课件标题时，自动选用列表里的课件（通常只有一份），
+    // 而不是让他「请先选择」再点一次——37 页都收好了却导不出，纯属多一步
+        if (!pid || !repo.presentations.has(pid)) {
+      const first = repo.presentations.entries().next();
+      if (first.done) return ui.toast("当前没有可导出的课件（等课件加载后重试）");
+      pid = first.value[0];
+      repo.currentPresentationId = pid;
+      L$1("downloadPresentationPDF: 自动回退到课件", {
+        pid: pid
+      });
+    }
     const pres = repo.presentations.get(pid);
     if (!pres || !Array.isArray(pres.slides) || pres.slides.length === 0) return ui.toast("未找到该课件的页面");
     const showAll = !!ui.config.showAllSlides;
@@ -4254,6 +4263,9 @@
         source: "repo"
       };
     } catch (e) {
+      try {
+        (window.unsafeWindow || window).__yksImgErr = `repo(${String(url).slice(0, 70)}): ${String(e?.message || e).slice(0, 100)}`;
+      } catch {}
       log.warn("[Chat] repo slide 图下载失败，尝试 DOM 兜底:", e?.message);
     }
     // 2) DOM 兜底：静态报告页等 repo 为空但页面有 slide 图的场景
@@ -4265,6 +4277,9 @@
         source: "dom"
       };
     } catch (e) {
+      try {
+        (window.unsafeWindow || window).__yksImgErr = `dom(${String(domUrl).slice(0, 70)}): ${String(e?.message || e).slice(0, 100)}`;
+      } catch {}
       log.warn("[Chat] DOM slide 图下载失败:", e?.message);
     }
     return {
@@ -4275,7 +4290,8 @@
   }
   /** 从页面 DOM 里找 slide 图（报告页/静态课件的退化路径） */  function findSlideUrlInDom() {
     try {
-      const selectors = [ ".slide-item.active-slide-item img", ".slide-item img", ".swiper-slide-active img", ".ppt-courseware-inner img", ".ppt-inner img" ];
+      const selectors = [ 'img[src*="/slide/"]', // 课堂 fullscreen 页的主 PPT 图
+      ".slide-item.active-slide-item img", ".slide-item img", ".swiper-slide-active img", ".ppt-courseware-inner img", ".ppt-inner img" ];
       for (const sel of selectors) {
         const img = document.querySelector(sel);
         const src = img?.currentSrc || img?.src || "";
@@ -4386,6 +4402,13 @@
       });
       trimOldImages(1);
       const userBubble = addBubble("user", escapeHtml(text));
+      // 把附带的 PPT 截图也画进气泡（AI 实际收到了，之前只显示文本）
+            for (const c of content) if (c.type === "image_url") {
+        const img = document.createElement("img");
+        img.src = c.image_url.url;
+        img.alt = "当前 PPT 页";
+        userBubble.appendChild(img);
+      }
       if (attachFailed) {
         const warn = document.createElement("div");
         warn.className = "ykt-chat-warn";
