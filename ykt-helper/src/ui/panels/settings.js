@@ -356,7 +356,7 @@ export function mountSettingsPanel() {
       : '当前：使用内置“叮-咚”提示音';
   }
   // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
-  root.__yksSyncForm = syncFormFromConfig;
+  root.__yksOnShow = syncFormFromConfig;   // shell 切 tab 时刷新表单
 
   //--------------------------------------
   //            重置为默认
@@ -457,7 +457,7 @@ export function showSettingsPanel(visible = true) {
   if (!panel) return;
   panel.classList.toggle('visible', !!visible);
   // 每次打开时从 config 重新拉取（解锁开发者模式、其他面板改配置后保持一致）
-  if (visible) panel.__yksSyncForm?.();
+  if (visible) panel.__yksOnShow?.();
 }
 
 export function toggleSettingsPanel() {

@@ -897,6 +897,11 @@
     });
     mounted$6 = true;
     renderCtxStatus();
+    // shell 切到本 tab 时刷新（数据晚于挂载到达的场景：WS 课件、页面切换）
+        root$5.__yksOnShow = () => {
+      renderCtxStatus();
+      if (history$2.length === 0 && !$sel$1("#ykt-ai-log").children.length) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
+    };
     return root$5;
   }
   function showAIPanel(v = true) {
@@ -2938,7 +2943,8 @@
       $audioName.textContent = ui.config.customNotifyAudioName ? `当前：${ui.config.customNotifyAudioName}` : "当前：使用内置“叮-咚”提示音";
     }
     // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
-        root$2.__yksSyncForm = syncFormFromConfig;
+        root$2.__yksOnShow = syncFormFromConfig;
+ // shell 切 tab 时刷新表单
     //--------------------------------------
     //            重置为默认
     //--------------------------------------
@@ -3023,7 +3029,7 @@
     if (!panel) return;
     panel.classList.toggle("visible", !!visible);
     // 每次打开时从 config 重新拉取（解锁开发者模式、其他面板改配置后保持一致）
-        if (visible) panel.__yksSyncForm?.();
+        if (visible) panel.__yksOnShow?.();
   }
   var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 使用教程</h3>\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>版本</h4>\n      <p class="ykt-tutorial-version">…</p>\n\n      <h4>项目介绍</h4>\n      <p>YuketangStudio 是一个为雨课堂提供辅助功能的工具：PPT 提取导出、答题提醒、AI 解答、PPT 多轮对话。</p>\n      <p>项目仓库：<a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">GitHub</a></p>\n      <p>安装：本脚本通过源码构建分发，未上架任何脚本市场，安装方式见仓库 README。</p>\n\n      <h4>主面板</h4>\n      <p>点击工具栏左侧第一个按钮（<i class="fas fa-briefcase"></i>）打开主面板，左侧标签切换功能：</p>\n      <ul>\n        <li><b>💬 PPT对话</b>：截取当前 PPT 页与 AI 多轮连续追问（思考链可折叠，流式输出）。</li>\n        <li><b>🤖 AI解答</b>：对当前题目提取文字/选项，可选附图询问 AI。</li>\n        <li><b>📑 课件</b>：浏览课堂幻灯片；「📥 历史课件」可从往期课堂报告一键导出横屏 PDF（自动去重）。</li>\n        <li><b>📋 题目列表</b>：查看本课所有题目与状态。</li>\n        <li><b>⚙️ 设置</b>：AI 配置、自动作答与提醒参数。</li>\n        <li><b>❓ 教程</b>：本页。</li>\n      </ul>\n\n      <h4>工具栏快捷开关</h4>\n      <ul>\n        <li><i class="fas fa-briefcase"></i> <b>主面板</b>：打开/关闭主面板。</li>\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：新习题出现时弹窗+提示音（蓝色=开启）。</li>\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\n      </ul>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) AI 解答需要调用 LLM API，注意费用；</p>\n      <p>3) AI 答案不保证正确；</p>\n      <p>4) 自动作答有风险，谨慎开启。</p>\n\n      <h4>致谢与反馈</h4>\n      <p>本项目基于 <a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">ZaytsevZY/yuketang-helper-auto</a> 重构而来。</p>\n      <p>问题反馈：<a href="https://github.com/RayMorTwinkle/YuketangStudio/issues" target="_blank" rel="noopener">GitHub Issues</a></p>\n    </div>\n  </div>\n</div>\n';
   // src/ui/panels/tutorial.js
@@ -3129,9 +3135,9 @@
       panel.classList.toggle("active-tab", isActive);
       panel.classList.toggle("visible", isActive);
     }
-    // 面板被激活时允许它从 config 重新同步（设置面板据此刷新表单）
+    // 面板被激活时允许它从 config 重新同步（设置面板刷新表单、AI 面板刷新页面状态）
         const activePanel = content.querySelector(`:scope > #${t.panelId}`);
-    activePanel?.__yksSyncForm?.();
+    activePanel?.__yksOnShow?.();
   }
   /** ui-api 统一入口：visible=true 打开主面板并切到 tab；false 关闭主面板 */  function openTab(tabId, visible = true) {
     if (!mounted) mountShell();

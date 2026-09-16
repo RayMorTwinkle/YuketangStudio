@@ -74,9 +74,9 @@ export function switchTo(tabId) {
     panel.classList.toggle('active-tab', isActive);
     panel.classList.toggle('visible', isActive);
   }
-  // 面板被激活时允许它从 config 重新同步（设置面板据此刷新表单）
+  // 面板被激活时允许它从 config 重新同步（设置面板刷新表单、AI 面板刷新页面状态）
   const activePanel = content.querySelector(`:scope > #${t.panelId}`);
-  activePanel?.__yksSyncForm?.();
+  activePanel?.__yksOnShow?.();
 }
 
 /** ui-api 统一入口：visible=true 打开主面板并切到 tab；false 关闭主面板 */

@@ -84,6 +84,13 @@ export function mountAIPanel() {
 
   mounted = true;
   renderCtxStatus();
+  // shell 切到本 tab 时刷新（数据晚于挂载到达的场景：WS 课件、页面切换）
+  root.__yksOnShow = () => {
+    renderCtxStatus();
+    if (history.length === 0 && !$sel('#ykt-ai-log').children.length) {
+      addBubble('ai', mdToHtml('点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。'));
+    }
+  };
   return root;
 }
 
