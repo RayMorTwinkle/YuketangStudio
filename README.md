@@ -3,7 +3,7 @@
   <h1>YuketangStudio</h1>
   <p><b>雨课堂学习增强助手</b> —— 让每一页课件都为你所用</p>
   <a href="https://github.com/RayMorTwinkle/YuketangStudio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/></a>
-  <img src="https://img.shields.io/badge/version-0.2.1-blue.svg" alt="版本"/>
+  <img src="https://img.shields.io/badge/version-0.2.2-blue.svg" alt="版本"/>
   <img src="https://img.shields.io/badge/platform-Tampermonkey-green.svg" alt="平台"/>
   <img src="https://img.shields.io/badge/学校-长江雨课堂%20%7C%20通用-orange.svg" alt="适配"/>
   <br/><br/>
@@ -119,11 +119,16 @@
 
 ### 第四步：在手机上打开雨课堂
 
-**这是手机端最关键的一步**：雨课堂手机端会**自动跳转到移动版页面**（功能受限，我们的脚本不工作在移动版上）。需要强制它显示桌面版：
+**这是手机端最关键的一步**：雨课堂会根据你的浏览器标识**自动跳转到移动版**（`/m/v2`，功能受限、课件与 AI 功能不可用）。
 
-**Edge 安卓版**：打开雨课堂后 → 点「···」菜单 → 勾选「**请求桌面网站**」(Request desktop site) → 页面刷新为桌面版
+打开 Edge 后，**先**点右下角「···」菜单 → 勾选「**请求桌面网站**」(Request desktop site)，**再**在地址栏输入 `changjiang.yuketang.cn/v2/web/index` 访问、登录。
 
-然后照常登录、进入课堂，左下角出现工具栏就成功了。
+> ⚠️ **注意顺序**：如果你已经打开过移动版（地址栏显示 `/m/v2`），再勾「请求桌面网站」**是无效的**——雨课堂服务端会记住移动入口，只把字缩小而不切换界面。此时请：
+> 1. 点地址栏**清空并重新输入** `changjiang.yuketang.cn/v2/web/index` 回车，或
+> 2. 关掉标签页重开，或
+> 3. 看到页面底部出现我们的**黄色提示条**「当前是雨课堂移动版，功能受限」时，直接点上面的「**直接前往桌面版**」按钮（我们已内置这个快捷入口，无需手动输网址）
+
+成功标志：页面变成**电脑版布局**，左下角出现我们的工具栏。
 
 > 📌 我们已针对手机屏幕做了专门适配：工具栏自动变纵向大按钮、主面板 tab 移到顶部、内容区铺满屏宽（详见下方「手机端体验」）。
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.2.1
+// @version      0.2.2
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
@@ -13,6 +13,8 @@
 // @match        https://www.yuketang.cn/web
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
+// @match        https://*.yuketang.cn/m/v2/*
+// @match        https://*.yuketang.cn/m/*
 // @match        https://www.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://www.yuketang.cn/v2/web/*
 // @match        https://pro.yuketang.cn/lesson/fullscreen/v3/*
@@ -3511,8 +3513,8 @@
   function mountTutorialPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // 注入构建版本号（"0.2.1" 由 rollup 从 package.json 替换，单一来源）
-        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.2.1"}<`);
+    // 注入构建版本号（"0.2.2" 由 rollup 从 package.json 替换，单一来源）
+        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.2.2"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-tutorial-panel");
     $("#ykt-tutorial-close")?.addEventListener("click", () => showTutorialPanel(false));
@@ -5711,11 +5713,40 @@
   }
   // src/ui/toolbar.js
   // 精简版工具栏：主面板开关 + 提醒/自动作答快捷开关（其余功能全部收进主面板 tab）
-    function installToolbar() {
+  /**
+   * 是否处于雨课堂移动版（功能受限，需引导用户切桌面版）。
+   * 判据：路径为 /m/...，或服务端重定向时把 next 写成移动入口（/web/?next=/m/v2）
+   */  function isMobileVersionPage() {
+    const path = window.location.pathname;
+    if (/\/m\/v\d|\/m\/?($|\?)/.test(path)) return true;
+    try {
+      const next = new URLSearchParams(window.location.search).get("next") || "";
+      if (/^\/m\//.test(next)) return true;
+    } catch {}
+    return false;
+  }
+  function showSwitchToDesktopGuide() {
+    if (document.getElementById("ykt-desktop-guide")) return;
+    const tip = document.createElement("div");
+    tip.id = "ykt-desktop-guide";
+    tip.style.cssText = [ "position:fixed", "left:8px", "right:8px", "bottom:8px", "z-index:10000002", "background:#fff8e1", "color:#7a4f01", "border:1px solid #f0c36d", "border-radius:8px", "padding:10px 12px", "font-size:12px", "line-height:1.5", "box-shadow:0 4px 16px rgba(0,0,0,.12)" ].join(";");
+    tip.innerHTML = `\n    <div style="font-weight:600;margin-bottom:4px">⚠️ 当前是雨课堂「移动版」，功能受限</div>\n    <div>请点浏览器菜单（<b>···</b>）→ 勾选 <b>请求桌面网站</b> → 然后访问 <b>changjiang.yuketang.cn/v2/web/index</b> 登录使用。</div>\n    <div style="margin-top:6px;display:flex;gap:8px">\n      <button id="ykt-guide-goto" style="flex:1;padding:6px;border:none;border-radius:6px;background:#1d63df;color:#fff;font-size:12px">直接前往桌面版</button>\n      <button id="ykt-guide-close" style="padding:6px 10px;border:1px solid #e2c98b;border-radius:6px;background:transparent;color:#7a4f01;font-size:12px">知道了</button>\n    </div>`;
+    document.body.appendChild(tip);
+    tip.querySelector("#ykt-guide-goto")?.addEventListener("click", () => {
+      window.location.href = "/v2/web/index";
+    });
+    tip.querySelector("#ykt-guide-close")?.addEventListener("click", () => tip.remove());
+  }
+  function installToolbar() {
     const bar = document.createElement("div");
     bar.id = "ykt-helper-toolbar";
     bar.innerHTML = `\n    <span id="ykt-btn-shell" class="btn" title="YuketangStudio 主面板"><i class="fas fa-briefcase"></i></span>\n    <span id="ykt-btn-bell" class="btn" title="习题提醒"><i class="fas fa-bell"></i></span>\n    <span id="ykt-btn-auto-answer" class="btn" title="自动作答"><i class="fas fa-magic-wand-sparkles"></i></span>\n  `;
     document.body.appendChild(bar);
+    // 移动版页面：给出「切桌面版」引导（脚本虽已注入，但页面本身功能受限）
+        if (isMobileVersionPage()) {
+      log.warn("[toolbar] 检测到雨课堂移动版，已显示桌面版引导");
+      showSwitchToDesktopGuide();
+    }
     // 初始激活态
         if (ui.config.notifyProblems) bar.querySelector("#ykt-btn-bell")?.classList.add("active");
     ui.updateAutoAnswerBtn();

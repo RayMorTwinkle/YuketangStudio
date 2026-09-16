@@ -1,6 +1,54 @@
 // src/ui/toolbar.js
 // 精简版工具栏：主面板开关 + 提醒/自动作答快捷开关（其余功能全部收进主面板 tab）
 import { ui } from './ui-api.js';
+import { log } from '../core/log.js';
+
+/**
+ * 是否处于雨课堂移动版（功能受限，需引导用户切桌面版）。
+ * 判据：路径为 /m/...，或服务端重定向时把 next 写成移动入口（/web/?next=/m/v2）
+ */
+export function isMobileVersionPage() {
+  const path = window.location.pathname;
+  if (/\/m\/v\d|\/m\/?($|\?)/.test(path)) return true;
+  try {
+    const next = new URLSearchParams(window.location.search).get('next') || '';
+    if (/^\/m\//.test(next)) return true;
+  } catch {}
+  return false;
+}
+
+/** 移动端（窄屏或触屏）判定 */
+export function isNarrowDevice() {
+  try {
+    if (window.matchMedia?.('(max-width: 560px)').matches) return true;
+    if (navigator.maxTouchPoints > 0 && window.innerWidth <= 820) return true;
+  } catch {}
+  return false;
+}
+
+function showSwitchToDesktopGuide() {
+  if (document.getElementById('ykt-desktop-guide')) return;
+  const tip = document.createElement('div');
+  tip.id = 'ykt-desktop-guide';
+  tip.style.cssText = [
+    'position:fixed', 'left:8px', 'right:8px', 'bottom:8px',
+    'z-index:10000002', 'background:#fff8e1', 'color:#7a4f01',
+    'border:1px solid #f0c36d', 'border-radius:8px', 'padding:10px 12px',
+    'font-size:12px', 'line-height:1.5', 'box-shadow:0 4px 16px rgba(0,0,0,.12)',
+  ].join(';');
+  tip.innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px">⚠️ 当前是雨课堂「移动版」，功能受限</div>
+    <div>请点浏览器菜单（<b>···</b>）→ 勾选 <b>请求桌面网站</b> → 然后访问 <b>changjiang.yuketang.cn/v2/web/index</b> 登录使用。</div>
+    <div style="margin-top:6px;display:flex;gap:8px">
+      <button id="ykt-guide-goto" style="flex:1;padding:6px;border:none;border-radius:6px;background:#1d63df;color:#fff;font-size:12px">直接前往桌面版</button>
+      <button id="ykt-guide-close" style="padding:6px 10px;border:1px solid #e2c98b;border-radius:6px;background:transparent;color:#7a4f01;font-size:12px">知道了</button>
+    </div>`;
+  document.body.appendChild(tip);
+  tip.querySelector('#ykt-guide-goto')?.addEventListener('click', () => {
+    window.location.href = '/v2/web/index';
+  });
+  tip.querySelector('#ykt-guide-close')?.addEventListener('click', () => tip.remove());
+}
 
 export function installToolbar() {
   const bar = document.createElement('div');
@@ -11,6 +59,12 @@ export function installToolbar() {
     <span id="ykt-btn-auto-answer" class="btn" title="自动作答"><i class="fas fa-magic-wand-sparkles"></i></span>
   `;
   document.body.appendChild(bar);
+
+  // 移动版页面：给出「切桌面版」引导（脚本虽已注入，但页面本身功能受限）
+  if (isMobileVersionPage()) {
+    log.warn('[toolbar] 检测到雨课堂移动版，已显示桌面版引导');
+    showSwitchToDesktopGuide();
+  }
 
   // 初始激活态
   if (ui.config.notifyProblems) bar.querySelector('#ykt-btn-bell')?.classList.add('active');
