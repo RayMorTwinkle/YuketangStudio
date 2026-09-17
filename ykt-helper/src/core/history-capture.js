@@ -232,10 +232,12 @@ export async function fetchClassActivities(classId) {
   return all;
 }
 
-/** 从当前页面路径提取 classId（studentLog/{classId} 或其它含班级 id 的页面） */
+/** 从当前页面路径提取 classId（含桌面版与移动版 /m/v2 课程日志页） */
 export function currentClassId() {
-  const m = window.location.pathname.match(/\/studentLog\/(\d+)/)
-    || window.location.pathname.match(/\/student-lesson-report\/(\d+)/)
-    || window.location.pathname.match(/\/student-v3\/(\d+)/);
-  return m ? m[1] : null;
+  const path = window.location.pathname;
+  const m = path.match(/\/studentLog\/(\d+)/)
+    || path.match(/\/student-lesson-report\/(\d+)/)
+    || path.match(/\/student-v3\/(\d+)/)
+    || path.match(/\/m\/v\d\/course\/[^/]+\/logs\/(\d+)\/(\d+)/);   // 移动版：/logs/{courseId}/{classId}
+  return m ? (m[2] || m[1]) : null;
 }

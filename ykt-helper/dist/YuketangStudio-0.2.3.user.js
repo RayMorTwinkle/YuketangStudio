@@ -1881,9 +1881,11 @@
     }
     return all;
   }
-  /** 从当前页面路径提取 classId（studentLog/{classId} 或其它含班级 id 的页面） */  function currentClassId() {
-    const m = window.location.pathname.match(/\/studentLog\/(\d+)/) || window.location.pathname.match(/\/student-lesson-report\/(\d+)/) || window.location.pathname.match(/\/student-v3\/(\d+)/);
-    return m ? m[1] : null;
+  /** 从当前页面路径提取 classId（含桌面版与移动版 /m/v2 课程日志页） */  function currentClassId() {
+    const path = window.location.pathname;
+    const m = path.match(/\/studentLog\/(\d+)/) || path.match(/\/student-lesson-report\/(\d+)/) || path.match(/\/student-v3\/(\d+)/) || path.match(/\/m\/v\d\/course\/[^/]+\/logs\/(\d+)\/(\d+)/);
+ // 移动版：/logs/{courseId}/{classId}
+        return m ? m[2] || m[1] : null;
   }
   let mounted$5 = false;
   let host;
@@ -2381,6 +2383,8 @@
     slideView.appendChild(problemView);
   }
   /** 历史课件导入：列出该班级全部课堂 → 多选 → 逐个自动收集导出 PDF */  async function openHistoryImporter() {
+    // 防重复：已有浮层先关掉（多次点击会叠加）
+    [ ...document.querySelectorAll("div") ].filter(d => d.style?.cssText?.includes("rgba(0,0,0,.45)") && (d.innerText || "").includes("历史课堂")).forEach(d => d.remove());
     const classId = currentClassId();
     if (!classId) return ui.toast("请先进入课程的「学习日志」页（含班级 ID），再使用历史课件导入");
     ui.toast("正在获取课堂列表…");

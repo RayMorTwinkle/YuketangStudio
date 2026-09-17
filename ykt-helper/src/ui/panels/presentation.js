@@ -544,6 +544,8 @@ export function updateSlideView() {
 
 /** 历史课件导入：列出该班级全部课堂 → 多选 → 逐个自动收集导出 PDF */
 async function openHistoryImporter() {
+  // 防重复：已有浮层先关掉（多次点击会叠加）
+  [...document.querySelectorAll('div')].filter(d => d.style?.cssText?.includes('rgba(0,0,0,.45)') && (d.innerText || '').includes('历史课堂')).forEach(d => d.remove());
   const classId = currentClassId();
   if (!classId) {
     return ui.toast('请先进入课程的「学习日志」页（含班级 ID），再使用历史课件导入');
