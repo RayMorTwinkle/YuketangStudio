@@ -12,6 +12,7 @@
 // @match        https://www.yuketang.cn/web/*
 // @match        https://www.yuketang.cn/web
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
+// @match        https://*.yuketang.cn/lesson/student/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
 // @match        https://*.yuketang.cn/m/v2/*
 // @match        https://*.yuketang.cn/m/*
@@ -404,19 +405,26 @@
     function getCurrentMainPageSlideId() {
     try {
       const app = getVueApp();
-      if (!app || !app.$store) {
-        W$2("getCurrentMainPageSlideId: 无 app 或 store");
-        return null;
+      const currSlide = app?.$store?.state?.currSlide;
+      if (currSlide) {
+        const rawSid = currSlide.sid;
+        const sidStr = rawSid == null ? null : String(rawSid);
+        log.dbg("[getCurrentMainPageSlideId] 获取到 slideId:", sidStr, "{type:", currSlide.type, ", problemID:", currSlide.problemID, ", index:", currSlide.index, "}", "(raw type:", typeof rawSid, ", raw value:", rawSid, ")");
+        return sidStr;
       }
-      const currSlide = app.$store.state?.currSlide;
-      if (!currSlide) {
-        L$2("getCurrentMainPageSlideId: currSlide 为 null/undefined");
-        return null;
+      // 移动版实时课堂（/lesson/student/v3）：store 无 currSlide，
+      // 时间线卡片数组 state.cards 中最后一个含 sid 的卡片即最新推送页
+            const cards = app?.$store?.state?.cards;
+      if (Array.isArray(cards)) for (let i = cards.length - 1; i >= 0; i--) {
+        const c = cards[i];
+        if (c?.sid != null) {
+          const sidStr = String(c.sid);
+          log.dbg("[getCurrentMainPageSlideId] 移动版时间线最新页:", sidStr, "{type:", c.type, ", problemID:", c.problemID ?? null, "}");
+          return sidStr;
+        }
       }
-      const rawSid = currSlide.sid;
-      const sidStr = rawSid == null ? null : String(rawSid);
-      log.dbg("[getCurrentMainPageSlideId] 获取到 slideId:", sidStr, "{type:", currSlide.type, ", problemID:", currSlide.problemID, ", index:", currSlide.index, "}", "(raw type:", typeof rawSid, ", raw value:", rawSid, ")");
-      return sidStr;
+      if (!app) W$2("getCurrentMainPageSlideId: 找不到 #app.__vue__");
+      return null;
     } catch (e) {
       E("getCurrentMainPageSlideId 错误:", e);
       return null;
@@ -427,6 +435,20 @@
     if (!app || !app.$store) {
       E("watchMainPageChange: 无法获取 Vue 实例或 store");
       return () => {};
+    }
+    // 移动版实时课堂：监听时间线卡片数量变化（老师推送新页 = 末尾新增幻灯片卡片）
+        if (Array.isArray(app.$store.state.cards)) {
+      const unwatch = app.$store.watch(s => Array.isArray(s.cards) ? s.cards.filter(c => c?.sid != null).length : 0, (n, o) => {
+        if (n === o) return;
+        const newSid = getCurrentMainPageSlideId();
+        L$2("移动版时间线页面切换", {
+          count: n,
+          newSid: newSid
+        });
+        if (newSid) callback(newSid, null);
+      });
+      L$2("已启动移动版时间线页面监听");
+      return unwatch;
     }
     const unwatch = app.$store.watch(state => state.currSlide, (ns, os) => {
       const newSid = ns?.sid == null ? null : String(ns.sid);
@@ -2394,7 +2416,11 @@
     } catch (e) {
       return ui.toast("获取课堂列表失败：" + (e?.message || e));
     }
-    if (!activities.length) return ui.toast("该班级没有可导入的课堂");
+    // 排除正在进行中的课堂（is_finished=false）：数据不完整且导出无意义
+        const ongoing = activities.filter(a => a.is_finished === false);
+    activities = activities.filter(a => a.is_finished !== false);
+    if (ongoing.length) ui.toast(`已排除 ${ongoing.length} 个进行中的课堂`, 2500);
+    if (!activities.length) return ui.toast(ongoing.length ? "该班级只有进行中的课堂，暂无可导入" : "该班级没有可导入的课堂");
     // 构建多选浮层
         const mask = document.createElement("div");
     mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;";
@@ -2403,15 +2429,22 @@
     box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂（可多选）</div>`;
     const chosen = new Set;
     const rowEls = [];
+    // 选中态高亮：选中行加背景+边框色（解决选中/未选中看不出区别）
+        const paintRow = row => {
+      const cb = row.querySelector("input");
+      row.style.background = cb.checked ? "#eff6ff" : "#fff";
+      row.style.borderColor = cb.checked ? "#1d63df" : "#e5e7eb";
+    };
     for (const a of activities) {
       const d = new Date(a.create_time || 0);
       const t = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
       const row = document.createElement("label");
-      row.style.cssText = "padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;";
-      row.innerHTML = `<input type="checkbox" data-id="${a.id}" style="flex:0 0 auto"><span style="flex:1">${a.title || "未命名课堂"}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? " ✅" : ""}</span>`;
+      row.style.cssText = "padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fff;";
+      row.innerHTML = `<input type="checkbox" data-id="${a.id}" style="flex:0 0 auto;width:16px;height:16px;accent-color:#1d63df;cursor:pointer"><span style="flex:1">${a.title || "未命名课堂"}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? " ✅" : ""}</span>`;
       const cb = row.querySelector("input");
       cb.addEventListener("change", () => {
         if (cb.checked) chosen.add(a); else chosen.delete(a);
+        paintRow(row);
         downloadBtn.textContent = chosen.size ? `⬇️ 下载选中 (${chosen.size})` : "⬇️ 下载选中";
         downloadBtn.style.opacity = chosen.size ? "1" : ".5";
       });
@@ -2434,6 +2467,7 @@
             const a = activities.find(x => String(x.id) === cb.dataset.id);
             if (a) chosen.add(a);
           }
+          paintRow(row);
         }
         downloadBtn.textContent = chosen.size ? `⬇️ 下载选中 (${chosen.size})` : "⬇️ 下载选中";
         downloadBtn.style.opacity = chosen.size ? "1" : ".5";
@@ -5805,10 +5839,12 @@
   }
   // src/index.js
     (function loadFA() {
+    // document-start 极早期 document.head 可能尚未解析出来（手动 CDP 注入/异常时序），需兜底
+    const target = document.head || document.documentElement || document;
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css";
-    document.head.appendChild(link);
+    target.appendChild(link);
   })();
   /** 用户正在页面里输入时，不要刷新打断 */  function userIsTyping() {
     try {

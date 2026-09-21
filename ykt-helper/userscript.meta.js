@@ -22,6 +22,7 @@ export const meta = `
 // @match        https://www.yuketang.cn/web/*
 // @match        https://www.yuketang.cn/web
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
+// @match        https://*.yuketang.cn/lesson/student/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
 // @match        https://*.yuketang.cn/m/v2/*
 // @match        https://*.yuketang.cn/m/*

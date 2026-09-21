@@ -557,7 +557,13 @@ async function openHistoryImporter() {
   } catch (e) {
     return ui.toast('获取课堂列表失败：' + (e?.message || e));
   }
-  if (!activities.length) return ui.toast('该班级没有可导入的课堂');
+  // 排除正在进行中的课堂（is_finished=false）：数据不完整且导出无意义
+  const ongoing = activities.filter(a => a.is_finished === false);
+  activities = activities.filter(a => a.is_finished !== false);
+  if (ongoing.length) ui.toast(`已排除 ${ongoing.length} 个进行中的课堂`, 2500);
+  if (!activities.length) {
+    return ui.toast(ongoing.length ? '该班级只有进行中的课堂，暂无可导入' : '该班级没有可导入的课堂');
+  }
 
   // 构建多选浮层
   const mask = document.createElement('div');
@@ -567,15 +573,22 @@ async function openHistoryImporter() {
   box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂（可多选）</div>`;
   const chosen = new Set();
   const rowEls = [];
+  // 选中态高亮：选中行加背景+边框色（解决选中/未选中看不出区别）
+  const paintRow = (row) => {
+    const cb = row.querySelector('input');
+    row.style.background = cb.checked ? '#eff6ff' : '#fff';
+    row.style.borderColor = cb.checked ? '#1d63df' : '#e5e7eb';
+  };
   for (const a of activities) {
     const d = new Date(a.create_time || 0);
     const t = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     const row = document.createElement('label');
-    row.style.cssText = 'padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;';
-    row.innerHTML = `<input type="checkbox" data-id="${a.id}" style="flex:0 0 auto"><span style="flex:1">${a.title || '未命名课堂'}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? ' ✅' : ''}</span>`;
+    row.style.cssText = 'padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fff;';
+    row.innerHTML = `<input type="checkbox" data-id="${a.id}" style="flex:0 0 auto;width:16px;height:16px;accent-color:#1d63df;cursor:pointer"><span style="flex:1">${a.title || '未命名课堂'}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? ' ✅' : ''}</span>`;
     const cb = row.querySelector('input');
     cb.addEventListener('change', () => {
       if (cb.checked) chosen.add(a); else chosen.delete(a);
+      paintRow(row);
       downloadBtn.textContent = chosen.size ? `⬇️ 下载选中 (${chosen.size})` : '⬇️ 下载选中';
       downloadBtn.style.opacity = chosen.size ? '1' : '.5';
     });
@@ -598,6 +611,7 @@ async function openHistoryImporter() {
           const a = activities.find(x => String(x.id) === cb.dataset.id);
           if (a) chosen.add(a);
         }
+        paintRow(row);
       }
       downloadBtn.textContent = chosen.size ? `⬇️ 下载选中 (${chosen.size})` : '⬇️ 下载选中';
       downloadBtn.style.opacity = chosen.size ? '1' : '.5';

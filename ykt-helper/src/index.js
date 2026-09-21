@@ -10,10 +10,12 @@ import { isStudentV3Page, runHistoryCapture } from './core/history-capture.js';
 import { log } from './core/log.js';
 
 (function loadFA() {
+  // document-start 极早期 document.head 可能尚未解析出来（手动 CDP 注入/异常时序），需兜底
+  const target = document.head || document.documentElement || document;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
-  document.head.appendChild(link);
+  target.appendChild(link);
 })();
 
 /** 用户正在页面里输入时，不要刷新打断 */
