@@ -1,5 +1,6 @@
 import { log } from './log.js';
 import { gm } from './env.js';
+import { repo } from '../state/repo.js';
 const L = (...a) => log.dbg('[雨课堂助手][DBG][vuex-helper]', ...a);
 const W = (...a) => log.warn('[雨课堂助手][WARN][vuex-helper]', ...a);
 const E = (...a) => log.err('[雨课堂助手][ERR][vuex-helper]', ...a);
@@ -50,6 +51,18 @@ export function getCurrentMainPageSlideId() {
       return sidStr;
     }
 
+    // 移动版课堂页（/m/v2/lesson/*）：时间线幻灯片列表最后一项即老师最新页
+    const tl = store?.state?.lessonTimelineSlides;
+    if (Array.isArray(tl) && tl.length) {
+      const last = tl[tl.length - 1];
+      const sid = last?.sid ?? last?.id;
+      if (sid != null) {
+        const sidStr = String(sid);
+        log.dbg('[getCurrentMainPageSlideId] 移动版时间线幻灯片最新页:', sidStr, '{index:', last.index, '}');
+        return sidStr;
+      }
+    }
+
     // 移动版实时课堂（/lesson/student/v3）：store 无 currSlide，
     // 时间线卡片数组 state.cards 中最后一个含 sid 的卡片即最新推送页
     const cards = store?.state?.cards;
@@ -78,6 +91,23 @@ export function watchMainPageChange(callback) {
   if (!app || !store) {
     E('watchMainPageChange: 无法获取 Vue 实例或 store');
     return () => {};
+  }
+
+  // 移动版课堂页（/m/v2/lesson/*）：watch 时间线幻灯片最后一项的 sid
+  if (Array.isArray(store.state?.lessonTimelineSlides)) {
+    const lastSid = (s) => {
+      const a = s.lessonTimelineSlides;
+      if (!Array.isArray(a) || !a.length) return null;
+      const sid = a[a.length - 1]?.sid ?? a[a.length - 1]?.id;
+      return sid == null ? null : String(sid);
+    };
+    const unwatch = store.watch(lastSid, (n, o) => {
+      if (!n || n === o) return;
+      L('移动版时间线幻灯片切换', { newSid: n });
+      callback(n, null);
+    });
+    L('已启动移动版时间线幻灯片监听');
+    return unwatch;
   }
 
   // 移动版实时课堂：watch「最后一个含 sid 卡片的 sid 值」——
@@ -116,6 +146,68 @@ export function watchMainPageChange(callback) {
   );
   L('已启动主界面页面切换监听');
   return unwatch;
+}
+
+/** 统一从各种移动版 store 形态取「幻灯片列表」：
+ *  /m/v2/lesson/*    → state.lessonTimelineSlides（cover/index/sid/presentationId 全量数据）
+ *  /lesson/student/v3 → state.cards（type 2 卡片含 sid/pageIndex/src/webp）
+ * 返回标准化 slide 数组或 null（桌面页走 XHR/WS 拦截器，不用这里） */
+export function getMainPageSlides() {
+  try {
+    const store = getStore(getVueApp());
+    const st = store?.state;
+    const tl = st?.lessonTimelineSlides;
+    if (Array.isArray(tl) && tl.length) {
+      return tl.map(s => ({
+        id: String(s.sid ?? s.id),
+        index: s.index,
+        title: `第 ${s.index} 页`,
+        thumbnail: s.cover, image: s.cover, cover: s.cover,
+        presentationId: String(s.presentationId ?? s.pres ?? ''),
+        problem: s.problem || null,
+      }));
+    }
+    const cards = st?.cards;
+    if (Array.isArray(cards) && cards.length) {
+      return cards.filter(c => c?.sid != null).map(c => ({
+        id: String(c.sid),
+        index: c.pageIndex,
+        title: `第 ${c.pageIndex} 页`,
+        thumbnail: c.webp || c.src, image: c.src || c.webp, cover: c.src || c.webp,
+        presentationId: String(c.presentationid ?? c.pres ?? ''),
+        problem: null,
+      }));
+    }
+    return null;
+  } catch (e) {
+    E('getMainPageSlides 错误:', e);
+    return null;
+  }
+}
+
+/** 把移动版 store 里的幻灯片列表镜像进 repo（presentation + slides）。
+ *  移动版页面 XHR 拦截器抓不到课件数据，store 是唯一可靠来源；
+ *  老师翻页会追加条目，需周期调用（幂等 upsert，已有更全数据时跳过）。 */
+export function syncMobileSlidesIntoRepo() {
+  const slides = getMainPageSlides();
+  if (!slides?.length) return 0;
+  const byPres = new Map();
+  for (const s of slides) {
+    const pid = s.presentationId || 'unknown';
+    if (!byPres.has(pid)) byPres.set(pid, []);
+    byPres.get(pid).push(s);
+    repo.upsertSlide(s);
+  }
+  let updated = 0;
+  for (const [pid, arr] of byPres) {
+    const existing = repo.presentations.get(pid);
+    // 已有页数 ≥ 当前镜像：数据来自更全的来源（XHR 拦截/存储），不降级覆盖
+    if (existing?.slides?.length >= arr.length) continue;
+    repo.setPresentation(pid, { title: existing?.title || document.title || '课件', slides: arr });
+    updated++;
+  }
+  if (updated) L('移动版幻灯片镜像进 repo:', updated, '个课件');
+  return updated;
 }
 
 export function waitForVueReady(timeoutMs = 15000) {

@@ -86,8 +86,9 @@ export function installToolbar() {
   `;
   document.body.appendChild(bar);
 
-  // 移动版页面：给出「切桌面版」引导（脚本虽已注入，但页面本身功能受限）
-  if (isMobileVersionPage()) {
+  // 移动版页面：给出「切桌面版」引导（脚本虽已注入，但页面本身功能受限）。
+  // 课堂页不弹——跟随/课件/AI 在 /m/v2/lesson 已可用，全宽引导条上课期间太吵
+  if (isMobileVersionPage() && !/\/lesson\//.test(location.pathname)) {
     log.warn('[toolbar] 检测到雨课堂移动版，已显示桌面版引导');
     showSwitchToDesktopGuide();
   }

@@ -12,6 +12,7 @@ import { captureSlideImage, captureProblemForVision } from '../capture/screensho
 import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 import { isMobileVersionPage, isNarrowDevice } from '../ui/toolbar.js';
+import { syncMobileSlidesIntoRepo } from '../core/vuex-helper.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
@@ -321,9 +322,10 @@ export const actions = {
     ui.showPresentationPanel(true);
   },
 
-  /** 从 URL 刷新当前课堂 id（fullscreen 与 student 两种 v3 页都认；SPA 路由变化时重取） */
+  /** 从 URL 刷新当前课堂 id（fullscreen/student v3 与移动版 /m/v2/lesson/* 都认；SPA 路由变化时重取） */
   _syncLessonIdFromURL() {
-    const m = location.pathname.match(/\/lesson\/(?:fullscreen|student)\/v3\/([^/]+)/);
+    const m = location.pathname.match(/\/lesson\/(?:fullscreen|student)\/v3\/([^/]+)/)
+      || location.pathname.match(/\/m\/v\d+\/lesson\/[^/]+\/([^/]+)/);
     const id = m ? m[1] : null;
     if (id !== repo.currentLessonId) {
       repo.currentLessonId = id;
@@ -346,6 +348,15 @@ export const actions = {
     }
     this.maybeStartAutoJoin();
     this.installRouterRearm();
+
+    // 移动版课堂页（/m/v2/lesson/*、/lesson/student/v3）：XHR 拦截器在这些页面
+    // 抓不到课件数据，Vue store 的 lessonTimelineSlides/cards 是唯一来源——
+    // 周期性镜像进 repo（老师翻页会追加条目；幂等 upsert）
+    if (/\/lesson\//.test(location.pathname)) {
+      const sync = () => { try { syncMobileSlidesIntoRepo(); } catch {} };
+      sync();
+      setInterval(sync, 4000);
+    }
   },
   
     startAutoAnswerLoop() {

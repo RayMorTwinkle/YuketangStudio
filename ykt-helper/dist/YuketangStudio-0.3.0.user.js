@@ -498,6 +498,17 @@
         log.dbg("[getCurrentMainPageSlideId] 获取到 slideId:", sidStr, "{type:", currSlide.type, ", problemID:", currSlide.problemID, ", index:", currSlide.index, "}", "(raw type:", typeof rawSid, ", raw value:", rawSid, ")");
         return sidStr;
       }
+      // 移动版课堂页（/m/v2/lesson/*）：时间线幻灯片列表最后一项即老师最新页
+            const tl = store?.state?.lessonTimelineSlides;
+      if (Array.isArray(tl) && tl.length) {
+        const last = tl[tl.length - 1];
+        const sid = last?.sid ?? last?.id;
+        if (sid != null) {
+          const sidStr = String(sid);
+          log.dbg("[getCurrentMainPageSlideId] 移动版时间线幻灯片最新页:", sidStr, "{index:", last.index, "}");
+          return sidStr;
+        }
+      }
       // 移动版实时课堂（/lesson/student/v3）：store 无 currSlide，
       // 时间线卡片数组 state.cards 中最后一个含 sid 的卡片即最新推送页
             const cards = store?.state?.cards;
@@ -522,6 +533,24 @@
     if (!app || !store) {
       E("watchMainPageChange: 无法获取 Vue 实例或 store");
       return () => {};
+    }
+    // 移动版课堂页（/m/v2/lesson/*）：watch 时间线幻灯片最后一项的 sid
+        if (Array.isArray(store.state?.lessonTimelineSlides)) {
+      const lastSid = s => {
+        const a = s.lessonTimelineSlides;
+        if (!Array.isArray(a) || !a.length) return null;
+        const sid = a[a.length - 1]?.sid ?? a[a.length - 1]?.id;
+        return sid == null ? null : String(sid);
+      };
+      const unwatch = store.watch(lastSid, (n, o) => {
+        if (!n || n === o) return;
+        L$2("移动版时间线幻灯片切换", {
+          newSid: n
+        });
+        callback(n, null);
+      });
+      L$2("已启动移动版时间线幻灯片监听");
+      return unwatch;
     }
     // 移动版实时课堂：watch「最后一个含 sid 卡片的 sid 值」——
     // 不能只 watch 数量：数量不变的重发/回跳也需要触发
@@ -559,6 +588,67 @@
     });
     L$2("已启动主界面页面切换监听");
     return unwatch;
+  }
+  /** 统一从各种移动版 store 形态取「幻灯片列表」：
+   *  /m/v2/lesson/*    → state.lessonTimelineSlides（cover/index/sid/presentationId 全量数据）
+   *  /lesson/student/v3 → state.cards（type 2 卡片含 sid/pageIndex/src/webp）
+   * 返回标准化 slide 数组或 null（桌面页走 XHR/WS 拦截器，不用这里） */  function getMainPageSlides() {
+    try {
+      const store = getStore(getVueApp());
+      const st = store?.state;
+      const tl = st?.lessonTimelineSlides;
+      if (Array.isArray(tl) && tl.length) return tl.map(s => ({
+        id: String(s.sid ?? s.id),
+        index: s.index,
+        title: `第 ${s.index} 页`,
+        thumbnail: s.cover,
+        image: s.cover,
+        cover: s.cover,
+        presentationId: String(s.presentationId ?? s.pres ?? ""),
+        problem: s.problem || null
+      }));
+      const cards = st?.cards;
+      if (Array.isArray(cards) && cards.length) return cards.filter(c => c?.sid != null).map(c => ({
+        id: String(c.sid),
+        index: c.pageIndex,
+        title: `第 ${c.pageIndex} 页`,
+        thumbnail: c.webp || c.src,
+        image: c.src || c.webp,
+        cover: c.src || c.webp,
+        presentationId: String(c.presentationid ?? c.pres ?? ""),
+        problem: null
+      }));
+      return null;
+    } catch (e) {
+      E("getMainPageSlides 错误:", e);
+      return null;
+    }
+  }
+  /** 把移动版 store 里的幻灯片列表镜像进 repo（presentation + slides）。
+   *  移动版页面 XHR 拦截器抓不到课件数据，store 是唯一可靠来源；
+   *  老师翻页会追加条目，需周期调用（幂等 upsert，已有更全数据时跳过）。 */  function syncMobileSlidesIntoRepo() {
+    const slides = getMainPageSlides();
+    if (!slides?.length) return 0;
+    const byPres = new Map;
+    for (const s of slides) {
+      const pid = s.presentationId || "unknown";
+      if (!byPres.has(pid)) byPres.set(pid, []);
+      byPres.get(pid).push(s);
+      repo.upsertSlide(s);
+    }
+    let updated = 0;
+    for (const [pid, arr] of byPres) {
+      const existing = repo.presentations.get(pid);
+      // 已有页数 ≥ 当前镜像：数据来自更全的来源（XHR 拦截/存储），不降级覆盖
+            if (existing?.slides?.length >= arr.length) continue;
+      repo.setPresentation(pid, {
+        title: existing?.title || document.title || "课件",
+        slides: arr
+      });
+      updated++;
+    }
+    if (updated) L$2("移动版幻灯片镜像进 repo:", updated, "个课件");
+    return updated;
   }
   function waitForVueReady(timeoutMs = 15e3) {
     return new Promise(resolve => {
@@ -1603,6 +1693,80 @@
     ensureDOMPurify().catch(e => log.warn("[Rich] DOMPurify 预热失败", e?.message));
   }
   var tpl$5 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.active {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 / 跟随当前页开关 */\n    #ykt-filter-problems,\n    #ykt-follow-current {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active,\n    #ykt-follow-current.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-follow-current" title="选中项自动跟随课堂翻页；手动选择页面会脱离跟随">🎯 跟随当前页</button>\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n      <button id="ykt-pdf-cancel" title="取消导出" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:13px;padding:0 2px;">✕</button>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  // src/core/idb-cache.js
+  // PDF 导出图片缓存：下载的 dataURL 落 IndexedDB，刷新/中断后重导可断点续传。
+  // key = 图片 URL 去掉 query（签名 token 会过期轮换，path 部分才是稳定身份）。
+    const DB_NAME = "yks-pdf-cache";
+  const STORE = "images";
+  let _dbPromise = null;
+  function openDb() {
+    if (_dbPromise) return _dbPromise;
+    _dbPromise = new Promise((resolve, reject) => {
+      try {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          try {
+            req.result.createObjectStore(STORE);
+          } catch {}
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error("idb open failed"));
+        req.onblocked = () => reject(new Error("idb blocked"));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    // 打开失败只记一次，后续调用直接走已 reject 的 promise
+        _dbPromise.catch(() => {});
+    return _dbPromise;
+  }
+  /** 缓存 key：去 query/hash（token 过期不阻命中），data:/blob: 不缓存 */  function imageCacheKey(url) {
+    const u = String(url || "");
+    if (!u || u.startsWith("data:") || u.startsWith("blob:")) return null;
+    return u.split("?")[0].split("#")[0];
+  }
+  async function idbGet(key) {
+    try {
+      const db = await openDb();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readonly");
+        const req = tx.objectStore(STORE).get(key);
+        req.onsuccess = () => resolve(req.result?.v ?? null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (e) {
+      log.dbg("[PDF][cache] get 失败（降级为无缓存）:", e?.message);
+      return null;
+    }
+  }
+  async function idbSet(key, dataUrl) {
+    try {
+      const db = await openDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.objectStore(STORE).put({
+          v: dataUrl,
+          t: Date.now()
+        }, key);
+      });
+    } catch (e) {
+      // 配额满等场景静默降级——缓存是优化项不是功能项
+      log.warn("[PDF][cache] 写入失败:", e?.message);
+    }
+  }
+  async function idbDel(key) {
+    try {
+      const db = await openDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.objectStore(STORE).delete(key);
+      });
+    } catch {}
+  }
   // src/core/pdf-export.js
   // 公共 PDF 导出：页面尺寸跟随图片实际宽高比（零白边），GM_xhr 下载图片绕 CORS
   /** 让出事件循环：phase-2 的同步编码循环必须定期 yield，否则主线程阻塞 → 进度不 paint、关闭/取消按钮失灵。
@@ -1675,6 +1839,7 @@
     const items = new Array(total).fill(null);
  // { img, dataUrl }
         let doneCount = 0;
+    let cacheHits = 0;
     let nextIdx = 0;
     async function worker() {
       for (;;) {
@@ -1682,12 +1847,14 @@
         const i = nextIdx++;
         if (i >= total) return;
         try {
-          items[i] = await loadImageViaGM(urls[i], imageTimeoutMs);
+          items[i] = await loadImageWithCache(urls[i], imageTimeoutMs);
+          if (items[i].fromCache) cacheHits++;
         } catch (e) {
           log.warn("[PDF] 第", i + 1, "页图片加载失败，跳过:", e?.message);
           items[i] = null;
         }
         doneCount++;
+        const hitTxt = cacheHits ? `（缓存命中 ${cacheHits}）` : "";
         onProgress({
           cur: doneCount,
           total: total,
@@ -1695,7 +1862,7 @@
           skipped: skipped,
           failed: failed,
           pages: pages,
-          text: `已下载 ${doneCount}/${total} 张`
+          text: `已下载 ${doneCount}/${total} 张${hitTxt}`
         });
       }
     }
@@ -1914,6 +2081,31 @@
     return {
       img: img,
       dataUrl: url.startsWith("data:") ? url : null
+    };
+  }
+  /** 断点续传：IndexedDB 缓存优先，命中直接解码；未命中走 GM 下载并写缓存。
+   *  缓存条目解码失败视为损坏——删掉重下，不让坏数据永久挡路。 */  async function loadImageWithCache(src, timeoutMs) {
+    const key = imageCacheKey(src);
+    if (key) {
+      const cached = await idbGet(key);
+      if (cached) try {
+        const img = await loadImageEl(cached, timeoutMs);
+        return {
+          img: img,
+          dataUrl: cached,
+          fromCache: true
+        };
+      } catch {
+        log.warn("[PDF][cache] 缓存条目损坏，重新下载:", key.slice(-60));
+        idbDel(key);
+      }
+    }
+    const r = await loadImageViaGM(src, timeoutMs);
+    if (key && r.dataUrl) idbSet(key, r.dataUrl);
+ // 后台写，失败不影响导出
+        return {
+      ...r,
+      fromCache: false
     };
   }
   /** Image 元素加载 + 解码超时兜底（onload/onerror 都可能不触发） */  function loadImageEl(url, timeoutMs) {
@@ -5559,8 +5751,9 @@
     bar.id = "ykt-helper-toolbar";
     bar.innerHTML = `\n    <span id="ykt-btn-shell" class="btn" title="YuketangStudio 主面板"><i class="fas fa-briefcase"></i></span>\n    <span id="ykt-btn-bell" class="btn" title="习题提醒"><i class="fas fa-bell"></i></span>\n    <span id="ykt-btn-auto-answer" class="btn" title="自动作答"><i class="fas fa-magic-wand-sparkles"></i></span>\n  `;
     document.body.appendChild(bar);
-    // 移动版页面：给出「切桌面版」引导（脚本虽已注入，但页面本身功能受限）
-        if (isMobileVersionPage()) {
+    // 移动版页面：给出「切桌面版」引导（脚本虽已注入，但页面本身功能受限）。
+    // 课堂页不弹——跟随/课件/AI 在 /m/v2/lesson 已可用，全宽引导条上课期间太吵
+        if (isMobileVersionPage() && !/\/lesson\//.test(location.pathname)) {
       log.warn("[toolbar] 检测到雨课堂移动版，已显示桌面版引导");
       showSwitchToDesktopGuide();
     }
@@ -5884,9 +6077,9 @@
       ui.updateSlideView();
       ui.showPresentationPanel(true);
     },
-    /** 从 URL 刷新当前课堂 id（fullscreen 与 student 两种 v3 页都认；SPA 路由变化时重取） */
+    /** 从 URL 刷新当前课堂 id（fullscreen/student v3 与移动版 /m/v2/lesson/* 都认；SPA 路由变化时重取） */
     _syncLessonIdFromURL() {
-      const m = location.pathname.match(/\/lesson\/(?:fullscreen|student)\/v3\/([^/]+)/);
+      const m = location.pathname.match(/\/lesson\/(?:fullscreen|student)\/v3\/([^/]+)/) || location.pathname.match(/\/m\/v\d+\/lesson\/[^/]+\/([^/]+)/);
       const id = m ? m[1] : null;
       if (id !== repo.currentLessonId) {
         repo.currentLessonId = id;
@@ -5905,6 +6098,18 @@
       });
       this.maybeStartAutoJoin();
       this.installRouterRearm();
+      // 移动版课堂页（/m/v2/lesson/*、/lesson/student/v3）：XHR 拦截器在这些页面
+      // 抓不到课件数据，Vue store 的 lessonTimelineSlides/cards 是唯一来源——
+      // 周期性镜像进 repo（老师翻页会追加条目；幂等 upsert）
+            if (/\/lesson\//.test(location.pathname)) {
+        const sync = () => {
+          try {
+            syncMobileSlidesIntoRepo();
+          } catch {}
+        };
+        sync();
+        setInterval(sync, 4e3);
+      }
     },
     startAutoAnswerLoop() {
       if (_autoLoopStarted) return;

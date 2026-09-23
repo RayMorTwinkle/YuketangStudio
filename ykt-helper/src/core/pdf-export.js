@@ -2,6 +2,7 @@
 // 公共 PDF 导出：页面尺寸跟随图片实际宽高比（零白边），GM_xhr 下载图片绕 CORS
 import { ensureJsPDF, fetchAsDataURL } from './env.js';
 import { log } from './log.js';
+import { imageCacheKey, idbGet, idbSet, idbDel } from './idb-cache.js';
 
 /** 让出事件循环：phase-2 的同步编码循环必须定期 yield，否则主线程阻塞 → 进度不 paint、关闭/取消按钮失灵。
  *  用 MessageChannel 而非 setTimeout(0)：后台标签页里定时器被节流到 1s+（实测 yield 一次 ~4s，
@@ -52,6 +53,7 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
   onProgress({ cur: 0, total, pct: 0, skipped: 0, failed: 0, pages: 0, text: '并发下载图片中…' });
   const items = new Array(total).fill(null);  // { img, dataUrl }
   let doneCount = 0;
+  let cacheHits = 0;
   let nextIdx = 0;
   async function worker() {
     for (;;) {
@@ -59,13 +61,15 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
       const i = nextIdx++;
       if (i >= total) return;
       try {
-        items[i] = await loadImageViaGM(urls[i], imageTimeoutMs);
+        items[i] = await loadImageWithCache(urls[i], imageTimeoutMs);
+        if (items[i].fromCache) cacheHits++;
       } catch (e) {
         log.warn('[PDF] 第', i + 1, '页图片加载失败，跳过:', e?.message);
         items[i] = null;
       }
       doneCount++;
-      onProgress({ cur: doneCount, total, pct: Math.round((doneCount / total) * 60), skipped, failed, pages, text: `已下载 ${doneCount}/${total} 张` });
+      const hitTxt = cacheHits ? `（缓存命中 ${cacheHits}）` : '';
+      onProgress({ cur: doneCount, total, pct: Math.round((doneCount / total) * 60), skipped, failed, pages, text: `已下载 ${doneCount}/${total} 张${hitTxt}` });
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, worker));
@@ -218,6 +222,27 @@ async function loadImageViaGM(src, timeoutMs) {
   }
   const img = await loadImageEl(url, timeoutMs);
   return { img, dataUrl: url.startsWith('data:') ? url : null };
+}
+
+/** 断点续传：IndexedDB 缓存优先，命中直接解码；未命中走 GM 下载并写缓存。
+ *  缓存条目解码失败视为损坏——删掉重下，不让坏数据永久挡路。 */
+async function loadImageWithCache(src, timeoutMs) {
+  const key = imageCacheKey(src);
+  if (key) {
+    const cached = await idbGet(key);
+    if (cached) {
+      try {
+        const img = await loadImageEl(cached, timeoutMs);
+        return { img, dataUrl: cached, fromCache: true };
+      } catch {
+        log.warn('[PDF][cache] 缓存条目损坏，重新下载:', key.slice(-60));
+        idbDel(key);
+      }
+    }
+  }
+  const r = await loadImageViaGM(src, timeoutMs);
+  if (key && r.dataUrl) idbSet(key, r.dataUrl);   // 后台写，失败不影响导出
+  return { ...r, fromCache: false };
 }
 
 /** Image 元素加载 + 解码超时兜底（onload/onerror 都可能不触发） */
