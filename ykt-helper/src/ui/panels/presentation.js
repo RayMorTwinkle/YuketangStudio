@@ -2,7 +2,7 @@ import tpl from './presentation.html';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
-import { ensureJsPDF, fetchAsDataURL } from '../../core/env.js';
+import { exportImagesToPdf } from '../../core/pdf-export.js';
 import { importHistoryLesson, fetchClassActivities, currentClassId } from '../../core/history-capture.js';
 import { log } from '../../core/log.js';
 import { waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
@@ -115,7 +115,8 @@ function collectStaticSlideURLsFromDom() {
     const src = img.currentSrc || img.src || img.getAttribute('src') || '';
     if (!src) return;
 
-    if (/thu-private-qn\.yuketang\.cn\/slide\/\d+\//.test(src) &&
+    // 任意 *.yuketang.cn 子域的 /slide/<id>/ 图都算（此前写死 thu-private-qn，其他学校漏收）
+    if (/\.yuketang\.cn\/slide\/\d+\//i.test(src) &&
         /\.(png|jpg|jpeg|webp)(\?|#|$)/i.test(src)) {
       urls.add(src);
     }
@@ -196,7 +197,8 @@ export function mountPresentationPanel() {
   document.body.appendChild(wrapper.firstElementChild);
   host = document.getElementById('ykt-presentation-panel');
 
-  $('#ykt-presentation-close')?.addEventListener('click', () => showPresentationPanel(false));
+  // 面板嵌在 shell 里——关闭=通知 shell 收起
+  $('#ykt-presentation-close')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
 
   // 题目页筛选开关（原「题目列表」功能的替代：点一下只看题目页，再点恢复全部）
   const filterBtn = $('#ykt-filter-problems');
@@ -225,11 +227,21 @@ export function mountPresentationPanel() {
     }
   });
 
-  // 课堂翻页时（Vue watcher）：跟随模式自动高亮 + 滚动
+  // 课堂翻页时（Vue watcher）：跟随模式把 repo 当前页推进到老师展示的页，再联动高亮与大图
   waitForVueReady().then(() => {
     watchMainPageChange((slideId) => {
-      L('课堂翻页事件', { slideId, followCurrent });
+      const sid = slideId == null ? null : String(slideId);
+      L('课堂翻页事件', { slideId: sid, followCurrent });
+      if (!sid) return;
       if (followCurrent) {
+        repo.currentSlideId = sid;
+        // 同步所属课件——跨课件翻页时右侧大图/选中态才不会指错课件
+        for (const [pid, pres] of repo.presentations) {
+          if ((pres?.slides || []).some(s => String(s.id) === sid)) {
+            repo.currentPresentationId = String(pid);
+            break;
+          }
+        }
         updateFollowHighlight();
         updateSlideView();
       } else {
@@ -245,6 +257,8 @@ export function mountPresentationPanel() {
   L('mountPresentationPanel 完成');
   // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
   host.__yksOnShow = () => updatePresentationList();
+  // 收起/切走时中止进行中的整册导出（否则用户以为关了其实还在跑）
+  host.__yksOnHide = () => { pdfAbortCtrl?.abort(); };
   return host;
 }
 
@@ -276,9 +290,6 @@ export function showPresentationPanel(visible = true) {
   host.classList.toggle('visible', !!visible);
   if (visible) {
     updatePresentationList();}
-
-  const presBtn = document.getElementById('ykt-btn-pres');
-  if (presBtn) presBtn.classList.toggle('active', !!visible);
   L('showPresentationPanel', { visible });
 }
 
@@ -332,23 +343,8 @@ export function updatePresentationList() {
     return;
   }
 
-  const currentPath = window.location.pathname;
-  const m = currentPath.match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
-  const currentLessonFromURL = m ? m[1] : null;
-  L('过滤课件', { currentLessonFromURL, repoCurrentLessonId: repo.currentLessonId });
-
-  const filtered = new Map();
-  for (const [id, p] of repo.presentations) {
-    if (currentLessonFromURL && repo.currentLessonId && currentLessonFromURL === repo.currentLessonId) {
-      filtered.set(id, p);
-    } else if (!currentLessonFromURL) {
-      filtered.set(id, p);
-    } else if (currentLessonFromURL === repo.currentLessonId) {
-      filtered.set(id, p);
-    }
-  }
-
-  const presentationsToShow = filtered.size > 0 ? filtered : repo.presentations;
+  // 课件按 presentation_id 收集、无法可靠归属到课堂——此前按 URL lessonId 过滤是无效逻辑（恒等于全量），删掉
+  const presentationsToShow = repo.presentations;
   L('展示课件数量=', presentationsToShow.size);
 
   try {
@@ -373,10 +369,14 @@ export function updatePresentationList() {
 
     const titleEl = document.createElement('div');
     titleEl.className = 'presentation-title';
-    titleEl.innerHTML = `
-      <span>${presentation.title || `课件 ${id}`}</span>
-      <i class="fas fa-download download-btn" title="下载课件"></i>
-    `;
+    // 课件标题来自服务端——不用 innerHTML 注入
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = presentation.title || `课件 ${id}`;
+    const dlIcon = document.createElement('i');
+    dlIcon.className = 'fas fa-download download-btn';
+    dlIcon.title = '下载课件';
+    titleEl.appendChild(titleSpan);
+    titleEl.appendChild(dlIcon);
     cont.appendChild(titleEl);
 
     titleEl.querySelector('.download-btn')?.addEventListener('click', (e) => {
@@ -411,7 +411,7 @@ export function updatePresentationList() {
       if (currentIdStr && slideIdStr === currentIdStr) thumb.classList.add('active');
 
       if (s.problem) {
-        const pid = s.problem.problemId;
+        const pid = String(s.problem.problemId);
         const status = repo.problemStatus.get(pid);
         if (status) thumb.classList.add('unlocked');
         if (s.problem.result) thumb.classList.add('answered');
@@ -483,20 +483,28 @@ export function updateSlideView() {
   const lookup = getSlideByAny(curId);
   L('updateSlideView', { curId, lookupHit: lookup.hit, hasInMap: !!lookup.slide });
 
-  if (!curId) {
-    slideView.querySelector('.slide-cover')?.classList.remove('hidden');
+  if (!curId || !lookup.slide) {
+    // 无选中页（或 slide 数据未到达）：重建空态，避免残留上一次渲染的封面图
+    if (!curId) W('updateSlideView: 无当前页');
+    else W('updateSlideView: 根据 curId 未取到 slide', { curId });
+    slideView.innerHTML = '';
+    const emptyCover = document.createElement('div');
+    emptyCover.className = 'slide-cover';
+    const em = document.createElement('div');
+    em.className = 'empty-message';
+    em.textContent = '选择左侧的幻灯片查看详情';
+    emptyCover.appendChild(em);
+    slideView.appendChild(emptyCover);
+    slideView.appendChild(problemView);
     return;
   }
   const slide = lookup.slide;
-  if (!slide) {
-    W('updateSlideView: 根据 curId 未取到 slide', { curId });
-    return;
-  }
 
   const cover = document.createElement('div');
   cover.className = 'slide-cover';
   const img = document.createElement('img');
-  img.crossOrigin = 'anonymous';
+  // 不要设 crossOrigin=anonymous：OSS 无 CORS 头时图片直接拒绝加载；
+  // 展示场景不需要读像素，污染问题只在 PDF 导出时由 GM_xhr 绕开
   img.src = getSlideImageUrl(slide);
   img.alt = slide.title || '';
   cover.appendChild(img);
@@ -584,8 +592,20 @@ async function openHistoryImporter() {
     const t = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     const row = document.createElement('label');
     row.style.cssText = 'padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fff;';
-    row.innerHTML = `<input type="checkbox" data-id="${a.id}" style="flex:0 0 auto;width:16px;height:16px;accent-color:#1d63df;cursor:pointer"><span style="flex:1">${a.title || '未命名课堂'}</span><span style="color:#607190;white-space:nowrap">${t}${a.attend_status ? ' ✅' : ''}</span>`;
-    const cb = row.querySelector('input');
+    // 课堂标题来自服务端——不用 innerHTML 注入
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.id = a.id;
+    cb.style.cssText = 'flex:0 0 auto;width:16px;height:16px;accent-color:#1d63df;cursor:pointer';
+    const titleSpan = document.createElement('span');
+    titleSpan.style.flex = '1';
+    titleSpan.textContent = a.title || '未命名课堂';
+    const timeSpan = document.createElement('span');
+    timeSpan.style.cssText = 'color:#607190;white-space:nowrap';
+    timeSpan.textContent = `${t}${a.attend_status ? ' ✅' : ''}`;
+    row.appendChild(cb);
+    row.appendChild(titleSpan);
+    row.appendChild(timeSpan);
     cb.addEventListener('change', () => {
       if (cb.checked) chosen.add(a); else chosen.delete(a);
       paintRow(row);
@@ -632,6 +652,7 @@ async function openHistoryImporter() {
     const bar = showImportProgressBar(`批量 ${list.length} 个课堂`);
     const okList = [], failList = [];
     for (let i = 0; i < list.length; i++) {
+      if (bar.cancelled) { failList.push('（用户取消，剩余未导入）'); break; }
       const a = list[i];
       bar.update(Math.round((i / list.length) * 100), `(${i + 1}/${list.length}) ${a.title || '未命名课堂'} · 打开收集页…`);
       try {
@@ -648,7 +669,8 @@ async function openHistoryImporter() {
         });
         if (r?.ok) {
           okList.push(r.title || a.title || '未命名');
-          ui.toast(`✅「${r.title || a.title}」完成：${r.pages} 页${r.skipped ? `（去重 ${r.skipped}）` : ''}`, 2500);
+          const warnBit = (r.expectedTotal && r.total < r.expectedTotal) ? ` ⚠️仅${r.total}/${r.expectedTotal}页` : '';
+          ui.toast(`✅「${r.title || a.title}」完成：${r.pages} 页${r.skipped ? `（去重 ${r.skipped}）` : ''}${warnBit}`, 2500);
         } else {
           failList.push(`${a.title || '未命名'}：${r?.error || '未知错误'}`);
         }
@@ -656,13 +678,16 @@ async function openHistoryImporter() {
         failList.push(`${a.title || '未命名'}：${e?.message || e}`);
       }
     }
-    // 汇总
+    // 汇总（失败明细必须可见——否则部分失败被静默吞掉）
     const summary = [`完成 ${okList.length} 个，失败 ${failList.length} 个`];
-    if (failList.length) summary.push(`失败明细：${failList.join('；')}`);
-    if (okList.length) {
-      bar.done(`✅ 批量导入完成：${summary[0]}`);
+    if (failList.length) {
+      summary.push(`失败明细：${failList.join('；')}`);
+      log.warn('[History] 批量导入失败明细:', failList);
+    }
+    if (failList.length) {
+      bar.fail(summary.join('  ').slice(0, 400));
     } else {
-      bar.fail(summary.join('  '));
+      bar.done(`✅ 批量导入完成：${summary[0]}`);
     }
     ui.toast(summary[0], 4000);
   });
@@ -683,7 +708,10 @@ function showImportProgressBar(title) {
   bar.id = 'ykt-import-progress';
   bar.style.cssText = 'position:fixed;left:15px;bottom:60px;z-index:99999998;background:#fff;border:1px solid #c7d2fe;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:10px 14px;width:340px;font-size:13px;';
   bar.innerHTML = `
-    <div style="font-weight:600;margin-bottom:6px;color:#1d63df">📥 正在导入「${title}」</div>
+    <div style="font-weight:600;margin-bottom:6px;color:#1d63df;display:flex;justify-content:space-between;align-items:center">
+      <span>📥 正在导入「${title}」</span>
+      <span class="ip-close" title="取消" style="cursor:pointer;color:#c0392b;font-size:14px;padding:0 2px">✕</span>
+    </div>
     <div style="display:flex;align-items:center;gap:8px">
       <div style="flex:1;height:8px;background:#dbeafe;border-radius:4px;overflow:hidden">
         <div class="ip-fill" style="height:100%;width:0%;background:#1d63df;border-radius:4px;transition:width .3s"></div>
@@ -692,7 +720,8 @@ function showImportProgressBar(title) {
     </div>
     <div class="ip-text" style="margin-top:5px;color:#607190;font-size:12px">正在打开收集页…</div>`;
   document.body.appendChild(bar);
-  return {
+  const api = {
+    cancelled: false,
     update(pct, text) {
       const f = bar.querySelector('.ip-fill'); if (f) f.style.width = `${pct}%`;
       const p = bar.querySelector('.ip-pct'); if (p) p.textContent = `${pct}%`;
@@ -701,14 +730,22 @@ function showImportProgressBar(title) {
     done(text) {
       const f = bar.querySelector('.ip-fill'); if (f) f.style.width = '100%';
       const t = bar.querySelector('.ip-text'); if (t) { t.textContent = text; t.style.color = '#059669'; }
-      setTimeout(() => bar.remove(), 8000);
+      setTimeout(() => bar.remove(), 30000);
     },
     fail(text) {
+      // 失败结果保留 30s——用户切回来还能看到失败痕迹与原因
       const t = bar.querySelector('.ip-text'); if (t) { t.textContent = '❌ ' + text; t.style.color = '#c0392b'; }
-      setTimeout(() => bar.remove(), 12000);
+      setTimeout(() => bar.remove(), 30000);
     },
   };
+  bar.querySelector('.ip-close')?.addEventListener('click', () => {
+    api.cancelled = true;
+    api.update(0, '正在取消…（当前课堂会跑完本次等待）');
+  });
+  return api;
 }
+
+let pdfAbortCtrl = null;   // 进行中的整册导出（取消按钮/关面板时中止）
 
 async function downloadPresentationPDF() {
   let pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
@@ -734,6 +771,7 @@ async function downloadPresentationPDF() {
   const progressEl = document.getElementById('ykt-pdf-progress');
   const progressFill = document.getElementById('ykt-pdf-progress-fill');
   const progressText = document.getElementById('ykt-pdf-progress-text');
+  const cancelBtn = document.getElementById('ykt-pdf-cancel');
   const showProgress = (pct, text) => {
     if (progressEl) progressEl.style.display = 'flex';
     if (progressFill) progressFill.style.width = `${pct}%`;
@@ -743,68 +781,41 @@ async function downloadPresentationPDF() {
     if (progressEl) progressEl.style.display = 'none';
   };
 
-  try {
-    await ensureJsPDF();
-    const { jsPDF } = window.jspdf || {};
-    if (!jsPDF) throw new Error('jsPDF 未加载成功');
+  // 整册导出委托公共 pdf-export：并发下载、GM_xhr 绕 CORS、内容级去重
+  const urls = slides.map(getSlideImageUrl).filter(Boolean);
+  if (!urls.length) return ui.toast('该课件没有可用页面图片');
 
-    // 关键：页面尺寸跟随每张图片的原始宽高比 → 零白边（横屏 PPT 出横屏页）
-    const loadImage = async (src) => {
-      // 优先 GM_xhr 转 dataURL，避免 OSS 无 CORS 头导致 Image 加载/污染失败
-      let url = src;
-      if (!src.startsWith('data:')) {
-        try { url = await fetchAsDataURL(src); }
-        catch (e) { L('fetchAsDataURL 降级直载:', e?.message); }
-      }
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = url;
-      });
-    };
+  // 取消支持：✕ 按钮 + 关面板（__yksOnHide）都中止导出
+  pdfAbortCtrl = new AbortController();
+  const onCancel = () => { pdfAbortCtrl?.abort(); };
+  cancelBtn?.addEventListener('click', onCancel, { once: true });
 
-    let doc = null;
-    const total = slides.length;
-
-    for (let i = 0; i < slides.length; i++) {
-      const current = i + 1;
-      const pct = Math.round((current / total) * 100);
-      showProgress(pct, `${current}/${total}`);
-
-      const s = slides[i];
-      const url = getSlideImageUrl(s);
-      if (!url) {
-        if (!doc) {
-          doc = new jsPDF({ unit: 'pt', format: [960, 540], orientation: 'landscape' });
-        } else {
-          doc.addPage([960, 540], 'landscape');
-        }
-        continue;
-      }
-      const img = await loadImage(url);
-      const iw = img.naturalWidth || img.width;
-      const ih = img.naturalHeight || img.height;
-      const fmt = [iw, ih];
-      const orient = iw >= ih ? 'landscape' : 'portrait';
-
-      if (!doc) {
-        doc = new jsPDF({ unit: 'pt', format: fmt, orientation: orient });
-      } else {
-        doc.addPage(fmt, orient);
-      }
-
-      // 整页铺满：页面比例 == 图片比例，无需缩放留白
-      doc.addImage(img, 'PNG', 0, 0, iw, ih);
+  // 停滞看门狗：45s 没有任何进度回调 → 提示可能卡死（用户不再面对无声定格）
+  let lastProgressAt = Date.now();
+  const stallTimer = setInterval(() => {
+    const stall = Math.round((Date.now() - lastProgressAt) / 1000);
+    if (stall > 45 && progressText) {
+      progressText.textContent = `已停滞 ${stall}s（可能在解码大图或网络挂起，可点 ✕ 取消）`;
     }
+  }, 5000);
 
-    showProgress(100, '保存中...');
-    const name = (pres.title || `课件-${pid}`).replace(/[\\/:*?"<>|]/g, '_');
-    doc.save(`${name}.pdf`);
-    ui.toast('PDF 生成完成', 2000);
+  try {
+    const { pages, skipped, failed } = await exportImagesToPdf(urls, pres.title || `课件-${pid}`, {
+      dedupHash: true,
+      signal: pdfAbortCtrl.signal,
+      onProgress: (info) => { lastProgressAt = Date.now(); showProgress(info.pct ?? 0, info.text || `${info.pct ?? 0}%`); },
+    });
+    const bits = [`${pages} 页`];
+    if (skipped) bits.push(`去重 ${skipped}`);
+    if (failed) bits.push(`失败 ${failed}`);
+    ui.toast(`PDF 生成完成（${bits.join('，')}）`, 2500);
   } catch (e) {
-    ui.toast(`导出 PDF 失败：${e.message || e}`);
+    if (pdfAbortCtrl.signal.aborted) ui.toast('已取消导出', 2000);
+    else ui.toast(`导出 PDF 失败：${e?.message || e}`, 5000);
   } finally {
+    clearInterval(stallTimer);
+    cancelBtn?.removeEventListener('click', onCancel);
+    pdfAbortCtrl = null;
     setTimeout(hideProgress, 1500);
   }
 }

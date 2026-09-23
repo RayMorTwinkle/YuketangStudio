@@ -96,12 +96,10 @@ export function installToolbar() {
   if (ui.config.notifyProblems) bar.querySelector('#ykt-btn-bell')?.classList.add('active');
   ui.updateAutoAnswerBtn();
 
-  // 主面板
+  // 主面板——读 shell 真实可见性（按钮态由 showShell 统一同步，避免两处状态漂移）
   bar.querySelector('#ykt-btn-shell')?.addEventListener('click', () => {
-    const btn = bar.querySelector('#ykt-btn-shell');
-    const isActive = btn.classList.contains('active');
-    ui.showShellPanel?.(!isActive);
-    btn.classList.toggle('active', !isActive);
+    const shellVisible = !!document.getElementById('ykt-shell-panel')?.classList.contains('visible');
+    ui.showShellPanel?.(!shellVisible);
   });
 
   // 习题提醒开关

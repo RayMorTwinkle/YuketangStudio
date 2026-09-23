@@ -1,5 +1,5 @@
-// src/capture/screenshot.js
-import { ensureHtml2Canvas } from '../core/env.js';
+// src/capture/screenshoot.js
+import { ensureHtml2Canvas, fetchAsDataURL } from '../core/env.js';
 import { log } from '../core/log.js';
 import { repo } from '../state/repo.js';
 
@@ -9,9 +9,18 @@ export async function captureProblemScreenshot() {
     const el =
       document.querySelector('.ques-title') ||
       document.querySelector('.problem-body') ||
+      // 移动版 student/v3：题目卡片在时间线 feed 中
+      document.querySelector('.timeline-item [class*="problem"], .timeline-item [class*="ques"], .timeline__problem') ||
       document.querySelector('.ppt-inner') ||
       document.querySelector('.ppt-courseware-inner') ||
-      document.body;
+      // 移动版兜底：时间线最新一张卡片（老师刚推送的内容）
+      [...document.querySelectorAll('.student__timeline .timeline-item, .J_cards .timeline-item')].pop() ||
+      null;
+    // 不再退回 document.body——把整页截图当题目图发给 AI 既浪费 token 又误导模型
+    if (!el) {
+      log.warn('[captureProblemScreenshot] 页面上找不到题目/PPT 容器，放弃截图');
+      return null;
+    }
     return await html2canvas(el, {
       useCORS: true,
       allowTaint: false,
@@ -35,7 +44,7 @@ export async function captureSlideImage(slideId) {
   try {
     log.dbg('[captureSlideImage] 获取幻灯片图片:', slideId);
     
-    const slide = repo.slides.get(slideId);
+    const slide = repo.slides.get(String(slideId));
     if (!slide) {
       log.err('[captureSlideImage] 找不到幻灯片:', slideId);
       return null;
@@ -73,6 +82,14 @@ export async function captureSlideImage(slideId) {
  * @returns {Promise<string|null>}
  */
 async function downloadImageAsBase64(url) {
+  // 首选 GM_xhr → dataURL：无视 OSS CORS（crossOrigin=anonymous 在无 CORS 头的域上直接加载失败）
+  try {
+    const dataUrl = await fetchAsDataURL(url);
+    const b64 = String(dataUrl || '').split(',')[1] || '';
+    if (b64) return b64;
+  } catch (e) {
+    log.warn('[downloadImageAsBase64] fetchAsDataURL 失败，退回 Image+canvas:', e?.message);
+  }
   return new Promise((resolve) => {
     try {
       const img = new Image();

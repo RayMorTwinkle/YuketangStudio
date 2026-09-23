@@ -57,7 +57,8 @@ export async function agnesChat(opts) {
   if (!baseUrl || !apiKey) throw new Error('开发者模式未解锁：请到设置中解锁内置配置');
 
   const thinking = opts.thinking !== false;
-  const effort = ov.reasoningEffort || dev.reasoningEffort || 'medium';
+  // 只在显式配置时发 reasoning_effort——硬编码 'medium' 会让不支持该字段的端点报 400
+  const effort = ov.reasoningEffort || dev.reasoningEffort || null;
 
   const body = { model, messages: opts.messages };
   if (thinking && effort && effort !== 'off') body.reasoning_effort = effort;
@@ -69,13 +70,20 @@ export async function agnesChat(opts) {
   const timeoutMs = opts.timeoutMs || 120000;
   dlog('request', { url, model, stream, thinking });
 
+  // 只有「网络层失败」（CORS/连接错误）才值得降级 GM_xhr；
+  // 中止与明确的 HTTP 错误都意味着请求已到达服务端——重发会造成重复计费/双份回答
+  const shouldFallback = (e) =>
+    e?.name !== 'AbortError'
+    && !opts.signal?.aborted
+    && !/^HTTP \d/.test(String(e?.message || ''));
+
   if (stream) {
     // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
     try {
       return await fetchStream(url, apiKey, body, opts, timeoutMs);
     } catch (e) {
+      if (!shouldFallback(e)) throw e;
       dlog('fetch stream failed, fallback to GM_xhr:', e?.message || e);
-      if (e?.name === 'AbortError') throw e;
       return await gmXhrStream(url, apiKey, body, opts, timeoutMs);
     }
   }
@@ -83,6 +91,7 @@ export async function agnesChat(opts) {
   try {
     return await fetchStream(url, apiKey, body, opts, timeoutMs);
   } catch (e) {
+    if (!shouldFallback(e)) throw e;
     dlog('fetch failed, fallback to GM_xhr:', e?.message || e);
     return gmXhrOnce(url, apiKey, body, timeoutMs);
   }
@@ -106,10 +115,13 @@ function pickDelta(obj, opts, acc) {
 
 async function fetchStream(url, apiKey, body, opts, timeoutMs) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(new Error('timeout')), timeoutMs);
-  const onAbort = () => ctrl.abort(new Error('aborted'));
+  // abort 的 reason 必须带 AbortError 名——否则外层 catch 识别不出中止，
+  // 会掉进 GM_xhr 兜底再发一次请求
+  const mkAbort = (msg) => Object.assign(new Error(msg), { name: 'AbortError' });
+  const timer = setTimeout(() => ctrl.abort(mkAbort('请求超时')), timeoutMs);
+  const onAbort = () => ctrl.abort(mkAbort('aborted'));
   if (opts.signal) {
-    if (opts.signal.aborted) { clearTimeout(timer); throw Object.assign(new Error('aborted'), { name: 'AbortError' }); }
+    if (opts.signal.aborted) { clearTimeout(timer); throw mkAbort('aborted'); }
     opts.signal.addEventListener('abort', onAbort, { once: true });
   }
   try {
@@ -155,6 +167,8 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
   return new Promise((resolve, reject) => {
     const acc = { content: '', reasoning: '', toolCalls: [] };
     let seen = 0;
+    // sseParser 必须跨 onprogress 复用——每次新建会丢掉跨 chunk 拆开的 data: 行
+    const feed = sseParser((obj) => { if (obj) pickDelta(obj, opts, acc); });
     gm.xhr({
       method: 'POST',
       url,
@@ -165,14 +179,13 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
         const text = res.responseText || '';
         const chunk = text.slice(seen);
         seen = text.length;
-        const feed = sseParser((obj) => { if (obj) pickDelta(obj, opts, acc); });
         feed(chunk);
       },
       onload: (res) => {
         if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || '').slice(0, 200)}`));
-        // 兜底：progress 可能漏最后一段
+        // 兜底：progress 可能漏最后一段（补个 \n 把半行 data: 喂完）
         const text = res.responseText || '';
-        sseParser((obj) => { if (obj) pickDelta(obj, opts, acc); })(text.slice(seen) + '\n');
+        feed(text.slice(seen) + '\n');
         resolve(acc);
       },
       onerror: () => reject(new Error('网络错误（GM_xhr）')),

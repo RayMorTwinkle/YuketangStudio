@@ -1,4 +1,5 @@
-// src/ai/kimi.js
+// src/ai/openai.js
+// OpenAI 兼容协议封装：queryAI（纯文本）/ queryAIVision（图文，可选两步 pipeline）
 import { gm } from '../core/env.js';
 import { log } from '../core/log.js';
 
@@ -38,10 +39,9 @@ function getActiveProfile(aiCfg) {
     };
   }
   const activeId = cfg.activeProfileId;
-  let p = profiles.find(p => p.id === activeId);
-  if (!p) p = profiles[0];
-  if (!p.baseUrl) p.baseUrl = 'https://api.moonshot.cn/v1/chat/completions';
-  return p;
+  const p = profiles.find(p => p.id === activeId) || profiles[0];
+  // 不原地改 profile（p 是 config 里的对象）——补默认 baseUrl 走浅拷贝
+  return { ...p, baseUrl: p.baseUrl || 'https://api.moonshot.cn/v1/chat/completions' };
 }
 
 function makeChatUrl(profile) {
@@ -160,6 +160,8 @@ export async function queryAI(question, aiCfg) {
         reject(new Error(`网络请求失败: ${err?.message || '未知错误'}`));
       },
       timeout: 30000,
+      // timeout 只掐连接不会回调——没有 ontimeout 时 Promise 永久挂起（外层 answering 卡死）
+      ontimeout: () => reject(new Error('AI 请求超时（30s）')),
     });
   });
 }
@@ -211,6 +213,7 @@ function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs 
         log.err(`[雨课堂助手]${debugLabel} 网络请求失败:`, err);
         reject(new Error('网络请求失败'));
       },
+      ontimeout: () => reject(new Error(`AI 请求超时（${Math.round(timeoutMs / 1000)}s）`)),
     });
   });
 }
@@ -228,7 +231,7 @@ async function singleStepVisionCall(profile, cleanBase64List, textPrompt, option
   for (const b64 of cleanBase64List) {
     imageBlocks.push({
       type: 'image_url',
-      image_url: { url: `data:image/png;base64,${b64}` },
+      image_url: { url: `data:image/jpeg;base64,${b64}` },   // 截图/课件图一律 jpeg 化，mime 标对了省解码器猜测
     });
   }
 
@@ -370,7 +373,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
       content: [
         ...cleanBase64List.map(b64 => ({
           type: 'image_url',
-          image_url: { url: `data:image/png;base64,${b64}` },
+          image_url: { url: `data:image/jpeg;base64,${b64}` },
         })),
         textPrompt
           ? {

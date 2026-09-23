@@ -11,12 +11,15 @@ import * as Shell from './panels/shell.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
 
 const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
+// Object.assign 是浅拷贝——嵌套的 ai 若来自 DEFAULT_CONFIG 会与默认配置共享引用，
+// 深合并一份，避免写 _config.ai 污染 DEFAULT_CONFIG（影响设置页「重置」）
+if (typeof _config.ai !== 'object' || !_config.ai) _config.ai = {};
+_config.ai = Object.assign({}, DEFAULT_CONFIG.ai, _config.ai);
 _config.ai.kimiApiKey = storage.get('kimiApiKey', _config.ai.kimiApiKey);
 _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
 if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = false;
 if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;
 if (typeof _config.iftex === 'undefined') _config.iftex = true;
-if (typeof _config.ai === 'undefined' || !_config.ai) _config.ai = {};
 if (typeof _config.notifyProblems === 'undefined') _config.notifyProblems = true;           
 if (typeof _config.notifyPopupDuration === 'undefined') _config.notifyPopupDuration = 5000; 
 if (typeof _config.notifyVolume === 'undefined') _config.notifyVolume = 0.6;                
@@ -49,8 +52,9 @@ function enableNotifyDrag(wrapper, handle, bringToFront) {
 
   const onPointerMove = (ev) => {
     if (!dragging) return;
-    const nextLeft = Math.max(8, originLeft + ev.clientX - startX);
-    const nextTop = Math.max(8, originTop + ev.clientY - startY);
+    // 上下边界也要钳制——否则可拖到视口外再也拉不回来
+    const nextLeft = Math.max(8, Math.min(window.innerWidth - wrapper.offsetWidth - 8, originLeft + ev.clientX - startX));
+    const nextTop = Math.max(8, Math.min(window.innerHeight - wrapper.offsetHeight - 8, originTop + ev.clientY - startY));
     wrapper.style.left = `${nextLeft}px`;
     wrapper.style.top = `${nextTop}px`;
     wrapper.style.right = 'auto';
@@ -96,7 +100,8 @@ export const ui = {
 
   // 提升面板层级的辅助函数
   _bringToFront(panelElement) {
-    if (panelElement && panelElement.classList.contains('visible')) {
+    // notify 弹层创建后立即调用，此时 classList 还没有 visible——不能把它当前置条件
+    if (panelElement) {
       currentZIndex += 1;
       panelElement.style.zIndex = currentZIndex;
     }

@@ -44,15 +44,25 @@ export function mountShell() {
   }
 
   root.querySelector('#ykt-shell-close').addEventListener('click', () => showShell(false));
+  // 子面板内部关闭按钮统一广播这个事件（面板不知道自己嵌在 shell 里）
+  window.addEventListener('ykt:close-shell', () => showShell(false));
   mounted = true;
   return root;
+}
+
+/** 当前激活的面板元素（用于生命周期钩子） */
+function currentPanel() {
+  return root?.querySelector('#ykt-shell-content > .ykt-panel.active-tab') || null;
 }
 
 /** 打开/关闭主面板 */
 export function showShell(visible = true, tabId = null) {
   if (!mounted) mountShell();
   root.classList.toggle('visible', visible);
+  // 工具栏按钮态跟着真实可见性走
+  document.getElementById('ykt-btn-shell')?.classList.toggle('active', !!visible);
   if (visible) switchTo(tabId || activeTab);
+  else currentPanel()?.__yksOnHide?.();   // 收起时给激活面板一次清理机会（中止流式等）
 }
 
 export function toggleShell() {
@@ -71,6 +81,9 @@ export function switchTo(tabId) {
   const content = root.querySelector('#ykt-shell-content');
   for (const panel of content.querySelectorAll(':scope > .ykt-panel')) {
     const isActive = panel.id === t.panelId;
+    if (!isActive && panel.classList.contains('active-tab')) {
+      panel.__yksOnHide?.();   // 切走之前激活的面板（中止它的流式请求等）
+    }
     panel.classList.toggle('active-tab', isActive);
     panel.classList.toggle('visible', isActive);
   }

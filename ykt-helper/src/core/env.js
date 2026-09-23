@@ -18,13 +18,15 @@ export const gm = {
   uw: window.unsafeWindow || window,
 };
 
-export function loadScriptOnce(src) {
+export function loadScriptOnce(src, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     if ([...document.scripts].some(s => s.src === src)) return resolve();
     const s = document.createElement('script');
     s.src = src;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Failed to load: ${src}`));
+    // CDN 连接挂死时 onload/onerror 都不会触发——必须有自己的兜底计时
+    const timer = setTimeout(() => reject(new Error(`加载超时: ${src}`)), timeoutMs);
+    s.onload = () => { clearTimeout(timer); resolve(); };
+    s.onerror = () => { clearTimeout(timer); reject(new Error(`Failed to load: ${src}`)); };
     document.head.appendChild(s);
   });
 }
@@ -32,19 +34,41 @@ export function loadScriptOnce(src) {
 /** GM_xhr 下载任意图片转 dataURL（绕开 CORS；OSS 无跨域头也能拿） */
 export function fetchAsDataURL(url, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
-    gm.xhr({
-      method: 'GET', url, responseType: 'blob', timeout: timeoutMs,
-      onload: (res) => {
-        if (res.status !== 200) return reject(new Error(`图片下载 HTTP ${res.status}`));
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(new Error('图片读取失败'));
-        reader.readAsDataURL(res.response);
-      },
-      onerror: () => reject(new Error('图片下载失败')),
-      ontimeout: () => reject(new Error('图片下载超时')),
-    });
+    let settled = false;
+    const done = (fn, v) => { if (!settled) { settled = true; clearTimeout(watchdog); fn(v); } };
+    // 兜底计时器：部分 GM 实现不支持 timeout 字段 / 未授权域挂起等待用户授权时
+    // ontimeout 也不会触发——不能让 Promise 永远 pending
+    const watchdog = setTimeout(() => done(reject, new Error(`图片下载超时(${timeoutMs}ms): ${hostOf(url)}`)), timeoutMs + 5000);
+    try {
+      gm.xhr({
+        method: 'GET', url, responseType: 'blob', timeout: timeoutMs,
+        onload: (res) => {
+          // 回调内任何同步 throw 都会让 Promise 永远 pending——整体包 try
+          try {
+            if (res.status !== 200) return done(reject, new Error(`图片下载 HTTP ${res.status}: ${hostOf(url)}`));
+            let blob = res.response;
+            // 兼容返回 ArrayBuffer/string 的 GM 实现
+            if (!(blob instanceof Blob)) blob = new Blob([blob || '']);
+            const reader = new FileReader();
+            reader.onload = () => done(resolve, reader.result);
+            reader.onerror = () => done(reject, new Error('图片读取失败'));
+            reader.readAsDataURL(blob);
+          } catch (e) {
+            done(reject, new Error(`图片响应处理失败: ${e?.message || e}`));
+          }
+        },
+        onerror: () => done(reject, new Error(`图片下载失败: ${hostOf(url)}`)),
+        ontimeout: () => done(reject, new Error(`图片下载超时: ${hostOf(url)}`)),
+        onabort: () => done(reject, new Error(`图片下载中止: ${hostOf(url)}`)),
+      });
+    } catch (e) {
+      done(reject, e);
+    }
   });
+}
+
+function hostOf(url) {
+  try { return new URL(url).hostname; } catch { return String(url).slice(0, 60); }
 }
 
 export async function ensureHtml2Canvas() {
@@ -57,15 +81,19 @@ export async function ensureHtml2Canvas() {
 }
 
 export async function ensureJsPDF() {
-  if (window.jspdf?.jsPDF) return window.jspdf;
+  // jsPDF 由 @require 预置 → 落在沙箱 window；script 注入降级 → 落在主世界 gm.uw。两处都查
+  const pick = () => (window.jspdf?.jsPDF ? window.jspdf : (gm.uw?.jspdf?.jsPDF ? gm.uw.jspdf : null));
+  const ready = pick();
+  if (ready) return ready;
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
-  if (!window.jspdf?.jsPDF) throw new Error('jsPDF 未加载成功');
-  return window.jspdf;
+  const after = pick();
+  if (!after) throw new Error('jsPDF 未加载成功');
+  return after;
 }
 
 /** mermaid 按需加载（AI 回复里出现 ```mermaid 块时才拉取 CDN） */
 export async function ensureMermaid() {
-  const w = gm.uw || window;   // 脚本标签注入主世界，属性也挂在主世界——与 ensureJsPDF 同理
+  const w = gm.uw || window;   // 脚本标签注入主世界，属性也挂在主世界
   if (w.mermaid?.render) return w.mermaid;
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js');
   const m = w.mermaid;

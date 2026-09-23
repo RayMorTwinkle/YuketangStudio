@@ -111,20 +111,8 @@
 }
 #ykt-settings-panel .checkbox-label input:checked ~ .checkmark:after{ display: block; }
 
-/* ===== AI 解答面板 (#ykt-ai-answer-panel) ===== */
-#ykt-ai-answer-panel .ai-question{
-  white-space: pre-wrap; background: #fafafa; border: 1px solid var(--ykt-border);
-  padding: 8px; border-radius: 6px; margin-bottom: 8px; max-height: 160px; overflow: auto;
-}
-#ykt-ai-answer-panel .ai-loading{ color: var(--ykt-accent); margin-bottom: 6px; }
-#ykt-ai-answer-panel .ai-error{ color: #b00020; margin-bottom: 6px; }
-#ykt-ai-answer-panel .ai-answer{ white-space: pre-wrap; margin-top: 4px; }
-#ykt-ai-answer-panel .ai-actions{ margin-top: 10px; }
-#ykt-ai-answer-panel .ai-actions button{
-  height: 30px; padding: 0 12px; border-radius: 6px;
-  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;
-}
-#ykt-ai-answer-panel .ai-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }
+/* ===== AI 解答面板 (#ykt-ai-answer-panel) =====
+   气泡的 markdown 排版样式见文件底部（作用于 .ykt-ai-msg.ai / .ykt-chat-msg.ai） */
 
 /* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */
 #ykt-presentation-panel{ width: 900px; }
@@ -154,7 +142,7 @@
 }
 #ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }
 #ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }
-.ykt-presentation-panel .slide-index {
+#ykt-presentation-panel .slide-index {
   position: absolute; top: 4px; left: 4px; z-index: 2;               
   padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 1;
   background: rgba(0, 0, 0, 0.6); color: #fff; pointer-events: none;
@@ -182,19 +170,7 @@
 #ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }
 #ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }
 
-/* ===== 题目列表面板 (#ykt-problem-list-panel) ===== */
-#ykt-problem-list{ display: flex; flex-direction: column; gap: 10px; }
-#ykt-problem-list .problem-row{
-  border: 1px solid var(--ykt-border); border-radius: 8px; padding: 8px; background: #fafafa;
-}
-#ykt-problem-list .problem-title{ font-weight: 600; margin-bottom: 4px; }
-#ykt-problem-list .problem-meta{ color: #666; font-size: 12px; margin-bottom: 6px; }
-#ykt-problem-list .problem-actions{ display: flex; gap: 8px; align-items: center; }
-#ykt-problem-list .problem-actions button{
-  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;
-}
-#ykt-problem-list .problem-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }
-#ykt-problem-list .problem-done{ color: #0a7a2f; font-weight: 600; }
+
 
 /* ===== 活动题目列表（右下角小卡片） ===== */
 #ykt-active-problems-panel.ykt-active-wrapper{
@@ -318,121 +294,44 @@
   }
 }
 
-/* 在现有样式基础上添加 */
 
-.text-status {
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  margin: 4px 0;
-  display: inline-block;
-}
 
-.text-status.success {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
-}
-
-.text-status.warning {
-  background-color: #fff3cd;
-  color: #856404;
-  border: 1px solid #ffeaa7;
-}
-
-.ykt-question-display {
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 4px;
-  padding: 8px;
-  margin: 4px 0;
-  max-height: 150px;
-  overflow-y: auto;
-  font-family: monospace;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-/* 在现有样式基础上添加 */
-
-.ykt-custom-prompt {
-  width: 100%;
-  min-height: 60px;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.4;
-  resize: vertical;
-  background-color: #fff;
-  transition: border-color 0.3s ease;
-}
-
-.ykt-custom-prompt:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
-}
-
-.ykt-custom-prompt::placeholder {
-  color: #999;
-  font-style: italic;
-}
-
-.ykt-custom-prompt:empty::before {
-  content: attr(placeholder);
-  color: #999;
-  font-style: italic;
-  pointer-events: none;
-}
-
-/* 确保输入框在暗色主题下也能正常显示 */
-.ykt-panel.dark .ykt-custom-prompt {
-  background-color: #2d3748;
-  border-color: #4a5568;
-  color: #e2e8f0;
-}
-
-.ykt-panel.dark .ykt-custom-prompt::placeholder {
-  color: #a0aec0;
-}
-
-.ykt-panel.dark .ykt-custom-prompt:focus {
-  border-color: #63b3ed;
-  box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.25);
-}
-
-/* ===== Markdown-like 样式 ===== */
-.ai-answer {
+/* ===== Markdown 排版样式 =====
+   作用对象：AI 解答面板（.ykt-ai-msg.ai）与 PPT 对话面板（.ykt-chat-msg.ai）的 AI 气泡。
+   注意：渲染产物里没有 .ai-answer 容器——旧选择器全部落空，是本文件历史遗留的死规则 */
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) {
   white-space: normal;
   line-height: 1.6;
   font-size: 14px;
-  color: inherit;
 }
 
 /* 段落和标题间距 */
-.ai-answer p { margin: 8px 0; }
-.ai-answer h1, .ai-answer h2, .ai-answer h3,
-.ai-answer h4, .ai-answer h5, .ai-answer h6 {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) p { margin: 8px 0; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1,
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2,
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3,
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4,
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 {
   margin: 12px 0 6px;
   line-height: 1.35;
   font-weight: 600;
 }
-.ai-answer h1 { font-size: 20px; }
-.ai-answer h2 { font-size: 18px; }
-.ai-answer h3 { font-size: 16px; }
-.ai-answer h4 { font-size: 15px; }
-.ai-answer h5, .ai-answer h6 { font-size: 14px; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1 { font-size: 20px; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2 { font-size: 18px; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3 { font-size: 16px; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4 { font-size: 15px; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 { font-size: 14px; }
 
 /* 链接 */
-.ai-answer a {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) a {
   text-decoration: underline;
   cursor: pointer;
 }
 
 /* 引用块 */
-.ai-answer blockquote {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {
   margin: 8px 0;
   padding: 6px 10px;
   border-left: 3px solid rgba(0,0,0,0.2);
@@ -440,14 +339,14 @@
 }
 
 /* 水平线 */
-.ai-answer hr {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr {
   border: 0;
   border-top: 1px solid rgba(0,0,0,0.15);
   margin: 10px 0;
 }
 
 /* 代码块与行内代码 */
-.ai-answer pre.ykt-md-code {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code {
   margin: 8px 0;
   padding: 10px;
   overflow: auto;
@@ -455,11 +354,11 @@
   border-radius: 6px;
   background: #f7f8fa;
 }
-.ai-answer pre.ykt-md-code code {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
 }
-.ai-answer code.ykt-md-inline {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {
   padding: 1px 4px;
   border: 1px solid rgba(0,0,0,0.15);
   border-radius: 4px;
@@ -469,45 +368,49 @@
 }
 
 /* 列表 */
-.ai-answer ul, .ai-answer ol {
-  margin: 6px 0 6px 22px;   
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul,
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol {
+  margin: 6px 0 6px 22px;
 }
-.ai-answer ul { list-style: disc; }
-.ai-answer ol { list-style: decimal; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul { list-style: disc; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol { list-style: decimal; }
 
 /* 表格 */
-.ai-answer table {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) table {
   border-collapse: collapse;
   margin: 8px 0;
   width: 100%;
   max-width: 100%;
 }
-.ai-answer th, .ai-answer td {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td {
   border: 1px solid rgba(0,0,0,0.15);
   padding: 6px 8px;
   text-align: left;
 }
-.ai-answer thead th {
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th {
   background: rgba(0,0,0,0.05);
   font-weight: 600;
 }
 
 /* 适配深色 */
 @media (prefers-color-scheme: dark) {
-  .ai-answer blockquote {
+  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {
     border-left-color: rgba(255,255,255,0.35);
     background: rgba(255,255,255,0.06);
   }
-  .ai-answer pre.ykt-md-code,
-  .ai-answer code.ykt-md-inline {
+  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code,
+  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {
     background: #111418;
     border-color: rgba(255,255,255,0.2);
   }
-  .ai-answer hr { border-top-color: rgba(255,255,255,0.2); }
-  .ai-answer th, .ai-answer td { border-color: rgba(255,255,255,0.2); }
-  .ai-answer thead th { background: rgba(255,255,255,0.08); }
+  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr { border-top-color: rgba(255,255,255,0.2); }
+  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,
+  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td { border-color: rgba(255,255,255,0.2); }
+  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th { background: rgba(255,255,255,0.08); }
 }
 
-#ykt-ai-answer.tex-enabled svg { vertical-align: middle; }
-#ykt-ai-answer.tex-enabled .MathJax { line-height: 1; }
-#ykt-ai-answer .mjx-svg { color: currentColor; }
+/* MathJax tex 排版：作用在 AI 气泡上 */
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled svg { vertical-align: middle; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled .MathJax { line-height: 1; }
+:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) .mjx-svg { color: currentColor; }

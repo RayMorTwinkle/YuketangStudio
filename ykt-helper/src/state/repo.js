@@ -3,10 +3,12 @@ import { storage } from '../core/storage.js';
 
 export const repo = {
   presentations: new Map(), // id -> presentation
+  // slides / problems / problemStatus 的 key 一律存为字符串（WS/页面数据里 id 可能是数字）
   slides: new Map(),        // slideId -> slide
   problems: new Map(),      // problemId -> problem
-  problemStatus: new Map(), // problemId -> {presentationId, slideId, startTime, endTime, done, autoAnswerTime, answering}
+  problemStatus: new Map(), // problemId -> {presentationId, slideId, startTime, endTime, done, autoAnswerTime, answering, clockOffset}
   encounteredProblems: [],  // [{problemId, ...ref}]
+  pendingUnlocks: [],       // unlockproblem 先于课件 XHR 到达时的暂存队列
 
   currentPresentationId: null,
   currentSlideId: null,
@@ -15,10 +17,11 @@ export const repo = {
 
   // 按课程分组存储课件
   setPresentation(id, data) {
-    this.presentations.set(id, { id, ...data });
+    const pid = String(id);
+    this.presentations.set(pid, { ...data, id: pid });
     const key = this.currentLessonId ? `presentations-${this.currentLessonId}` : 'presentations';
     storage.alterMap(key, (m) => {
-      m.set(id, data);
+      m.set(pid, data);
       // 仍然做容量裁剪
       const max = (storage.get('config', {})?.maxPresentations ?? 5);
       const excess = m.size - max;
@@ -26,11 +29,11 @@ export const repo = {
     });
   },
 
-  upsertSlide(slide) { this.slides.set(slide.id, slide); },
-  upsertProblem(prob) { this.problems.set(prob.problemId, prob); },
+  upsertSlide(slide) { this.slides.set(String(slide.id), slide); },
+  upsertProblem(prob) { this.problems.set(String(prob.problemId), prob); },
 
   pushEncounteredProblem(prob, slide, presentationId) {
-    if (!this.encounteredProblems.some(p => p.problemId === prob.problemId)) {
+    if (!this.encounteredProblems.some(p => String(p.problemId) === String(prob.problemId))) {
       this.encounteredProblems.push({
         problemId: prob.problemId,
         problemType: prob.problemType,

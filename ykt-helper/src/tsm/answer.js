@@ -37,6 +37,11 @@ function xhrPost(url, data, headers) {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', url);
       for (const [k, v] of Object.entries(headers || {})) xhr.setRequestHeader(k, v);
+      // 必须给所有终止态一个 rejection——超时不设回调会让 Promise 永远挂起
+      // （外层 answering 标志随之卡死，题目再也答不了）
+      xhr.timeout = 20000;
+      xhr.ontimeout = () => reject(new Error('提交超时（20s）'));
+      xhr.onabort = () => reject(new Error('请求被中止'));
       xhr.onload = () => {
         try {
           const resp = JSON.parse(xhr.responseText);
@@ -76,7 +81,7 @@ export async function answerProblem(problem, result, options = {}) {
 
   const resp = await xhrPost(url, payload, headers);
   if (resp.code === 0) return resp;
-  throw new Error(`${resp.msg} (${resp.code})`);
+  throw new Error(`${resp?.msg || '服务器返回错误'} (${resp?.code})`);
 }
 
 /**
@@ -101,10 +106,11 @@ export async function retryAnswer(problem, result, dt, options = {}) {
 
   const resp = await xhrPost(url, payload, headers);
   if (resp.code !== 0) {
-    throw new Error(`${resp.msg} (${resp.code})`);
+    throw new Error(`${resp?.msg || '服务器返回错误'} (${resp?.code})`);
   }
   const okList = resp?.data?.success || [];
-  if (!Array.isArray(okList) || !okList.includes(problem.problemId)) {
+  // 服务端可能返回数字 id——统一字符串比较，避免类型不一致误判失败
+  if (!Array.isArray(okList) || !okList.map(String).includes(String(problem.problemId))) {
     throw new Error('服务器未返回成功信息');
   }
   return resp;
@@ -139,16 +145,21 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
 
    // 统一拿 lessonId
    const lessonId = (lessonIdFromOpts ?? repo?.currentLessonId ?? null);
+  // endTime 是服务端时钟（unlock 时记了 clockOffset）——判过期/限时都要换算回服务端时间轴
+  const psEarly = repo?.problemStatus?.get?.(String(problem.problemId));
+  const clockOffset = Number.isFinite(psEarly?.clockOffset) ? psEarly.clockOffset : 0;
+  const serverNow = () => Date.now() + clockOffset;
+
   if (autoGate && shouldAutoAnswerForLesson_(lessonId)) {
     const ms = typeof waitMs === 'number' ? Math.max(0, waitMs) : calcAutoWaitMs();
     if (ms > 0) {
-      const guard = (typeof endTime === 'number') ? Math.max(0, endTime - Date.now() - 80) : ms;
+      const guard = (typeof endTime === 'number') ? Math.max(0, endTime - serverNow() - 80) : ms;
       await sleep(Math.min(ms, guard));
     }
   }
 
-  const now = Date.now();
-  const pastDeadline = typeof endTime === 'number' && now >= endTime;
+  const now = serverNow();
+  const pastDeadline = typeof endTime === 'number' && Number.isFinite(endTime) && now >= endTime;
 
   if (pastDeadline || forceRetry) {
 
@@ -158,7 +169,7 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
     log.dbg('forceRetry:', forceRetry);
     log.dbg('传入 startTime:', startTime, '传入 endTime:', endTime);
 
-    const ps = repo?.problemStatus?.get?.(problem.problemId);
+    const ps = repo?.problemStatus?.get?.(String(problem.problemId));
     log.dbg('从 repo.problemStatus 获取:', ps);
 
     const st = Number.isFinite(startTime) ? startTime : (ps?.startTime);

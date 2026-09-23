@@ -6,7 +6,8 @@ import { ui } from '../ui-api.js';
 import { fetchAsDataURL } from '../../core/env.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { repo } from '../../state/repo.js';
-import { mdToHtml, renderRich } from './ai.js';
+import { mdToHtml, renderRich, getOverride, warmupRichAssets } from './ai.js';
+import { escapeHtml } from '../../core/dom.js';
 import { resolveCurrentSlideImage, slideImageUrl } from '../slide-image.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT } from '../../core/types.js';
 
@@ -28,7 +29,8 @@ export function mountChatPanel() {
   document.body.appendChild(wrapper.firstElementChild);
   root = document.getElementById('ykt-chat-panel');
 
-  $sel('#ykt-chat-close').addEventListener('click', () => showChatPanel(false));
+  // 面板嵌在 shell 里——关闭=通知 shell 收起（__yksOnHide 会中止流式）
+  $sel('#ykt-chat-close').addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
   $sel('#ykt-chat-clear').addEventListener('click', () => {
     abortStreaming('清空会话');
     history = [];
@@ -74,6 +76,11 @@ export function mountChatPanel() {
   });
   $sel('#ykt-chat-plus-slides')?.addEventListener('click', () => { hideMenu(); openSlidePicker(); });
 
+  // shell 生命周期钩子：切到本 tab 刷新上下文缩略图，切走/关闭时中止流式
+  root.__yksOnShow = () => { refreshCtxThumb(); };
+  root.__yksOnHide = () => abortStreaming('面板已隐藏');
+
+  warmupRichAssets();
   mounted = true;
   return root;
 }
@@ -361,6 +368,8 @@ async function sendCurrent() {
       stream: true,
       thinking: true,
       signal: abortCtrl.signal,
+      // 与 AI 解答面板一致：走当前激活的 AI Profile，而不是只吃开发者模式配置
+      override: getOverride() || undefined,
       onDelta: (d) => { acc.content += d; paint(); },
       onReasoning: (d) => { acc.reasoning += d; paint(); },
     });
@@ -375,7 +384,9 @@ async function sendCurrent() {
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {
-    const aborted = e?.name === 'AbortError' || /abort|cancel/i.test(String(e?.message || ''));
+    const emsg = String(e?.message || '');
+    const isTimeout = /timeout|超时/i.test(emsg);
+    const aborted = (e?.name === 'AbortError' && !isTimeout) || /abort|cancel/i.test(emsg);
     if (aborted) {
       addBubble('ai', '<span class="muted">（已取消）</span>');
     } else {
@@ -387,8 +398,4 @@ async function sendCurrent() {
     $sel('#ykt-chat-send').disabled = false;
     $sel('#ykt-chat-log').scrollTop = $sel('#ykt-chat-log').scrollHeight;
   }
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

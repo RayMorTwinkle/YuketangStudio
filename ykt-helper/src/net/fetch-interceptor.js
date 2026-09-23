@@ -18,12 +18,14 @@ import { log } from '../core/log.js';
     const resp = await rawFetch.apply(this, args);
 
     try {
-      // === (2) 只拦截 Rain Classroom 的 JSON 接口 ===
+      // === (2) 只拦截 Rain Classroom 的 JSON 接口（错误响应/非 JSON 不必克隆解析） ===
       if (
-        url.includes('/lesson') ||
+        resp.ok &&
+        (resp.headers.get('content-type') || '').includes('json') &&
+        (url.includes('/lesson') ||
         url.includes('/presentation') ||
         url.includes('/slides') ||
-        url.includes('/problem')
+        url.includes('/problem'))
       ) {
         const cloned = resp.clone();
         const text = await cloned.text();

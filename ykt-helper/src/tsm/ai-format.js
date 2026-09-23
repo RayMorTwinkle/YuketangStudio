@@ -144,6 +144,12 @@ export function formatProblemForDisplay(problem, TYPE_MAP) {
 // 改进的答案解析函数
 export function parseAIAnswer(problem, aiAnswer) {
   try {
+    // 哨兵优先：AI 按要求输出 STATE: NO_PROMPT（页面无题目）时绝不能当答案提交——
+    // 此前它会落到首行兜底，被选择题分支提取出字母乱答
+    if (/^\s*STATE\s*:/im.test(String(aiAnswer || '')) || /\bNO_PROMPT\b/i.test(String(aiAnswer || ''))) {
+      log.warn('[雨课堂助手][WARN][parseAIAnswer] 检测到 STATE 哨兵/NO_PROMPT，判为无题目，不解析答案');
+      return null;
+    }
     const lines = String(aiAnswer || '').split('\n');
     let answerLine = '';
     let answerIdx = -1;
@@ -178,9 +184,17 @@ export function parseAIAnswer(problem, aiAnswer) {
       }
     }
 
-    // 如果仍然没有任何答案内容，退回到第一行兜底
+    // 如果仍然没有任何答案内容，退回到第一行兜底——
+    // 但首行兜底对选择题太危险（"The answer is B" 会提取出 T），只允许「整行就是选项字母」的形态
     if (!answerLine) {
-      answerLine = (lines[0] || '').trim();
+      const first = (lines[0] || '').trim();
+      const isChoice = [1, 2, 3].includes(problem.problemType);
+      if (isChoice) {
+        if (/^[A-Z](\s*[,，、.·]\s*[A-Z])*[.。]?\s*$/.test(first)) answerLine = first;
+        // 否则 answerLine 留空 → 各分支自然解析失败返回 null
+      } else {
+        answerLine = first;
+      }
     }
 
     log.dbg(
@@ -251,38 +265,30 @@ export function parseAIAnswer(problem, aiAnswer) {
       }
       
       case 4: { // 填空题
-        // 更激进的清理策略
         let cleanAnswer = answerLine
           .replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, '')
           .trim();
-        
+
         log.dbg('[雨课堂助手][INFO][parseAIAnswer] 清理后答案:', cleanAnswer);
-        
+
         // 如果清理后还包含这些词，继续清理
         if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
           cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, '').trim();
           log.dbg('[雨课堂助手][INFO][parseAIAnswer] 二次清理后:', cleanAnswer);
         }
-        
-        const answerLength = cleanAnswer.length;
-        
-        if (answerLength <= 50) {
-          cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, '').replace(/[^\w\u4e00-\u9fa5]+$/, '');
-          
-          const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
-          if (blanks.length > 0) {
-            log.dbg('[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:', blanks);
-            return blanks;
-          }
+
+        // 剥掉首尾的非文字字符（引号、括号、句号等）
+        cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, '').replace(/[^\w\u4e00-\u9fa5]+$/, '');
+
+        // 多空只按逗号/分号拆——不按空格（"New York" 这类含空格答案会被切碎）
+        // 且始终返回数组：填空题端点吃的是多空数组，{content,pics} 是主观题的形状
+        const blanks = cleanAnswer.split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
+        if (blanks.length) {
+          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:', blanks);
+          return blanks;
         }
-        
-        if (cleanAnswer) {
-          const result = { content: cleanAnswer, pics: [] };
-          log.dbg('[雨课堂助手][INFO][parseAIAnswer] 简答题解析结果:', result);
-          return result;
-        }
-        
-        log.dbg('[雨课堂助手][INFO][parseAIAnswer] 填空/简答解析失败');
+
+        log.dbg('[雨课堂助手][INFO][parseAIAnswer] 填空解析失败');
         return null;
       }
       

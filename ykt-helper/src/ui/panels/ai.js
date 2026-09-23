@@ -11,7 +11,8 @@ import { repo } from '../../state/repo.js';
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { resolveCurrentSlideImage } from '../slide-image.js';
-import { ensureMermaid, ensureMarked, ensureDOMPurify } from '../../core/env.js';
+import { ensureMermaid, ensureMarked, ensureDOMPurify, gm } from '../../core/env.js';
+import { escapeHtml } from '../../core/dom.js';
 import { PROBLEM_TYPE_MAP, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
 const L = (...a) => log.dbg('[ai]', ...a);
@@ -53,7 +54,8 @@ export function mountAIPanel() {
   document.body.appendChild(host.firstElementChild);
   root = document.getElementById('ykt-ai-answer-panel');
 
-  $sel('#ykt-ai-close').addEventListener('click', () => showAIPanel(false));
+  // 面板嵌在 shell 里——关闭=通知 shell 收起（并触发 __yksOnHide 中止流式）
+  $sel('#ykt-ai-close').addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
   $sel('#ykt-ai-clear').addEventListener('click', () => {
     abortStreaming('清空会话');
     history = [];
@@ -85,10 +87,7 @@ export function mountAIPanel() {
     renderCtxStatus();
   });
 
-  window.addEventListener('ykt:open-ai', () => {
-    showAIPanel(true);
-  });
-
+  // ykt:open-ai 统一由 ui-api → Shell.openTab('ai') 处理，走 __yksOnShow
   warmupRichAssets();
   mounted = true;
   renderCtxStatus();
@@ -98,7 +97,12 @@ export function mountAIPanel() {
     if (history.length === 0 && !$sel('#ykt-ai-log').children.length) {
       addBubble('ai', mdToHtml('点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。'));
     }
+    // 「打开时自动分析」原来挂在 showAIPanel——改走 shell tab 后挪进 show 钩子
+    if (ui.config.aiAutoAnalyze && history.length === 0 && !streaming) {
+      queueMicrotask(() => sendCurrent({ auto: true }));
+    }
   };
+  root.__yksOnHide = () => abortStreaming('面板已隐藏');
   return root;
 }
 
@@ -116,8 +120,6 @@ export function showAIPanel(v = true) {
     }
     setTimeout(() => $sel('#ykt-ai-input')?.focus(), 60);
   }
-  const aiBtn = document.getElementById('ykt-btn-ai');
-  if (aiBtn) aiBtn.classList.toggle('active', !!v);
   L('showAIPanel', { visible: v });
 }
 
@@ -139,7 +141,8 @@ function pickCurrentSlide() {
     const hit = repo.slides.get(sid) || findSlideAcrossPresentations(sid);
     if (hit) return { slide: hit, source: `课件面板指定（第 ${hit.index ?? hit.page ?? '?'} 页）` };
   }
-  const prio = !(ui?.config?.aiSlidePickPriority === 'presentation');
+  // 设置页存的是布尔（勾选=主界面优先），不是 'presentation' 字符串
+  const prio = ui?.config?.aiSlidePickPriority !== false;
   const mainSid = asIdStr(getCurrentMainPageSlideId());
   if (prio && mainSid) {
     const hit = repo.slides.get(mainSid) || findSlideAcrossPresentations(mainSid);
@@ -153,7 +156,7 @@ function pickCurrentSlide() {
   try {
     if (repo.encounteredProblems?.length > 0) {
       const latest = repo.encounteredProblems.at(-1);
-      const sid = repo.problemStatus.get(latest.problemId)?.slideId ? String(repo.problemStatus.get(latest.problemId).slideId) : null;
+      const sid = repo.problemStatus.get(String(latest.problemId))?.slideId ? String(repo.problemStatus.get(String(latest.problemId)).slideId) : null;
       const hit = sid ? (repo.slides.get(sid) || findSlideAcrossPresentations(sid)) : null;
       if (hit) return { slide: hit, source: `最近题目关联页（第 ${hit.index ?? hit.page ?? '?'} 页）` };
     }
@@ -278,14 +281,10 @@ function trimOldImages(keep = 1) {
   }
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 // ---------------- 发送 ----------------
 
 /** 当前激活 Profile → agnesChat override（保留任意 OpenAI 兼容端点能力） */
-function getOverride() {
+export function getOverride() {
   const aiCfg = ui.config.ai;
   const profiles = Array.isArray(aiCfg?.profiles) ? aiCfg.profiles : [];
   const p = profiles.find(x => x.id === aiCfg.activeProfileId) || profiles[0];
@@ -324,7 +323,7 @@ async function sendCurrent({ auto = false } = {}) {
       }
     }
 
-    const userText = buildUserText(pickCurrentSlide().slide, customPrompt, isAnalyze);
+    const userText = buildUserText(pickCurrentSlide().slide?.problem, customPrompt, isAnalyze);
     // 题干文本注入：首轮整段作为文本；追问时只追加用户输入（题干已在历史里）
     if (isAnalyze) content[0].text = userText || DEFAULT_ANALYZE_PROMPT;
     else if (text) content[0].text = text + (customPrompt ? `\n【用户自定义要求】\n${customPrompt}` : '');
@@ -393,7 +392,9 @@ async function sendCurrent({ auto = false } = {}) {
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {
-    const aborted = e?.name === 'AbortError' || /abort|cancel/i.test(String(e?.message || ''));
+    const emsg = String(e?.message || '');
+    const isTimeout = /timeout|超时/i.test(emsg);
+    const aborted = (e?.name === 'AbortError' && !isTimeout) || /abort|cancel/i.test(emsg);
     if (aborted) {
       addBubble('ai', '<span class="muted">（已取消）</span>');
     } else {
@@ -434,7 +435,15 @@ function stripHtmlWrappers(text) {
     .replace(/\n{3,}/g, '\n\n');
 }
 
-const blocks = [];   // 代码块暂存（占位符 → 原文）
+/** marked 实例在页面主世界（ensureMarked 用 script 标签注入），沙箱 window 上读不到 */
+const getMarked = () => (gm.uw || window).marked || window.marked;
+
+/** marked 产物进 innerHTML 前的清洗：优先 DOMPurify（已预热则同步可用），否则 sanitizeHtml */
+function sanitizeFinal(md) {
+  const purify = (gm.uw || window).DOMPurify || window.DOMPurify;
+  if (purify?.sanitize) return purify.sanitize(md, { ADD_ATTR: ['target', 'data-raw'] });
+  return sanitizeHtml(md);
+}
 
 /** 同步清洗（DOMPurify 未就绪时的回退） */
 export function sanitizeHtml(html) {
@@ -477,21 +486,29 @@ function preprocessRaw(raw) {
  */
 export function mdToHtml(mdRaw = '') {
   const raw = preprocessRaw(String(mdRaw ?? ''));
+  const blocks = [];   // 代码块暂存（占位符 → 原文），每次调用独立——模块级共享会串号
   let md;
 
-  if (window.marked?.parse) {
-    const marked = window.marked;
-    md = marked.parse(raw, {
-      breaks: true,
-      gfm: true,
-      renderer: {
-        code(code, lang) {
-          const l = String(lang || '').toLowerCase().trim();
-          blocks.push({ lang: l, code: String(code ?? '') });
-          return `\uE000B${blocks.length - 1}\uE001`;
-        },
-      },
-    });
+  const marked = getMarked();
+  if (marked?.parse) {
+    try {
+      // marked v9：options.renderer 传普通对象会整体替换默认 Renderer（缺方法即崩）——
+      // 实例化 Renderer 再覆写 code；Renderer 不可用时才退化为对象字面量
+      const onCode = function (code, lang) {
+        const l = String(lang || '').toLowerCase().trim();
+        blocks.push({ lang: l, code: String(code ?? '') });
+        return `\uE000B${blocks.length - 1}\uE001`;
+      };
+      const renderer = typeof marked.Renderer === 'function'
+        ? Object.assign(new marked.Renderer(), { code: onCode })
+        : { code: onCode };
+      md = marked.parse(raw, { breaks: true, gfm: true, renderer });
+    } catch (e) {
+      // 自定义 renderer 与 marked 版本不兼容时退回默认解析（代码块变 <pre><code>，embed 失效但不至于全崩）
+      log.warn('[mdToHtml] marked renderer 解析失败，退回默认解析:', e?.message);
+      try { md = marked.parse(raw, { breaks: true, gfm: true }); }
+      catch (e2) { md = escapeHtml(raw); }
+    }
   } else {
     md = raw.replace(/```([a-zA-Z0-9_-]+)?[ \t]*\r?\n([\s\S]*?)```/g, (_, lang, code) => {
       blocks.push({ lang: String(lang || '').toLowerCase(), code: code.replace(/\n$/, '') });
@@ -521,7 +538,8 @@ export function mdToHtml(mdRaw = '') {
     return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ''}>${escapeHtml(b.code)}</code></pre>`;
   });
 
-  if (window.marked?.parse) return md;
+  // marked 透传 markdown 里的原始 HTML——模型输出可能含危险标签，innerHTML 前必须清洗
+  if (marked?.parse) return sanitizeFinal(md);
 
   // 回退路径的段落包裹
   const lines = md.split('\n');
@@ -562,6 +580,16 @@ function rescueLooseMermaid(el) {
 export async function renderRich(el) {
   if (!el) return;
   try {
+    // marked 默认解析路径（自定义 renderer 不可用时）把围栏代码块渲染成
+    // <pre><code class="language-*">——把 mermaid/html/svg 捞回 embed 占位再走正常管线
+    for (const codeEl of [...el.querySelectorAll('pre > code[class*="language-"]')]) {
+      const lang = (codeEl.className.match(/language-(\w+)/) || [])[1];
+      if (!['mermaid', 'html', 'svg'].includes(lang)) continue;
+      const div = document.createElement('div');
+      div.className = lang === 'mermaid' ? 'ykt-mermaid' : 'ykt-embed';
+      div.setAttribute('data-raw', codeEl.textContent || '');
+      codeEl.parentElement.replaceWith(div);
+    }
     rescueLooseMermaid(el);
     // 1) mermaid → SVG
     const mermaidEls = [...el.querySelectorAll('.ykt-mermaid[data-raw]')];

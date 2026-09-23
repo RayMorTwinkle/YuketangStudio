@@ -104,6 +104,7 @@ export function mountSettingsPanel() {
 
   // === 其他 UI 原有字段 ===
   const $auto = root.querySelector('#ykt-input-auto-answer');
+  const $fallbackAns = root.querySelector('#ykt-input-fallback-answer');
   const $autoJoin = root.querySelector('#ykt-input-auto-join');
   const $autoJoinAutoAnswer = root.querySelector('#ykt-input-auto-join-auto-answer');
   const $autoAnalyze = root.querySelector('#ykt-input-ai-auto-analyze');
@@ -280,10 +281,10 @@ export function mountSettingsPanel() {
     const id = `p_${Date.now().toString(36)}`;
     const newP = {
       id,
-      name: 'new api key',
-      baseUrl: 'https://api.openai.com/...',
+      name: '新配置',
+      baseUrl: '',     // 留空让用户填——写死半成品 URL 容易原样保存出 404
       apiKey: '',
-      model: 'gpt-4o-mini',
+      model: '',
       visionModel: '',
     };
     ui.config.ai.profiles.push(newP);
@@ -336,6 +337,7 @@ export function mountSettingsPanel() {
     ui.config.autoJoinEnabled = !!$autoJoin.checked;
     ui.config.autoAnswerOnAutoJoin = !!$autoJoinAutoAnswer.checked;
     ui.config.autoAnswer = !!$auto.checked;
+    ui.config.autoAnswerFallbackDefault = !!$fallbackAns?.checked;
     ui.config.aiAutoAnalyze = !!$autoAnalyze.checked;
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
@@ -376,6 +378,7 @@ export function mountSettingsPanel() {
     $autoJoin.checked = !!ui.config.autoJoinEnabled;
     $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
     $auto.checked = !!ui.config.autoAnswer;
+    if ($fallbackAns) $fallbackAns.checked = !!ui.config.autoAnswerFallbackDefault;
     $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
     $iftex.checked = !!ui.config.iftex;
     $delay.value = Math.floor((ui.config.autoAnswerDelay || 3000) / 1000);
@@ -476,9 +479,9 @@ export function mountSettingsPanel() {
     });
   }
 
-  // 关闭按钮
+  // 关闭按钮：面板嵌在 shell 里，关闭=收起整个 shell
   root.querySelector('#ykt-settings-close')
-      .addEventListener('click', () => showSettingsPanel(false));
+      .addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
 
   mounted = true;
   return root;

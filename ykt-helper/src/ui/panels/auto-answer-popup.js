@@ -1,12 +1,6 @@
 // src/ui/panels/auto-answer-popup.js
 import { ui } from '../ui-api.js';
-
-// 简单 HTML 转义
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[c]));
-}
+import { escapeHtml } from '../../core/dom.js';
 
 // 显示自动作答成功弹窗
 export function showAutoAnswerPopup(problem, aiAnswer, cfg = {}) {
@@ -27,7 +21,7 @@ export function showAutoAnswerPopup(problem, aiAnswer, cfg = {}) {
       <div class="popup-body">
         <div class="popup-row popup-answer">
           <div class="label">AI分析结果：</div>
-          <div class="content">${esc(aiAnswer || '无AI回答').replace(/\n/g, '<br>')}</div>
+          <div class="content">${escapeHtml(aiAnswer || '无AI回答').replace(/\n/g, '<br>')}</div>
         </div>
       </div>
     </div>

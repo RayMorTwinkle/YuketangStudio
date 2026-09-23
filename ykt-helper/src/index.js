@@ -87,6 +87,15 @@ function startPeriodicReload(opts = {}) {
   } catch {}
 }
 
+/** document.body 尚未出现时延迟挂载（document-start 注入/移动版 SPA 时序） */
+function whenBodyReady(fn) {
+  if (document.body) { fn(); return; }
+  const timer = setInterval(() => {
+    if (document.body) { clearInterval(timer); fn(); }
+  }, 50);
+  setTimeout(() => clearInterval(timer), 15000);
+}
+
 (function main() {
   if (maybeAutoReloadOnMount()) return;
   // 仅在页面隐藏时刷新，且间隔放宽到 3 分钟：
@@ -95,15 +104,15 @@ function startPeriodicReload(opts = {}) {
   // 样式/图标
   injectStyles();
 
-  // 挂 UI
-  ui._mountAll?.();  
+  // 挂 UI（单步失败不拖垮其余步骤）
+  whenBodyReady(() => {
+    try { ui._mountAll?.(); } catch (e) { log.err('[mount] panels failed', e); }
+    try { installToolbar(); } catch (e) { log.err('[mount] toolbar failed', e); }
+  });
 
   // 再装网络拦截
   installWSInterceptor();
   installXHRInterceptor();
-
-  // 加载工具条
-  installToolbar();
 
   // 启动自动作答轮询
   actions.startAutoAnswerLoop();

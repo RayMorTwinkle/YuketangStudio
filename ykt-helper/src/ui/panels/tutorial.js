@@ -14,7 +14,8 @@ export function mountTutorialPanel() {
   document.body.appendChild(host.firstElementChild);
   root = document.getElementById('ykt-tutorial-panel');
 
-  $('#ykt-tutorial-close')?.addEventListener('click', () => showTutorialPanel(false));
+  // 面板嵌在 shell 里——关闭=通知 shell 收起
+  $('#ykt-tutorial-close')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
   mounted = true;
   return root;
 }
@@ -28,7 +29,4 @@ export function toggleTutorialPanel() {
   mountTutorialPanel();
   const vis = root.classList.contains('visible');
   showTutorialPanel(!vis);
-
-  const helpBtn = document.getElementById('ykt-btn-help');
-  if (helpBtn) helpBtn.classList.toggle('active', !vis);
 }

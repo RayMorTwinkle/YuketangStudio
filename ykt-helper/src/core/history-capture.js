@@ -22,9 +22,48 @@ function statusEl(text, pct) {
   return el;
 }
 
-/** 是否处于 student-v3 报告页（收集器的工作现场） */
+/** 是否处于 student-v3 报告页（收集器的工作现场）。
+ *  只有脚本自己打开的收集页（URL 带 #yks-collect 标记）才自动执行——
+ *  用户手动浏览报告页不应被劫持点击/下载/关页。 */
 export function isStudentV3Page() {
-  return /\/v2\/web\/student-v3\//.test(window.location.pathname);
+  return /\/v2\/web\/student-v3\//.test(window.location.pathname)
+    && /yks-collect/.test(window.location.hash);
+}
+
+/** 本次收集 runId（importHistoryLesson 生成在 URL hash 里），用于区分旧 run 残留的写值 */
+function collectRunId() {
+  return (window.location.hash.match(/yks-collect-(\w+)/) || [])[1] || null;
+}
+
+/** 收集全部 slide 图 URL：读 currentSrc/src/data-src（懒加载图可能还没挂 src），
+ *  过滤放宽为 /slide/<id>/ + 图片扩展名（不再硬性要求 token 参数） */
+function collectSlideUrls() {
+  const uniq = new Map(); // key: cover数字_时间戳（命名漂移时退化为完整 URL）-> {n, url, order}
+  let order = 0;
+  let filteredSlideLike = 0;
+  for (const img of document.querySelectorAll('img')) {
+    const src = img.currentSrc || img.src || img.getAttribute('data-src') || '';
+    if (!src.includes('/slide/')) continue;
+    if (!/\.(png|jpe?g|webp)(\?|#|$)/i.test(src)) { filteredSlideLike++; continue; }
+    const m = src.match(/\/slide\/(\d+)\/cover(\d+)_(\d+)\.(\w+)/);
+    const key = m ? `${m[1]}_${m[2]}_${m[3]}` : src;
+    const prev = uniq.get(key);
+    const n = m ? parseInt(m[2], 10) : 0;
+    if (!prev) uniq.set(key, { n, url: src, order: order++ });
+    else if (n > prev.n) { prev.url = src; prev.n = n; }
+  }
+  if (filteredSlideLike) log.warn('[YKS-History] 有', filteredSlideLike, '个 /slide/ URL 因扩展名不匹配被过滤');
+  // 按 DOM 出现顺序排序（lightbox 顺序即页序）
+  return [...uniq.values()].sort((a, b) => a.order - b.order).map(x => x.url);
+}
+
+/** 页面上声明的总页数（「共N页」「x/N」等），用于收集结果比对告警 */
+function expectedPageCount() {
+  try {
+    const text = document.querySelector('.module_ppt')?.innerText || '';
+    const m = text.match(/共\s*(\d+)\s*页/) || text.match(/(\d+)\s*页/) || text.match(/\b1\s*\/\s*(\d+)\b/);
+    return m ? parseInt(m[1], 10) : null;
+  } catch { return null; }
 }
 
 /** 从 URL 提取 lessonId（student-v3/{classId}/{lessonId}/{activityId}） */
@@ -40,9 +79,14 @@ export async function runHistoryCapture() {
   const ids = parseStudentV3Ids();
   if (!ids) return;
   const { lessonId } = ids;
-  log.dbg('[YKS-History] 开始收集历史课件:', ids);
+  const runId = collectRunId();
+  log.dbg('[YKS-History] 开始收集历史课件:', ids, 'runId:', runId);
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const gmSet = (key, val) => { try { if (typeof GM_setValue === 'function') GM_setValue(key, val); } catch {} };
+
+  // 入口心跳：主页面据此知道收集页已活（而不是静默等超时）
+  gmSet(PROGRESS_KEY_PREFIX + lessonId, { runId, phase: 'start', text: '收集页已启动', ts: Date.now() });
 
   try {
     statusEl('等待课件卡片渲染…');
@@ -59,39 +103,46 @@ export async function runHistoryCapture() {
     const title = (document.querySelector('.ppt_name')?.textContent || '历史课件').trim();
     statusEl(`已找到课件「${title}」，打开全页预览…`);
 
-    // 3. 点击缩略图打开全页预览（lightbox 会把所有页渲染进 DOM）
+    // 3. 点击缩略图打开全页预览；懒加载兜底：反复滚动容器+重扫，直到 img 计数稳定
     const thumb = document.querySelector('.module_ppt .swiper_box img') || document.querySelector('.module_ppt img');
     if (thumb) {
       thumb.click();
-      await sleep(3500); // 等 lightbox 渲染
+      let lastCount = -1, stable = 0;
+      for (let i = 0; i < 45; i++) {
+        await sleep(1000);
+        // 触发懒加载：把所有可疑滚动容器拉到底
+        for (const sc of document.querySelectorAll('.swiper_box, [class*="lightbox"], [class*="preview"], [class*="viewer"]')) {
+          try { sc.scrollTop = sc.scrollHeight; } catch {}
+        }
+        try { window.scrollTo(0, document.body?.scrollHeight || 0); } catch {}
+        const n = collectSlideUrls().length;
+        statusEl(`预览渲染中…已发现 ${n} 页`);
+        if (n === lastCount) { if (++stable >= 3) break; }
+        else { stable = 0; lastCount = n; }
+      }
+    } else {
+      log.warn('[YKS-History] 未找到缩略图入口，直接收集现有 DOM');
     }
 
     // 4. 收集全部 slide 图 URL（去重：按文件名主体，保留清晰度最高的版本）
-    const uniq = new Map(); // key: cover数字_时间戳 -> {n, url, order}
-    let order = 0;
-    for (const img of document.querySelectorAll('img')) {
-      const src = img.src || '';
-      if (!src.includes('/slide/') || !src.includes('token')) continue;
-      const m = src.match(/\/slide\/(\d+)\/cover(\d+)_(\d+)\.(\w+)/);
-      if (!m) continue;
-      const key = `${m[1]}_${m[2]}_${m[3]}`;   // 目录_文件名主体
-      const prev = uniq.get(key);
-      if (!prev) uniq.set(key, { n: parseInt(m[2], 10), url: src, order: order++ });
-      else if (parseInt(m[2], 10) > prev.n) { prev.url = src; prev.n = parseInt(m[2], 10); }
+    const urls = collectSlideUrls();
+    const expected = expectedPageCount();
+    log.dbg('[YKS-History] 收集到', urls.length, '页，页面声明总页数:', expected);
+    if (expected && urls.length < expected) {
+      log.warn(`[YKS-History] 收集页数(${urls.length})少于页面声明(${expected})，PDF 可能缺页`);
     }
-    // 按 DOM 出现顺序排序（lightbox 顺序即页序）
-    const urls = [...uniq.values()].sort((a, b) => a.order - b.order).map(x => x.url);
-    log.dbg('[YKS-History] 收集到', urls.length, '页');
     statusEl(`已收集 ${urls.length} 页图片，开始下载并生成 PDF…`, 2);
 
     if (!urls.length) throw new Error('未收集到任何 slide 图片');
 
-    // 5. 逐张下载 + 内容级去重 + 生成横屏 PDF；进度实时上报主页面
-    const report = (info) => {
-      try {
-        if (typeof GM_setValue === 'function')
-          GM_setValue(PROGRESS_KEY_PREFIX + lessonId, { ...info, title, phase: 'pdf', ts: Date.now() });
-      } catch {}
+    // 5. 逐张下载 + 内容级去重 + 生成横屏 PDF；进度实时上报主页面（节流 ≥150ms）
+    let lastReport = 0;
+    const report = (info, force = false) => {
+      const now = Date.now();
+      if (force || now - lastReport > 150) {
+        lastReport = now;
+        gmSet(PROGRESS_KEY_PREFIX + lessonId, { ...info, runId, title, phase: 'pdf', ts: now });
+      }
       const bits = [];
       if (info.skipped) bits.push(`去重 ${info.skipped} 页`);
       if (info.failed) bits.push(`失败 ${info.failed} 页`);
@@ -100,25 +151,24 @@ export async function runHistoryCapture() {
     };
     const { pages, skipped, failed } = await exportImagesToPdf(urls, title, { dedupHash: true, onProgress: report });
 
-    // 6. 通知主页面（结果存 GM 存储，主页面监听变更）
-    const result = { ok: true, lessonId, title, pages, skipped, failed, total: urls.length, ts: Date.now() };
-    if (typeof GM_setValue === 'function') GM_setValue(RESULT_KEY_PREFIX + lessonId, result);
+    // 6. 通知主页面（结果存 GM 存储，主页面监听变更；带 runId 防旧 run 串扰）
+    const result = { ok: true, lessonId, runId, title, pages, skipped, failed, total: urls.length, expectedTotal: expected, ts: Date.now() };
+    gmSet(RESULT_KEY_PREFIX + lessonId, result);
     const tail = [`${pages} 页`];
     if (skipped) tail.push(`去重 ${skipped} 页`);
     if (failed) tail.push(`失败 ${failed} 页`);
+    if (expected && urls.length < expected) tail.push(`⚠️ 仅收集到 ${urls.length}/${expected} 页`);
     statusEl(`✅ 完成！PDF 已开始下载（${tail.join('，')}）`, 100);
     log.dbg('[YKS-History] 完成:', result);
 
-    // 7. 关闭收集页（若是脚本开的 tab；用户手动打开则保留）
+    // 7. 关闭收集页（脚本开的 tab 才走到这里——isStudentV3Page 已用 hash 标记把关）
     setTimeout(() => { try { window.close(); } catch {} }, 4000);
   } catch (e) {
     log.err('[YKS-History] 失败:', e);
     statusEl(`❌ 收集失败：${String(e?.message || e).slice(0, 120)}`, 100);
-    const result = { ok: false, lessonId, error: String(e?.message || e), ts: Date.now() };
-    if (typeof GM_setValue === 'function') {
-      GM_setValue(RESULT_KEY_PREFIX + lessonId, result);
-      GM_setValue(PROGRESS_KEY_PREFIX + lessonId, { phase: 'error', text: String(e?.message || e).slice(0, 80), ts: Date.now() });
-    }
+    const result = { ok: false, lessonId, runId, error: String(e?.message || e), ts: Date.now() };
+    gmSet(RESULT_KEY_PREFIX + lessonId, result);
+    gmSet(PROGRESS_KEY_PREFIX + lessonId, { runId, phase: 'error', text: String(e?.message || e).slice(0, 80), ts: Date.now() });
   }
 }
 
@@ -133,55 +183,80 @@ export async function importHistoryLesson(classId, activity, opts = {}) {
   const activityId = String(activity.id);
   const resultKey = RESULT_KEY_PREFIX + lessonId;
   const progressKey = PROGRESS_KEY_PREFIX + lessonId;
+  // runId：区分本次 run 与上一次超时残留收集 tab 的写值（旧 run 的回报直接丢弃）
+  const runId = Math.random().toString(36).slice(2, 10);
   // 清旧结果与进度
   if (typeof GM_setValue === 'function') { GM_setValue(resultKey, null); GM_setValue(progressKey, null); }
 
-  const url = `${location.origin}/v2/web/student-v3/${classId}/${lessonId}/${activityId}`;
+  // #yks-collect-<runId> 标记：收集器只在这种脚本开的 tab 里自动运行（并在完成后自动关闭）
+  const url = `${location.origin}/v2/web/student-v3/${classId}/${lessonId}/${activityId}#yks-collect-${runId}`;
   if (typeof GM_openInTab !== 'function') throw new Error('GM_openInTab 不可用');
-  const collectTab = GM_openInTab(url, { active: true, insert: true });
+  // GM4/Violentmonkey 返回 Promise——await 兼容两种签名，否则 collectTab.close 静默无效
+  const collectTab = await Promise.resolve(GM_openInTab(url, { active: true, insert: true }));
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   // 优先走 GM_addValueChangeListener 实时推送（收集页写值即回调），
   // 拿到进度不再依赖轮询间隔，快速下载时不会丢帧。
-  // 监听不可用时退化为轮询（下面的 for 循环）。
+  // 监听不可用时退化为轮询（下面的 while 循环）。
   let done = null;
   let lastProgressTs = -1;
+  let lastActivity = Date.now();   // 任何匹配的 progress/result 写值都刷新——停滞检测用
   const listenerIds = [];
 
   const handleProgress = (p) => {
-    if (!p || p.ts === lastProgressTs) return;
-    lastProgressTs = p.ts;
-    opts.onProgress?.(p);
+    try {
+      if (!p || p.runId !== runId || p.ts === lastProgressTs) return;
+      lastProgressTs = p.ts;
+      lastActivity = Date.now();
+      opts.onProgress?.(p);
+    } catch (e) { log.warn('[History] onProgress 回调异常:', e?.message); }
   };
   const handleResult = (r) => {
-    if (!r || !r.ts) return;
-    if (!done) done = r;
+    try {
+      if (!r || !r.ts || r.runId !== runId) return;
+      lastActivity = Date.now();
+      if (!done) done = r;
+    } catch (e) { log.warn('[History] handleResult 异常:', e?.message); }
   };
 
   if (typeof GM_addValueChangeListener === 'function') {
     try {
       const id1 = GM_addValueChangeListener(progressKey, (_n, _o, nv) => handleProgress(nv));
-      const id2 = GM_addValueChangeListener(resultKey, (_n, _o, nv) => handleResult(nv));
       if (id1 != null) listenerIds.push(id1);
+      const id2 = GM_addValueChangeListener(resultKey, (_n, _o, nv) => handleResult(nv));
       if (id2 != null) listenerIds.push(id2);
     } catch (e) {
       log.warn('[History] 变更监听不可用，退回轮询:', e?.message);
+      // 半程注册成功的也要清掉，否则旧监听器持有已 detach 的 bar 引用
+      if (typeof GM_removeValueChangeListener === 'function') {
+        for (const id of listenerIds) { try { GM_removeValueChangeListener(id); } catch {} }
+      }
       listenerIds.length = 0;
     }
   }
 
+  // 墙钟超时而非迭代次数——本页可能因收集 tab active:true 被切到后台，
+  // setTimeout 被节流到 ~1min/次，用计数会让"180s 超时"实际拖成数小时
+  const HEARTBEAT_TIMEOUT = 120000;          // 120s 无任何进展 → 判收集页已死
+  const ABSOLUTE_TIMEOUT = 15 * 60 * 1000;   // 绝对上限 15min（大册导出本身可能很久）
+  const t0 = Date.now();
+
   try {
-    // 兜底轮询：即使监听可用，也定期确认（防止监听漏事件），间隔 1s，最长 180s
-    for (let i = 0; i < 180 && !done; i++) {
+    while (!done) {
       await sleep(1000);
       if (typeof GM_getValue === 'function') {
         handleProgress(GM_getValue(progressKey));
         handleResult(GM_getValue(resultKey));
       }
       if (done) break;
+      if (Date.now() - lastActivity > HEARTBEAT_TIMEOUT) {
+        throw new Error('收集页超过 120s 无进展，可能已卡死——请检查新开的收集标签页');
+      }
+      if (Date.now() - t0 > ABSOLUTE_TIMEOUT) {
+        throw new Error('收集超时（15min）——请确认打开的页面里课件正常显示');
+      }
     }
-    if (!done) throw new Error('收集超时（180s）——请确认打开的页面里课件正常显示');
     return done;
   } finally {
     // 释放监听器，避免同一页面多次导入后回调累积

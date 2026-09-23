@@ -259,8 +259,9 @@ export async function checkinClass(lessonId, opts = {}) {
     if (lastErr) log.warn('lastErr:', lastErr);
 
   } catch {}
-  // 抛给上层，由上层走“直跳 lesson 页”的兜底逻辑
-  throw new Error('checkinClass HTTP 400');
+  // 抛给上层，由上层走“直跳 lesson 页”的兜底逻辑；带上各候选的状态方便排查
+  const summary = tries.map(t => `${t.name}:${t.status || t.note}`).join(' | ');
+  throw new Error(`checkinClass 全部候选失败（${summary || '无响应'}）`);
 }
 
 /** 获取当前/最近激活的 presentationId（多候选，自适配不同网关） */

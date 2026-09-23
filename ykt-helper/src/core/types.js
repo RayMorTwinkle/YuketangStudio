@@ -33,9 +33,12 @@ export const DEFAULT_CONFIG = {
   autoAnswer: false,
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
+  // 未配置 API Key 时是否提交兜底答案（A/略）。默认关——宁缺答不误答
+  autoAnswerFallbackDefault: false,
   iftex: true,
   systemPromptChat: '',   // 空 = 使用 DEFAULT_SYSTEM_PROMPT_CHAT
   systemPromptAI: '',     // 空 = 使用 DEFAULT_SYSTEM_PROMPT_AI
+  // AI profiles（config.ai.profiles / config.ai.activeProfileId）由 settings.js 的 ensureAIProfiles 惰性创建
   ai: {
     provider: 'kimi',
     kimiApiKey: '',
@@ -46,17 +49,6 @@ export const DEFAULT_CONFIG = {
     temperature: 0.3,
     maxTokens: 1000,
   },
-  profiles: [
-    {
-      id: 'default',
-      name: 'Kimi',
-      baseUrl: 'https://api.moonshot.cn/v1/chat/completions',
-      apiKey: '',
-      model: 'moonshot-v1-8k',
-      visionModel: 'moonshot-v1-8k-vision-preview',
-    },
-  ],
-  activeProfileId: 'default',
   filterProblemsOnly: false,   // 课件面板：只看带题目的页（默认显示全部页）
   maxPresentations: 5,
 };

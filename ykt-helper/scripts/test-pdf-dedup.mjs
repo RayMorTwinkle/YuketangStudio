@@ -39,7 +39,8 @@ globalThis.document = {
 globalThis.Image = class {
   constructor() { this.naturalWidth = 960; this.naturalHeight = 540; }
   set src(v) {
-    // 模拟异步加载：src 里带 FAIL 的图片加载失败
+    // 模拟异步加载：src 里带 FAIL 的图片加载失败；带 HANG 的永不回调（模拟挂死）
+    if (String(v).includes('HANG')) return;
     setTimeout(() => {
       if (String(v).includes('FAIL')) this.onerror?.(new Error('mock load error'));
       else { this.__seed = Number(String(v).match(/seed(\d+)/)?.[1] || 128); this.onload?.(); }
@@ -50,9 +51,9 @@ globalThis.Image = class {
 globalThis.window = globalThis;
 globalThis.window.jspdf = {
   jsPDF: class {
-    constructor() { this.pages = 0; }
+    constructor() { this.pages = 0; this.imageArgs = []; }
     addPage() { this.pages++; }
-    addImage() {}
+    addImage(...args) { this.imageArgs.push(args); }
     save(name) { this.savedAs = name; }
   },
 };
@@ -106,6 +107,23 @@ console.log('== 关闭去重时全部保留 ==');
   const r = await exportImagesToPdf(urls, 'test-nodedup', { dedupHash: false });
   ok(r.pages === 3, `pages=3（实际 ${r.pages}）`);
   ok(r.skipped === 0, `skipped=0（实际 ${r.skipped}）`);
+}
+
+console.log('== 挂起的图片被超时计入 failed（不卡死） ==');
+{
+  const urls = [u(100), 'data:image/png;base64,HANG', u(200)];
+  const r = await exportImagesToPdf(urls, 'test-hang', { dedupHash: true, imageTimeoutMs: 50 });
+  ok(r.failed === 1, `failed=1（实际 ${r.failed}）`);
+  ok(r.pages === 2, `pages=2（实际 ${r.pages}）`);
+}
+
+console.log('== signal 中止导出 ==');
+{
+  const ctrl = { aborted: true };
+  let threw = false;
+  try { await exportImagesToPdf([u(1)], 'test-abort', { signal: ctrl }); }
+  catch (e) { threw = /取消/.test(e.message); }
+  ok(threw, 'signal.aborted 时抛出「已取消」');
 }
 
 console.log('== 进度回调字段完整 ==');

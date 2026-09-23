@@ -11,6 +11,7 @@ import { formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  
 import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
+import { isMobileVersionPage, isNarrowDevice } from '../ui/toolbar.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
@@ -50,7 +51,7 @@ export function hasActiveAIProfile(aiCfg) {
 
 // 融合模式自动答题
 async function handleAutoAnswerInternal(problem) {
-  const status = repo.problemStatus.get(problem.problemId);
+  const status = repo.problemStatus.get(String(problem.problemId));
   if (!status || status.answering || problem.result) {
     log.dbg('[AutoAnswer] 跳过：', {
       hasStatus: !!status,
@@ -59,8 +60,10 @@ async function handleAutoAnswerInternal(problem) {
     });
     return;
   }
-  
-  if (Date.now() >= status.endTime) {
+
+  // endTime 为 null 表示不限时；判过期用服务端时钟（clockOffset 修正本地偏差）
+  const serverNow = Date.now() + (status.clockOffset || 0);
+  if (status.endTime != null && serverNow >= status.endTime) {
     log.dbg('[雨课堂助手][WARN][AutoAnswer] 跳过：已超时');
     return;
   }
@@ -75,8 +78,12 @@ async function handleAutoAnswerInternal(problem) {
     log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目内容:', problem.body?.slice(0, 50) + '...');
     
     if (!hasActiveAIProfile(ui.config.ai)) {
-    // ✅ 无 API Key：使用本地默认答案直接提交，确保流程不中断
-    // 
+      // 无 API Key 时默认跳过（宁缺答不误答）；用户在设置里显式开启才提交兜底答案
+      if (!ui.config.autoAnswerFallbackDefault) {
+        status.answering = false;
+        log.warn('[雨课堂助手][WARN][AutoAnswer] 未配置 API Key，跳过自动作答（可在设置开启「无 Key 提交兜底答案」）');
+        return ui.toast('未配置 API Key，已跳过自动作答', 3000);
+      }
       const parsed = makeDefaultAnswer(problem);
       log.dbg('[雨课堂助手][WARN][AutoAnswer] 无 API Key，使用本地默认答案:', JSON.stringify(parsed));
 
@@ -85,6 +92,7 @@ async function handleAutoAnswerInternal(problem) {
         startTime: status.startTime,
         endTime: status.endTime,
         forceRetry: false,
+        autoGate: false,            // 延时已在 autoAnswerTime 调度阶段做过
         lessonId: repo.currentLessonId,
       });
 
@@ -128,9 +136,9 @@ async function handleAutoAnswerInternal(problem) {
     const hasTextInfo = problem.body && problem.body.trim();
     const textPrompt = formatProblemForVision(problem, PROBLEM_TYPE_MAP, hasTextInfo);
     
-    // 调用 AI
+    // 调用 AI（带题型提示，解析器按题型取答案形状）
     ui.toast('AI 正在分析题目...', 2000);
-    const aiAnswer = await queryAIVision(imageBase64, textPrompt, ui.config.ai);
+    const aiAnswer = await queryAIVision(imageBase64, textPrompt, ui.config.ai, { problemType: problem.problemType });
     log.dbg('[雨课堂助手][INFO][AutoAnswer] AI回答:', aiAnswer);
     
     // 解析答案
@@ -150,6 +158,7 @@ async function handleAutoAnswerInternal(problem) {
       startTime: status.startTime,
       endTime: status.endTime,
       forceRetry: false,
+      autoGate: false,              // 延时已在 autoAnswerTime 调度阶段做过
       lessonId: repo.currentLessonId
     });
     
@@ -171,24 +180,6 @@ async function handleAutoAnswerInternal(problem) {
   }
 }
 
-export function startAutoAnswerLoop() {
-  if (_autoLoopStarted) return;
-  _autoLoopStarted = true;
-
-  setInterval(() => {
-    const now = Date.now();
-    repo.problemStatus.forEach((status, pid) => {
-      if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
-        const problem = repo.problems.get(pid);
-        if (problem && !problem.result) {
-          status.autoAnswerTime = null;
-          handleAutoAnswerInternal(problem);
-        }
-      }
-    });
-  }, 500);
-}
-
 export const actions = {
   onFetchTimeline(timeline) {
     for (const piece of timeline) if (piece.type === 'problem') this.onUnlockProblem(piece);
@@ -196,7 +187,7 @@ export const actions = {
 
   onPresentationLoaded(id, data) {
     repo.setPresentation(id, data);
-    const pres = repo.presentations.get(id);
+    const pres = repo.presentations.get(String(id));
     for (const slide of pres.slides) {
       repo.upsertSlide(slide);
       if (slide.problem) {
@@ -204,14 +195,39 @@ export const actions = {
         repo.pushEncounteredProblem(slide.problem, slide, id);
       }
     }
+    // 课件晚于 unlockproblem 到达时，重放暂存的解锁事件
+    this._replayPendingUnlocks();
     ui.updatePresentationList();
   },
 
+  /** 重放暂存的 unlockproblem（课件 XHR 晚于 WS 到达的竞态） */
+  _replayPendingUnlocks() {
+    if (!repo.pendingUnlocks.length) return;
+    const list = repo.pendingUnlocks.splice(0);
+    for (const d of list) {
+      const ok = repo.problems.has(String(d.prob)) && repo.slides.has(String(d.sid));
+      if (ok) { this.onUnlockProblem(d); continue; }
+      // 仍未命中→限次放回队列（课件永不到达时防止队列无限膨胀）
+      if ((d._tries = (d._tries || 0) + 1) < 3) repo.pendingUnlocks.push(d);
+      else log.warn('[onUnlockProblem] 重放多次仍未命中，丢弃:', d.prob);
+    }
+    // 队列还有剩余→再过 3s 重试一轮（课件 XHR 可能仍在路上）
+    if (repo.pendingUnlocks.length) {
+      clearTimeout(this._unlockRetryTimer);
+      this._unlockRetryTimer = setTimeout(() => this._replayPendingUnlocks(), 3000);
+    }
+  },
+
   onUnlockProblem(data) {
-    const problem = repo.problems.get(data.prob);
-    const slide = repo.slides.get(data.sid);
+    const problem = repo.problems.get(String(data.prob));
+    const slide = repo.slides.get(String(data.sid));
     if (!problem || !slide) {
-      log.dbg('[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在');
+      // WS 的 unlockproblem 可能先于课件 XHR 到达——暂存重放，而不是直接丢
+      log.dbg('[雨课堂助手][DBG][onUnlockProblem] 题目或幻灯片尚未就绪，暂存待重放:', { prob: data.prob, sid: data.sid });
+      if (repo.pendingUnlocks.length >= 20) repo.pendingUnlocks.shift();
+      repo.pendingUnlocks.push(data);
+      clearTimeout(this._unlockRetryTimer);
+      this._unlockRetryTimer = setTimeout(() => this._replayPendingUnlocks(), 3000);
       return;
     }
 
@@ -220,18 +236,25 @@ export const actions = {
     log.dbg('[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:', data.sid);
     log.dbg('[雨课堂助手][DBG][onUnlockProblem] 课件ID:', data.pres);
 
+    const dt = Number.isFinite(+data.dt) ? +data.dt : Date.now();
+    const limitS = Number(data.limit);
+    // clockOffset = 服务端时钟 - 本地时钟：endTime 基于服务端时间轴，判过期时必须换算
+    const clockOffset = dt - Date.now();
+    const prev = repo.problemStatus.get(String(data.prob));
     const status = {
       presentationId: data.pres,
-      slideId: data.sid,
-      startTime: data.dt,
-      endTime: data.dt + 1000 * data.limit,
+      slideId: String(data.sid),
+      startTime: dt,
+      endTime: Number.isFinite(limitS) && limitS > 0 ? dt + 1000 * limitS : null,   // null = 不限时
+      clockOffset,
       done: !!problem.result,
       autoAnswerTime: null,
-      answering: false,
+      answering: !!prev?.answering,   // 重复 unlock 不打断在途作答
     };
-    repo.problemStatus.set(data.prob, status);
+    repo.problemStatus.set(String(data.prob), status);
 
-    if (Date.now() > status.endTime || problem.result) {
+    const serverNow = Date.now() + clockOffset;
+    if ((status.endTime != null && serverNow > status.endTime) || problem.result) {
       log.dbg('[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过');
       return;
     }
@@ -256,10 +279,10 @@ export const actions = {
   },
 
   onAnswerProblem(problemId, result) {
-    const p = repo.problems.get(problemId);
+    const p = repo.problems.get(String(problemId));
     if (p) {
       p.result = result;
-      const i = repo.encounteredProblems.findIndex(e => e.problemId === problemId);
+      const i = repo.encounteredProblems.findIndex(e => String(e.problemId) === String(problemId));
       if (i !== -1) repo.encounteredProblems[i].result = result;
     }
   },
@@ -268,21 +291,11 @@ export const actions = {
     return handleAutoAnswerInternal(problem);
   },
 
-  tickAutoAnswer() {
-    const now = Date.now();
-    for (const [pid, status] of repo.problemStatus) {
-      if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
-        const p = repo.problems.get(pid);
-        if (p) {
-          status.autoAnswerTime = null;
-          this.handleAutoAnswer(p);
-        }
-      }
-    }
-  },
-
   async submit(problem, content) {
     const result = this.parseManual(problem.problemType, content);
+    if (!result || (Array.isArray(result) && !result.length)) {
+      return ui.toast('答案为空或无法识别（选择题为选项字母，填空每空一行/逗号分隔）', 2500);
+    }
     await submitAnswer(problem, result,{
       lessonId: repo.currentLessonId,
       autoGate: false  // 手动提交
@@ -292,8 +305,10 @@ export const actions = {
 
   parseManual(problemType, content) {
     switch (problemType) {
-      case 1: case 2: case 3: return content.split('').sort();
-      case 4: return content.split('\n').filter(Boolean);
+      // 选择/投票：只取选项字母（防混入空格/标点被当成答案提交）
+      case 1: case 2: case 3: return (String(content).toUpperCase().match(/[A-Z]/g) || []).sort();
+      // 填空：按行或逗号/分号分多空
+      case 4: return String(content).split(/[\n,，;；]+/).map(s => s.trim()).filter(Boolean);
       case 5: return { content, pics: [] };
       default: return null;
     }
@@ -306,13 +321,21 @@ export const actions = {
     ui.showPresentationPanel(true);
   },
 
-  launchLessonHelper() {
-    const path = window.location.pathname;
-    const m = path.match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
-    repo.currentLessonId = m ? m[1] : null;
-    if (repo.currentLessonId) {
-      log.dbg(`[雨课堂助手][DBG] 检测到课堂页面 lessonId: ${repo.currentLessonId}`);
+  /** 从 URL 刷新当前课堂 id（fullscreen 与 student 两种 v3 页都认；SPA 路由变化时重取） */
+  _syncLessonIdFromURL() {
+    const m = location.pathname.match(/\/lesson\/(?:fullscreen|student)\/v3\/([^/]+)/);
+    const id = m ? m[1] : null;
+    if (id !== repo.currentLessonId) {
+      repo.currentLessonId = id;
+      if (id) {
+        log.dbg(`[雨课堂助手][DBG] 检测到课堂页面 lessonId: ${id}`);
+        repo.loadStoredPresentations();
+      }
     }
+  },
+
+  launchLessonHelper() {
+    this._syncLessonIdFromURL();
 
     if (typeof window.GM_getTab === 'function' && typeof window.GM_saveTab === 'function' && repo.currentLessonId) {
       window.GM_getTab((tab) => {
@@ -321,9 +344,8 @@ export const actions = {
         window.GM_saveTab(tab);
       });
     }
-    repo.loadStoredPresentations();
-    this.maybeStartAutoJoin();           
-    this.installRouterRearm();            
+    this.maybeStartAutoJoin();
+    this.installRouterRearm();
   },
   
     startAutoAnswerLoop() {
@@ -406,6 +428,8 @@ export const actions = {
     const rearm = () => {
       // 重置一次“onlesson 点击守卫”的进行中标记，避免被卡住
       _autoOnLessonClickInProgress = false;
+      // SPA 路由可能切到别的课堂——重新从 URL 取 lessonId 并重载本地课件
+      this._syncLessonIdFromURL();
       // 每次路由变更都尝试启动（内部有防重，所以安全）
       this.maybeStartAutoJoin();
     };
@@ -426,10 +450,10 @@ export const actions = {
   // ===== 自动点击“正在上课”条：无需预先拿 lesson_id，复用官方路由逻辑 =====
   startAutoClickOnOnLessonBar() {
     if (_autoOnLessonClickStarted) return;
-    _autoOnLessonClickStarted = true;
-
-    // 仅在非课堂页（首页/课表页等）生效
+    // 仅在非课堂页（首页/课表页等）生效；先判断再置标志——
+    // 否则课堂页提前 return 会把标志钉死，从课堂退回首页后功能再也装不上
     if (/\/lesson\//.test(location.pathname)) return;
+    _autoOnLessonClickStarted = true;
 
     const uw = (gm && gm.uw) ? gm.uw : (window.unsafeWindow || window);
 
@@ -468,13 +492,17 @@ export const actions = {
         }
         const lessonId = on.lessonId || on.lesson_id || on.id;
         let target = null;
-        
-        if (lessonId) target = `/lesson/fullscreen/v3/${lessonId}`;
+
+        if (lessonId) {
+          // 移动版入口跳 student/v3（移动端的课堂页），桌面跳 fullscreen/v3
+          const onMobile = isMobileVersionPage() || isNarrowDevice();
+          target = onMobile
+            ? `/lesson/student/v3/${lessonId}`
+            : `/lesson/fullscreen/v3/${lessonId}`;
+        }
         else     target = `/v2/web/lesson/${lessonId}`; 
         if (location.pathname === target) { _autoOnLessonClickInProgress = false; return true; }
 
-        // 为了少日志，先 replace 再 assign（站内有时也会 push /index）
-        history.replaceState(null, '', location.href);
         location.assign(target);
         return true;
       } catch (e) {
@@ -539,7 +567,8 @@ export const actions = {
         if (attachGuardAndTrigger()) { mo.disconnect(); return; }
       });
       mo.observe(uw.document.documentElement, { childList: true, subtree: true });
-      // setTimeout(() => mo.disconnect(), 10000);
+      // MO 挂太久是页面级性能开销——30s 内没等到 onlesson 条就放弃
+      setTimeout(() => { try { mo.disconnect(); } catch {} }, 30000);
     });
   },
 };
