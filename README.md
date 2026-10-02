@@ -1,172 +1,88 @@
 <div align="center">
-  <img src="static/icon.svg" width="120" alt="YuketangStudio"/>
-  <h1>YuketangStudio</h1>
-  <p><b>雨课堂学习增强助手</b> —— 让每一页课件都为你所用</p>
-  <a href="https://github.com/RayMorTwinkle/YuketangStudio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/></a>
-  <img src="https://img.shields.io/badge/version-0.2.3-blue.svg" alt="版本"/>
-  <img src="https://img.shields.io/badge/platform-Tampermonkey-green.svg" alt="平台"/>
-  <img src="https://img.shields.io/badge/学校-长江雨课堂%20%7C%20通用-orange.svg" alt="适配"/>
-  <br/><br/>
-  <a href="https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js"><b>📥 点此一键安装</b></a>（需要先安装 <a href="https://www.tampermonkey.net/">篡改猴</a>）
+
+> [English](./README_en.md) | **简体中文**
+
+<img src="assets/logo.svg" alt="YuketangStudio" width="128">
+
+# YuketangStudio — 雨课堂学习增强助手
+
+**题来了自动提醒，AI 看着课件替你解题；整册课件一键导出横屏零白边 PDF。**
+
+把「跟不上翻页 / 课件存不下 / 题目答不出」这三件事，变成一个装进浏览器的小工具。
+
+![Platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20Android-4285F4?logo=googlechrome&logoColor=white)
+![Type](https://img.shields.io/badge/userscript-Tampermonkey-000000?logo=tampermonkey&logoColor=white)
+![Lang](https://img.shields.io/badge/JavaScript-ES%20Modules-F7DF1E?logo=javascript&logoColor=black)
+![Version](https://img.shields.io/badge/version-0.3.1-1d63df)
+![License](https://img.shields.io/badge/License-MIT-blue)
+
 </div>
 
 ---
 
-## 🎒 上课时，它是你的隐形助教
+## 它解决什么问题
 
-想象一下这样的课堂：
+雨课堂原生的上课体验有三处硬伤：
 
-> 老师正在讲 KMP 算法，你还在消化上一步的指针回退。突然屏幕弹出投票题，倒计时 2 分钟——
+1. **题目「来了才看见」**——老师推题时你正在看课件，提示一闪而过，倒计时已经开始。
+2. **课件「看完就没了」**——课堂里的幻灯片不提供导出，想复习只能对着屏幕翻。
+3. **AI 解题「没有上下文」**——直接问通用 AI，它看不到你这页课件、也不知道课堂系统下发的题干与选项。
 
-**别慌**。装了 YuketangStudio 的浏览器会自动为你做完这几件事：
+**YuketangStudio 用一个 Tampermonkey 用户脚本把这三件事补齐**：拦截页面自身的 WebSocket 与 XHR 拿到课件与题目，配上你自己配置的 LLM，把「题干文本 + 课件截图」一起送给模型；再用 jsPDF 把整册幻灯片导出为比例与图片完全一致的横屏 PDF。
 
-- 🔔 **弹窗 + 提示音**提醒你"来题了"，摸鱼也不会错过
-- 🤖 **AI 解答**已经把题干文本和课件截图一起发给 AI，思考过程实时展开，答案和解析直接送到你面前
-- ✍️ 想自己答？点开 AI 对话，像聊天一样追问："为什么是 i 回到 5？"——AI 看着同一页课件跟你讨论
+> **隐私承诺**：脚本不上传任何数据到第三方服务器。课件与题目只存在于页面内存、`GM_*` 私有存储和 IndexedDB 里；AI 请求由你的 API Key 直连你所配置的模型厂商。
 
-> 45 分钟后下课，你想把整本课件带走复习——
+---
 
-- 📑 **一键导出**：37 页幻灯片自动拼成横屏 PDF，页面比例和原图完全一致，零白边
-- 🧹 老师回跳重讲的页面？**自动去重**，只保留一份
-- 📚 之前上过的每一节课，都能从**历史课堂**里批量勾选、一次性全部下载
+## ✨ 功能
 
-> 复习时对着课件还是看不懂？——
+- 🔔 **答题提醒**：老师推题即时弹窗 + 提示音（可自定义），漏题不再发生
+- 🤖 **AI 解答**：自动识别当前题目页，**题干文本（来自课堂系统）+ 课件截图**一起发给模型，流式输出、思考链实时展开、一键出答案
+- 💬 **PPT 对话**：像聊天一样对任意一页课件连续追问；AI 回复里的 **mermaid 流程图 / 思维导图、SVG 示意图、HTML 片段、MathJax 公式**都会直接渲染
+- ➕ **对话附件**：左下「＋」可选择多张 PPT 页面或上传本地图片，一起发给 AI
+- 📑 **课件面板**：「跟随当前页」自动追着老师翻页；「只看题目页」筛选；「整册下载 (PDF)」横屏零白边
+- 🗂 **历史课件归档**：从学习日志页多选往期课堂，脚本逐个打开收集页、内容级去重后批量导出 PDF，失败不中断
+- 📱 **手机端适配**：窄屏下工具栏转纵向 40×40 触控按钮、面板 tab 移顶部；移动版页面内置「切桌面版」引导
 
-- 💬 在 **PPT 对话**里框选任何页面，让 AI 用**流程图、思维导图、表格、HTML 交互组件**重新讲一遍——AI 的回复里的 mermaid 图、公式、表格都会直接渲染出来，不是冷冰冰的代码
+---
 
-<div align="center">
-  <img src="static/shot-pres.png" width="720" alt="课件面板：跟随当前页 / 只看题目页 / 整册下载 / 历史课件"/>
-  <p><i>课件面板：跟随当前页 · 只看题目页 · 整册下载 · 历史课件批量导入</i></p>
-</div>
+## 🚀 快速开始
 
-## 🧰 功能一览
+### 方式一：面向 AI Agent（一键安装，推荐）
 
-| 功能 | 一句话介绍 |
-|---|---|
-| 🤖 **AI 解答** | 自动识别当前题目页，题干文本 + 课件截图一起发给 AI，一键出答案；支持多轮追问、流式输出、思考过程实时展开 |
-| 💬 **PPT 对话** | 像聊天一样对任何一页课件连续提问；AI 会用 mermaid 流程图、表格、HTML 组件等可视化形式讲解 |
-| 📑 **课件查看** | 实时同步课堂幻灯片；「跟随当前页」自动追着老师翻页；整册一键导出零白边 PDF |
-| 📚 **历史课件归档** | 不上课也能把往期课堂课件批量勾选、一次性全部导出（内容级去重） |
-| ➕ **附件系统** | 对话里随手添加多张 PPT 页面或本地图片一起问 AI |
-| 🔔 **答题提醒** | 老师推题立刻弹窗 + 提示音，支持自定义提示音 |
+把下面这段提示词直接发给你的本地 AI Agent（Claude Code / Codex / OpenCode …），它会自动完成安装：
 
-<div align="center">
-  <img src="static/shot-chat.png" width="720" alt="PPT 对话面板"/>
-  <p><i>PPT 对话：左下 ＋ 可添加 PPT 页面/上传图片；AI 回复中的图表与公式直接渲染</i></p>
-</div>
+````markdown
+请帮我在本机浏览器安装 YuketangStudio（雨课堂学习增强助手，
+GitHub: https://github.com/RayMorTwinkle/YuketangStudio）。
+它是运行在雨课堂页面上的 Tampermonkey 用户脚本，提供习题提醒、
+AI 解答、PPT 多轮对话、课件导出横屏 PDF、历史课件归档。
 
-## 📦 安装（3 分钟）
+步骤：
+1. 确认已安装「篡改猴 (Tampermonkey)」浏览器扩展：
+   - 电脑 Chrome/Edge：从扩展商店安装；
+   - 手机：推荐 Firefox 安卓版（官方支持篡改猴）。
+2. 安装脚本（二选一）：
+   - 直接打开安装地址，篡改猴会自动弹出安装页：
+     https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js
+   - 或下载该 .user.js，在篡改猴面板「实用工具 → 从文件导入」。
+3. 打开雨课堂（如 https://changjiang.yuketang.cn/v2/web/index）登录，
+   页面左下角出现工具栏即为加载成功。
+4. 在「设置」tab 配置一个 AI Profile（baseUrl / apiKey / model / visionModel），
+   否则 AI 解答与 PPT 对话不可用；模型需支持图像输入 (Vision)。
+5. 告诉我安装结果，并说明左下角工具栏三个按钮
+   （主面板 / 习题提醒 / 自动作答）各自的用途。
+````
 
-### 第一步：选一个浏览器
+### 方式二：面向人类用户
 
-| 平台 | 推荐 | 说明 |
-|---|---|---|
-| **电脑** | **Chrome（谷歌浏览器）**、**Edge（微软浏览器）** | 两者都原生支持篡改猴扩展；Edge 是 Windows 自带，不用额外下载，**新手最省事** |
-| **手机** | **Firefox（安卓）** | 手机端极少有浏览器支持扩展；Firefox 安卓官方支持篡改猴，且它的「桌面模式」最彻底（详见下方说明） |
+1. 安装浏览器扩展 [篡改猴 (Tampermonkey)](https://www.tampermonkey.net/)（Chrome / Edge 商店，或 Firefox 附加组件）。
+2. 打开 **[📥 YuketangStudio-latest.user.js](https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js)**，篡改猴自动弹出安装界面 → 点「安装」。
+3. 打开雨课堂并登录，页面左下角出现工具栏即成功。
 
-> Firefox 同样支持篡改猴，但扩展安装与 Chrome 系略有差异，本文以 Chrome / Edge 为准。
-
-### 第二步：安装篡改猴（Tampermonkey）
-
-篡改猴是一个「用户脚本管理器」，我们的脚本要装在它里面运行。
-
-#### 🖥 电脑端（Chrome / Edge）
-
-**方式 A：扩展商店（推荐，最简单）**
-
-1. 打开浏览器，访问扩展商店：
-   - Chrome：[Chrome 应用商店 - 篡改猴](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
-   - Edge：[Edge 加载项 - 篡改猴](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
-2. 点击「添加到 Chrome」/「获取」→ 弹窗点「添加扩展」
-3. 地址栏右侧出现一个**灰色/黑色的猴子图标**，就装好了
-
-> ⚠️ **国内网络提示**：如果 Chrome 应用商店打不开或一直转圈，说明网络无法访问 Google 服务。此时请用下面的**方式 B**，或改在 Edge 上安装（Edge 商店在国内可直连，这是 Edge 的最大优势）。
-
-**方式 B：离线安装（商店打不开时用）**
-
-1. 在国内镜像站（如 [Crx4Chrome](https://www.crx4chrome.com/crx/1200/) 或 [扩展迷](https://www.extfans.com/)）搜索 `Tampermonkey`，下载 `.crx` 文件
-2. 在 Chrome 地址栏输入 `chrome://extensions` 回车（Edge 输入 `edge://extensions`）
-3. 打开右上角的「**开发者模式**」开关
-4. 把下载的 `.crx` 文件**直接拖进这个页面** → 松手 → 点「添加扩展」
-
-> 💡 提示：Chrome 从新版开始会拦截商店外安装的扩展。如果拖拽后提示「无法安装」，改用 Edge 方式 A，或用 Firefox 安装（Firefox 的 `about:debugging` 可直接加载本地扩展）。
-
-**安装后必做的一步**：点击扩展详情 → 确认「**允许访问文件网址**」和「**开发者模式**」处于开启状态（部分浏览器需要，用于让脚本在页面上正常工作）。
-
-#### 📱 手机端（首选 Firefox 安卓版）
-
-手机端能用篡改猴的浏览器很少，**Firefox 安卓版是最可靠的选择**（官方支持篡改猴，且桌面模式切得最干净）：
-
-1. 应用商店安装 **Firefox**（或 [mozilla.org/firefox/android](https://www.mozilla.org/firefox/android/)）
-2. Firefox 内打开 [addons.mozilla.org](https://addons.mozilla.org/) → 搜索 **Tampermonkey** → 「添加到 Firefox」
-3. 点篡改猴图标 → 继续第三步安装本脚本
-
-> 其他方案：**Edge 安卓版**也有扩展页（「···」菜单 → 扩展），**但其桌面模式不彻底**（见第四步的说明），可能装好后仍无法使用；不推荐手机自带浏览器或微信内置浏览器——不支持扩展。
-
-### 第三步：安装 YuketangStudio 脚本
-
-点这里 → **[📥 一键安装 YuketangStudio](https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js)**
-
-浏览器会打开脚本源码，篡改猴自动弹出**安装界面**，点「安装」即可。
-
-> 如果没弹出安装界面：说明篡改猴没装好或未启用。回到上一步检查猴子图标是否存在、是否为彩色（灰色=已禁用）。
->
-> 手动导入：下载 [`ykt-helper/dist/YuketangStudio-latest.user.js`](https://github.com/RayMorTwinkle/YuketangStudio/blob/main/ykt-helper/dist/YuketangStudio-latest.user.js)，在篡改猴面板「实用工具 → 从文件导入」选择它。
-
-### 第四步：在手机上打开雨课堂
-
-**这是手机端最关键的一步**：雨课堂会根据浏览器请求头**自动跳转到移动版**（`/m/v2`，功能受限、课件与 AI 功能全部不可用）。
-
-**Firefox 上**：菜单 → 勾选「**桌面版网站**」→ 访问 `changjiang.yuketang.cn/v2/web/index` → 登录 → 左下角出现工具栏即成功。
-
-> ⚠️ **如果你用的是 Edge 且出现「开了桌面模式还是手机界面、只是字变小」**：
-> 这不是操作问题——Edge 安卓的桌面模式不修改 `Sec-CH-UA-Mobile` 请求头，雨课堂服务端依据它强制把已登录的移动设备弹回移动版，**网页脚本无法拦截服务端跳转**。
-> 解决办法：**换 Firefox**（上面的推荐），或使用脚本内置的引导条——进入移动版时页面底部会出现黄色提示条，点「获取 Firefox」直接下载，装好后按上面步骤迁移。
-
-成功标志：页面变成**电脑版布局**，左下角出现我们的工具栏。
-
-> 📌 我们已针对手机屏幕做了专门适配：工具栏自动变纵向大按钮、主面板 tab 移到顶部、内容区铺满屏宽（详见下方「手机端体验」）。
-## 📖 使用教程
-
-<div align="center">
-  <img src="static/shot-ai.png" width="720" alt="AI 解答面板"/>
-  <p><i>AI 解答：底部状态行实时显示识别到的页面，留空发送即解答此页</i></p>
-</div>
-
-### 上课中
-
-页面左下角工具栏三个按钮：**💼 主面板** / **🔔 习题提醒开关** / **✨ 自动作答开关**。
-
-打开主面板后左侧切换 5 个功能页：
-
-- **💬 PPT对话**：左下 ＋ 可添加 PPT 页面或上传图片；输入留空直接发送无效，输入问题即围绕当前课件追问；AI 回复中的 mermaid 图、公式、表格都会直接渲染
-- **🤖 AI解答**：底部状态行显示当前识别到的页面；**输入留空点发送 = 解答此页题目**（自动附带题干文本与截图）；想追问就输入内容再发
-- **📑 课件**：
-  - 「🎯 跟随当前页」默认开启——选中项自动追着老师翻页；你手动点缩略图就会脱离，再点按钮恢复
-  - 「📝 只看题目页」筛选出老师发过题的页面
-  - 「整册下载(PDF)」永远导出全部页面，横屏零白边
-- **⚙️ 设置**：AI 配置、自动作答参数、**提示词自定义**（两个功能的系统提示词都能改，一键恢复默认）、自定义提示音
-- **❓ 教程**：面板内快速上手
-
-### 下课后
-
-**📑 课件 → 📥 历史课件**：勾选任意多节课（支持全选）→「⬇️ 下载选中」→ 喝口水，PDF 逐个自动生成。单节课失败不会中断整批，最后给出成功/失败汇总。
-
-### 📱 手机端体验
-
-手机端（Edge 安卓 + 请求桌面网站）界面会自动切换为触控友好布局：
-
-<div align="center">
-  <img src="static/mobile-shell.png" width="320" alt="手机端主面板"/>
-  <p><i>手机端：tab 移到顶部横向排列，内容区铺满屏宽</i></p>
-</div>
-
-- **工具栏**：从横排变为纵排，每个按钮放大到 40×40，方便拇指点击
-- **主面板**：侧栏 tab 转为顶部横排图标条，内容区从 ~220px 扩大到 ~372px
-- **课件面板**：列表与预览改为上下单列堆叠，不再左右挤压
-- **触控优化**：所有按钮、缩略图、tab 项的高度都放大到 ≥40px（移动端可点标准）
-
-> 手机端同样支持全部功能（AI 解答、PPT 对话、课件导出 PDF、历史课件批量下载）。导出 PDF 时手机会提示下载，用系统 PDF 阅读器打开即可。
+> **环境要求**：Chrome / Edge / Firefox（含安卓版）+ Tampermonkey。
+> 脚本自身无需构建即可使用（安装地址指向已构建的 `dist/YuketangStudio-latest.user.js`）。
+> 手机端需在浏览器里开启「请求桌面网站」（雨课堂服务端会依据 UA 把移动设备弹回功能受限的移动版）。
 
 ### 从源码构建
 
@@ -174,188 +90,308 @@
 git clone https://github.com/RayMorTwinkle/YuketangStudio.git
 cd YuketangStudio/ykt-helper
 npm i
-npm run check     # lint + 构建 + 三组回归测试
+npm run check     # ESLint + Rollup 构建 + 回归测试
 ```
 
-产物在 `ykt-helper/dist/`（`YuketangStudio-latest.user.js` 始终指向最新构建）。
+产物在 `ykt-helper/dist/`，其中 `YuketangStudio-latest.user.js` 始终指向最新构建。
 
 ---
 
-<a id="deep-dive"></a>
-## 🏗 项目深度解读
+## 🖥️ 使用
 
-> 以下内容面向想理解这个项目内部机制的读者：它如何工作、为什么这样设计、工程上做了哪些权衡。
+### 工具栏（页面左下角）
 
-### 整体架构
+| 按钮 | 作用 |
+|---|---|
+| 💼 主面板 | 打开统一主面板（5 个 tab） |
+| 🔔 习题提醒 | 开 / 关新题弹窗与提示音 |
+| ✨ 自动作答 | 开 / 关自动作答（到点自动提交） |
 
-YuketangStudio 是一个运行在雨课堂页面上下文中的 Tampermonkey 用户脚本，整体分为五层：
+### 主面板的 5 个 tab
+
+| tab | 能做什么 |
+|---|---|
+| 💬 **PPT 对话** | 围绕当前课件多轮追问；「＋」可加 PPT 页 / 上传图片；回复支持图表与公式渲染 |
+| 🤖 **AI 解答** | 底部状态行显示识别到的页面；**输入留空点发送 = 解答此页题目**（自动附带题干文本 + 截图），输入内容则围绕此页追问 |
+| 📑 **课件** | 缩略图浏览；跟随当前页 / 只看题目页 / 整册下载 (PDF)；历史课件批量导入 |
+| ⚙️ **设置** | AI Profile（多档）、自动作答参数、PPT 对话/AI 解答两套系统提示词（可改可恢复默认）、自定义提示音、开发者模式解锁 |
+| ❓ **教程** | 面板内快速上手 |
+
+### 三个典型工作流
+
+**上课中**：装好后打开雨课堂即可。老师推题 → 弹窗提醒 → 打开主面板「AI 解答」→ 留空发送，AI 依据题干文本与截图给出答案与解释。
+
+**下课后导出**：「课件」tab → 整册下载 (PDF) → 页面尺寸等于图片尺寸的横屏 PDF 自动落盘（重复页去重，价格上涨图会自动跳过并计数）。
+
+**复习历史**：从课程的「学习日志」页打开「课件 → 历史课件」，勾选任意多节课 → 「⬇️ 下载选中」，脚本会逐课打开收集页并批量导出。
+
+---
+
+## 🏗️ 架构
+
+YuketangStudio 是运行在雨课堂页面上下文里的 Tampermonkey 用户脚本，分为五层。
+
+### 系统总览
 
 ```mermaid
 flowchart TB
-    subgraph NET["① 网络拦截层 net/"]
-        WS["ws-interceptor<br/>WebSocket 劫持"]
-        XHR["xhr-interceptor<br/>XMLHttpRequest 劫持"]
-        FETCH["fetch-interceptor<br/>fetch 劫持"]
-    end
-    subgraph STATE["② 状态层 state/"]
-        REPO["repo<br/>presentations / slides /<br/>problems / problemStatus"]
-        ACT["actions<br/>题目解锁 / 自动作答循环"]
-    end
-    subgraph CORE["③ 核心能力层 core/"]
-        LOG["log 日志分级"]
-        PDF["pdf-export 横屏PDF"]
-        HIST["history-capture 跨标签页收集"]
-        DEV["devmode 加密配置"]
-        ST["storage 存储"]
-    end
-    subgraph AI["④ AI 服务层 ai/"]
-        AGNES["agnes 流式/思考链/取消"]
-        OAI["openai 多 Profile 适配"]
-    end
-    subgraph UI["⑤ 表现层 ui/"]
-        SHELL["shell 主面板 5 tab"]
-        TOOLBAR["toolbar 工具栏"]
-        PANELS["chat / ai / pres / settings"]
-        RICH["renderRich 富媒体渲染"]
-    end
-
-    WS --> REPO
-    XHR --> REPO
-    FETCH --> REPO
-    REPO --> ACT
-    ACT --> UI
-    REPO --> PANELS
-    AGNES --> PANELS
-    OAI --> ACT
-    PDF --> PANELS
-    HIST --> PANELS
-    RICH --> PANELS
+  subgraph NET["① 网络拦截层 net/"]
+    WS["ws-interceptor<br/>劫持 WebSocket"]
+    XHR["xhr-interceptor<br/>劫持 XMLHttpRequest"]
+    FETCH["fetch-interceptor<br/>劫持 fetch"]
+  end
+  subgraph STATE["② 状态层 state/"]
+    REPO["repo<br/>presentations / slides /<br/>problems / problemStatus"]
+    ACT["actions<br/>解锁处理 · 自动作答循环<br/>自动进入课堂"]
+  end
+  subgraph CORE["③ 核心能力层 core/"]
+    ENV["env<br/>GM API · 依赖按需加载"]
+    PDF["pdf-export<br/>横屏 PDF · 去重 · 断点续传"]
+    HIST["history-capture<br/>历史课件批量归档"]
+    DEV["devmode<br/>加密内置配置"]
+    ST["storage<br/>GM 私有存储"]
+    VX["vuex-helper<br/>当前页 / 移动版镜像"]
+  end
+  subgraph AI["④ AI 服务层 ai/"]
+    AG["agnes<br/>流式 · 思考链 · 取消"]
+    OAI["openai<br/>两段式 Vision"]
+  end
+  subgraph UI["⑤ 表现层 ui/"]
+    SHELL["shell 主面板（5 tab）"]
+    TB["toolbar 工具栏"]
+    PANELS["chat / ai / presentation /<br/>settings / tutorial"]
+    RICH["renderRich<br/>mermaid / SVG / MathJax"]
+  end
+  WS --> REPO
+  XHR --> REPO
+  FETCH --> REPO
+  VX --> REPO
+  REPO --> ACT
+  ACT --> UI
+  REPO --> PANELS
+  AG --> PANELS
+  OAI --> ACT
+  PDF --> PANELS
+  HIST --> PANELS
+  RICH --> PANELS
+  ENV --> AI
+  ST --> REPO
 ```
 
-**关键取舍**：页面数据不落库、不经过任何第三方服务器——所有课件/题目都活在页面内存 + `localStorage` + `GM_*` 存储里，AI 请求由用户自己的 API Key 直连模型厂商。
+### 数据注入与获取（为什么不需要主动调 API）
 
-### 核心数据流之一：课堂实时同步
-
-```mermaid
-sequenceDiagram
-    participant T as 老师端
-    participant S as 雨课堂服务
-    participant WS as ws-interceptor
-    participant R as repo (内存)
-    participant X as xhr-interceptor
-    participant U as 用户界面
-
-    T->>S: 翻页 / 解锁题目
-    S-->>WS: WebSocket 推送 (slide 切换 / problem 事件)
-    WS->>R: 更新 currentSlideId / problemStatus
-    S->>X: GET /presentation/fetch (课件全量)
-    X->>R: onPresentationLoaded → 全量 slides 入库
-    R->>U: Vue watcher 触发 → 课件面板跟随高亮
-    U->>U: 题目弹出提醒 → (可选) 自动作答
-```
-
-课件全量为什么走 XHR 拦截而不是主动调 API？因为 `presentation/fetch` 是**课堂内鉴权接口**，页面自己会请求一次——拦截这一次响应就能拿到整个 deck（含老师还没讲到的页），无需关心签名与时序。这是我们实测后从「逐页等待推送」改为「拦截全量 + WS 增量」的原因。
-
-### 核心数据流之二：历史课件批量收集
+脚本不主动请求雨课堂私有接口——它**劫持页面自身发起的通信**，共享同一份登录态与鉴权，事件到达即处理，且不增加服务器负担。
 
 ```mermaid
 flowchart LR
-    A[学习日志页] -->|logs API 自动翻页| B[课堂列表浮层<br/>多选]
-    B -->|逐个| C[GM_openInTab 打开<br/>student-v3 报告页]
-    C --> D[收集器: 打开全页预览<br/>DOM 扫描 slide URL]
-    D -->|GM_setValue 实时推送| E[主页面进度条<br/>i/n 混合进度]
-    E --> F[GM_xhr 并发 5 下载]
-    F --> G{内容级去重<br/>256x144 灰度 MAE<=3}
-    G -->|重复| H[skip++]
-    G -->|新页| I[jsPDF 逐页收录<br/>页面尺寸=图片尺寸]
-    I -->|完成| J[PDF 落盘 → 关闭收集页 → 下一课]
+  YKT["雨课堂页面<br/>Vue 应用"]
+  WS["ws-interceptor"]
+  XHR["xhr-interceptor"]
+  FETCH["fetch-interceptor"]
+  VX["vuex-helper"]
+  REPO["repo（内存 Map）"]
+  UI["课件面板 / AI 面板"]
+
+  YKT -- "op: fetchtimeline /<br/>unlockproblem / lessonfinished" --> WS
+  YKT -- "GET /api/v3/lesson/presentation/fetch<br/>?presentation_id=" --> XHR
+  YKT -- "JSON 含 data.slides" --> FETCH
+  YKT -- "state.currSlide /<br/>lessonTimelineSlides / cards" --> VX
+  WS --> REPO
+  XHR --> REPO
+  FETCH --> REPO
+  VX --> REPO
+  REPO --> UI
 ```
 
-两个容易踩的坑在这里被解决：其一，跨标签页进度用 `GM_addValueChangeListener` 推送而非轮询，快速下载时进度不丢帧；其二，「去重」与「下载失败」分开计数——用户看到的"去重 n 页"必须是可信的，否则去重功能本身就失去了意义。
+### AI 解答的一次请求（时序）
 
-### 核心数据流之三：AI 解答的一次请求
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as 用户
+  participant P as AI 面板 (ai.js)
+  participant S as slide-image
+  participant A as agnesChat
+  participant M as LLM Provider
+  participant T as submitAnswer
+  U->>P: 点击发送（输入留空 = 解答此页）
+  P->>P: pickCurrentSlide() 定位当前页
+  P->>S: resolveCurrentSlideImage()
+  S-->>P: dataUrl（repo → 页面 DOM → 明确失败）
+  P->>P: buildUserText() 注入题干文本 + 选项
+  P->>A: messages = [system, history + 截图]
+  A->>M: POST /chat/completions (stream=true)
+  M-->>A: SSE: reasoning_content → content
+  A-->>P: onReasoning / onDelta 增量回调
+  P->>P: renderRich() → mermaid / MathJax
+  Note over P,T: 自动作答路径另经 parseAIAnswer → submitAnswer
+```
+
+### 整册导出 PDF 流程
 
 ```mermaid
 flowchart TB
-    A[点击发送<br/>输入留空 = 解答此页] --> B{定位当前页<br/>指定页 > 主界面 > 浏览选中 > 最近题目}
-    B --> C[三级图片来源<br/>repo slide URL → 页面 DOM → 明确失败]
-    C --> D[组装消息<br/>系统提示词 + 题干文本 + 选项 + 截图]
-    D --> E[agnesChat<br/>fetch 真流式, 失败降级 GM_xhr]
-    E --> F[流式渲染<br/>思考中: 自动展开/滚动<br/>正文到达: 思考自动折叠]
-    F --> G[renderRich<br/>mermaid / SVG / HTML 清洗渲染 + MathJax]
+  A["exportImagesToPdf(urls, title)"] --> B["阶段一：并发 5 下载<br/>loadImageWithCache()"]
+  B --> C{"IndexedDB 命中?<br/>yks-pdf-cache / images"}
+  C -- 命中 --> D["直接解码（进度显示缓存命中）"]
+  C -- 未命中 --> E["GM_xhr 下载 → dataURL → 写缓存"]
+  D --> F["阶段二：顺序收录"]
+  E --> F
+  F --> G{"内容级去重<br/>128x72 → 8x8 块均值签名"}
+  G -- 重复 --> H["skipped++ 跳过"]
+  G -- 新页 --> I["jsPDF addPage（页面尺寸 = 图片尺寸）"]
+  I --> J["yieldFrame() 让出主线程"]
+  J --> K["doc.save(安全文件名.pdf)"]
+  K --> L["返回 {pages, skipped, failed}"]
 ```
 
-### 设计决策剖析（Q&A）
+### 历史课件批量收集（时序）
 
-**Q1：为什么劫持原生 `WebSocket`/`XMLHttpRequest`，而不是直接轮询雨课堂的接口？**
-
-雨课堂的题目推送、翻页事件走 WebSocket，课件数据走页面自身发起的 XHR。劫持原生构造函数意味着：① 与页面共享同一份鉴权与登录态，零额外认证代码；② 事件到达即处理，延迟与老师端操作一致；③ 不主动发请求，不增加服务器负担，行为上更"透明"。轮询方案会引入延迟、增加请求量，且轮询间隔内的推送可能丢失。
-
-**Q2：导出 PDF 为什么让「页面尺寸跟随图片宽高比」，而不是统一 A4？**
-
-雨课堂的课件图统一是 16:9 附近的横屏图，但历史页面里偶尔混入不同比例的图片。固定 A4 会出现两条必然的坏路径：横图被缩到一页里留下大片白边，或被裁切。让每页尺寸等于图片尺寸（pt 单位、原比例），PDF 阅读器里呈现的就是"无边框幻灯片"，观感与原始课件一致——这是 1.30.1 版本修了横屏参数之后进一步推导出的更彻底方案。
-
-**Q3：内容级去重为什么最终选择「256×144 灰度 + 平均绝对差」，而不是 dHash 这类感知哈希？**
-
-实测数据说话：文字密集型 PPT 页面上，dHash 对同页 JPEG 重压缩变体的汉明距离波动（7~11）与异页距离（14~22）区分度不足，阈值骑线。改为 256×144 缩略灰度图后，同页变体 MAE 落在 0.35~0.73，异页 7.5~12.5，**分离度 10.3 倍**，阈值取 3 时两侧都有充足余量。这不是拍脑袋选型，是采集真实 slide 样本校准的结果。
-
-**Q4：AI 解答为什么坚持把「题干文本」和「截图」一起发给模型？**
-
-课堂系统本身就推送了结构化的题干与选项（`problem.body/options`），这比让模型从截图里 OCR 题干可靠得多——截图可能被压缩、公式可能糊掉、选项字母可能被遮挡。让文本承担"精确信息"，让图片承担"图表与版面"，各取所长。这条比"多发一张图"重要得多：**上下文的质量决定回答的质量**。
-
-**Q5：富媒体渲染为什么用「同步占位 + 异步后处理」两阶段，而不是在流式渲染里直接画？**
-
-流式输出时，AI 的 mermaid/HTML 代码块可能还没写完，此刻渲染必然失败或闪烁；且 mermaid 渲染库（约 2MB）按需加载存在异步窗口。两阶段方案：流式阶段只做轻量 Markdown 转换 + 占位符；回复完成后 `renderRich` 统一执行 mermaid→SVG、DOMPurify 清洗、MathJax 排版。期间还有一个隐蔽竞态——挂起的 `requestAnimationFrame` 会在后处理完成后把 innerHTML 重置回未渲染状态——通过在完成路径显式取消挂起帧解决。
-
-**Q6：渲染管线为什么最终换用 marked + DOMPurify，而不是继续维护手写解析器？**
-
-AI 的输出格式无法穷举：mermaid 可能被包在 `<p>` 里、代码围栏可能缺失语言标记、HTML 与图表可能混排。手写解析器每遇到一种新格式就要打一个补丁，且这些补丁互相打架。切换到 marked（GFM 全兼容）+ DOMPurify（业界标准清洗）后，我们只负责两个扩展点：自定义 code renderer（把 mermaid/svg/html 转成占位符）与渲染前预处理（剥离 AI 误加的 HTML 包裹）。**把不确定的事情交给成熟组件，把精力留给确定的产品逻辑**。
-
-**Q7：为什么所有面板共享一个「主面板」壳，而不是像早期版本那样多个独立弹窗？**
-
-独立弹窗有三个问题：z-index 互相打架、小屏幕上无处安放、每个面板各自维护显隐逻辑。统一 shell 后：面板成为 tab 内容，宽高由壳统一约束（`min(760px, 100vw-48px)`），自适应只需写一处；面板间通信（选页事件、打开请求）都有了单一入口。
-
-### 工程实践
-
-- **版本号单一来源**：`userscript.meta.js` 与产物文件名都从 `package.json` 读取，发版只改一处
-- **质量门禁**：`npm run check` = ESLint（0 警告基线）+ Rollup 构建 + 三组回归测试（加密解锁 / PDF 去重与统计 / 接口翻页与去重）
-- **日志分级**：默认只输出警告与错误；`localStorage.setItem('yksDebug','1')` 后全量输出，排查问题不重装
-- **可调试性设计**：关键失败路径（图片下载、导出统计、面板时序）都留有探针与显式用户提示，拒绝"静默降级到错误结果"
-
-### 目录结构
-
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as 用户（课件面板）
+  participant M as 主页面
+  participant C as 收集页 (student-v3)
+  participant S as GM 存储
+  U->>M: 历史课件 → 勾选课堂 → 下载选中
+  M->>M: fetchClassActivities(classId) 自动翻页
+  loop 每个课堂
+    M->>C: GM_openInTab(/v2/web/student-v3/...#yks-collect-runId)
+    C->>C: 点击缩略图开全页预览，DOM 收集 slide URL
+    C->>S: GM_setValue(progress) 实时进度
+    S-->>M: GM_addValueChangeListener 推送
+    C->>C: exportImagesToPdf(dedupHash)
+    C->>S: GM_setValue(result)
+    C->>C: 完成后自动关闭标签页
+    S-->>M: 取回结果，进入下一课
+  end
+  M-->>U: 成功 / 失败汇总
 ```
-YuketangStudio/
-├── ykt-helper/              # 脚本源码（唯一源码目录）
-│   ├── src/
-│   │   ├── index.js         # 入口：挂载时序、拦截器、防打扰刷新
-│   │   ├── ai/              # LLM 适配（agnes 流式/思考链、openai 多 Profile）
-│   │   ├── capture/         # 截图兜底
-│   │   ├── core/            # env / storage / log / pdf-export / history-capture
-│   │   ├── net/             # WS / XHR / fetch 拦截
-│   │   ├── state/           # repo（内存状态）与 actions（答题循环）
-│   │   ├── tsm/             # 雨课堂业务（题目格式化、提交）
-│   │   └── ui/              # 主面板壳、工具栏、slide-image 共享模块、各面板
-│   ├── scripts/             # 构建辅助与测试（gen-devmode.example、test-*.mjs）
-│   ├── rollup.config.mjs    # 版本注入 + 构建前置检查
-│   └── dist/                # 构建产物（latest 随版本提交，README 安装地址）
-├── static/                  # 图标与 README 截图
-└── changelog.md
-```
-
-### 技术栈
-
-Rollup（构建，`inlineDynamicImports` 单文件产物）· 原生 JS（无框架，直接操作页面 DOM）· WebCrypto（AES-256-GCM / PBKDF2）· jsPDF · marked + DOMPurify + mermaid + MathJax（均按需加载）· ESLint 10 flat config
 
 ---
 
-## ⭐ 致谢
+## 📂 目录结构
 
-- [ZaytsevZY/yuketang-helper-auto](https://github.com/ZaytsevZY/yuketang-helper-auto) —— 本项目基于其代码重构发展而来，核心的 WS 拦截、答题流程源于该项目
-- [hotwords123/yuketang-helper](https://github.com/hotwords123/yuketang-helper) —— 项目灵感来源
+```text
+YuketangStudio/
+├── ykt-helper/                  # 脚本源码（唯一源码目录）
+│   ├── src/
+│   │   ├── index.js             # 入口：挂载时序、拦截器安装、防僵尸刷新
+│   │   ├── ai/                  # LLM 适配
+│   │   │   ├── agnes.js         # OpenAI 兼容流式（思考链/取消/降级）
+│   │   │   ├── openai.js        # 两段式 Vision（结构抽取 + 纯文本解题）
+│   │   │   ├── kimi.js          # Kimi 直连（历史保留）
+│   │   │   ├── deepseek.js      # DeepSeek 直连（备用）
+│   │   │   └── gemini.js / openrouter.js   # 占位（未实现）
+│   │   ├── capture/             # 截图兜底 screenshoot.js
+│   │   ├── core/                # env / storage / log / types / pdf-export /
+│   │   │                        # history-capture / devmode / idb-cache / vuex-helper
+│   │   ├── net/                 # ws / xhr / fetch 三种拦截器
+│   │   ├── state/               # repo（内存状态）· actions（答题/进课堂）
+│   │   ├── tsm/                 # ai-format（Prompt/解析）· answer（提交）
+│   │   └── ui/                  # shell / toolbar / toast / ui-api / slide-image / panels/
+│   ├── scripts/                 # 构建辅助与回归测试
+│   ├── rollup.config.mjs        # 版本注入 + 构建前置检查
+│   ├── userscript.meta.js       # @match / @grant 元数据（版本号来自 package.json）
+│   └── dist/                    # 构建产物（latest 随版本提交，即 README 安装地址）
+├── static/                      # 图标与 README 截图
+├── assets/                      # README 头图 logo
+├── docs/spec/                   # 设计/修复规格（spec-001 ~ spec-004）
+├── CODE_WIKI.md                 # 早期版本代码百科（部分内容为旧版命名，以 src 为准）
+├── LICENSE                      # MIT + 使用条款
+└── changelog.md
+```
 
-## ⚖️ 免责声明
+---
 
-- 本工具仅供个人学习参考，请独立思考完成学业
-- AI 解答功能需调用 LLM API，可能产生费用；AI 可能出错，请自行核对
-- 本项目不在任何服务器存储用户数据，仅将题目内容发送给你自己配置的 LLM API
+## 🔧 技术细节
+
+**运行形态。** 不是 Chrome 扩展，而是单文件 Tampermonkey 用户脚本：`@run-at document-start`，用 `@grant` 取得 `GM_notification` / `GM_xmlhttpRequest` / `GM_openInTab` / `GM_getValue` / `GM_setValue` / `GM_addValueChangeListener` / `unsafeWindow` 等能力，由 Rollup 打包成 `iife`（`inlineDynamicImports: true`）产物 `dist/YuketangStudio-0.3.1.user.js`。
+
+**匹配的雨课堂域名/版本**（见 `userscript.meta.js`）：`pro.yuketang.cn`、`changjiang.yuketang.cn`、`www.yuketang.cn` 及其它 `*.yuketang.cn`，覆盖桌面版 `/web/`、`/v2/web/*`、`/lesson/fullscreen/v3/*`、报告页 `student-lesson-report` / `student-v3`，以及移动版 `/m/v2/*`、`/m/*`。页面前端为 Vue 应用，故有桌面版与移动版两套 store 形状。
+
+**PPT 数据怎么拿到。** 三条链路互补：
+- **XHR 拦截** `GET /api/v3/lesson/presentation/fetch?presentation_id=` → `actions.onPresentationLoaded()` 全量入库（含老师还没讲到的页）；
+- **fetch 拦截** 从 JSON 的 `data.slides` 补齐 `repo.slides`；
+- **WS 拦截** 解析 `op`：`fetchtimeline` → 时间线题目、`unlockproblem` → 新题解锁、`lessonfinished` → 下课。
+移动版课堂页/实时课堂抓不到 XHR 课件数据，改由 `syncMobileSlidesIntoRepo()` 每 4s 镜像 Vuex 的 `state.lessonTimelineSlides` / `state.cards`。
+
+**竞态处理。** `unlockproblem` 可能早于课件 XHR 到达：此时事件进入 `repo.pendingUnlocks` 暂存，课件到达后重放（最多 3 次、每 3s 一轮），避免因时序丢题。
+
+**AI 解答的两种调用。**
+- **PPT 对话 / 追问** 走 `agnesChat()`：OpenAI 兼容 `/chat/completions`、真流式（SSE）、解析 `reasoning_content` 思考链、`AbortController` 可取消；`fetch` 因 CORS 失败时自动降级到 `GM_xmlhttpRequest` 伪流式。
+- **题目解答** 走 `queryAIVision()` 两段式 pipeline：Step1 用 Vision 模型把截图抽成结构化 JSON（`question_type` / `stem` / `options` / `image_facts` / `requires_image_for_solution`），Step2 让文本模型据此解题；任一步失败或模型声明「必须看图」则回退到单步 Vision。
+
+**AI Provider。** 通过「AI Profile」多档管理，内置预设：LongCat（Flash / Omni / Thinking）、Kimi（`moonshot-v1-8k` / vision-preview）、OpenAI（`gpt-4o-mini` / `gpt-4o`）、DeepSeek（`deepseek-chat`）；也可填任意 OpenAI 兼容端点（`makeChatUrl` 会自适应补 `/v1/chat/completions`）。
+
+**密钥与存储安全。** 配置、API Key 优先存 `GM_getValue/GM_setValue`（前缀 `ykt-helper:`，页面脚本不可见），GM 不可用时退回 `localStorage` 并自动迁移、清除明文副本。开发者模式可解锁一份内置 LLM 配置，密文用 **AES-256-GCM**，密钥由密码经 **PBKDF2 (SHA-256)** 派生（见 `core/devmode.js`，密文 blob 为生成产物）。
+
+**PDF 导出（`core/pdf-export.js`）。** 关键设计：
+- **页面尺寸 = 图片尺寸**（`jsPDF({ unit: 'pt', format: [w,h], orientation })`），横图出横页、零白边；
+- **并发 5** 下载，`GM_xhr` 绕开 OSS 的 CORS，图片转 dataURL；
+- **内容级去重**：`128×72` 缩略灰度 → `8×8` 块均值签名（`Uint32` 隔点采样，仅在沙箱里做约 1 万次逐元素操作），精确匹配去重；`skipped`（重复）与 `failed`（失败）**分开计数**，让「去重 n 页」可信；
+- **断点续传**：dataURL 落 IndexedDB（DB `yks-pdf-cache` / store `images`，key 为去掉 `?token` 的图片 path），刷新/中断后重导可命中缓存；
+- **不冻结主线程**：阶段二同步编码循环用 `MessageChannel` 让出（后台标签页里 `setTimeout` 会被节流），并支持取消与 45s 停滞看门狗提示。
+
+**答题提交（`tsm/answer.js`）。** `POST /api/v3/lesson/problem/answer` 正常作答；超过服务端截止时间则改走 `POST /api/v3/lesson/problem/retry` 补交。截止判定基于服务端时钟——`unlockproblem` 里的 `dt` 与本地时间之差记为 `clockOffset`，过期判断统一换算回服务端时间轴。答案解析由 `parseAIAnswer()` 按题型处理（单选/投票取字母、多选顿号/逗号拆分、填空按逗号分空、主观保留全文），并对 `STATE: NO_PROMPT` 哨兵判定为「无题目」而不提交。
+
+**题目类型码**（`core/types.js`）：`1` 单选、`2` 多选、`3` 投票、`4` 填空、`5` 主观。
+
+**富媒体渲染（`ui/panels/ai.js`）。** 采用「流式占位 + 完成后后处理」两阶段：流式阶段用 `marked` 做 GFM 解析，把 `mermaid` / `svg` / `html` 代码块转成占位 `div`；回复结束后 `renderRich()` 再统一执行 mermaid→SVG、DOMPurify 清洗、MathJax 排版。mermaid/marked/DOMPurify 均按需从 CDN 拉取并预热。
+
+**历史课件收集（`core/history-capture.js`）。** 课堂列表来自 `/v2/api/web/logs/learn/<classId>?actype=-1&page=&offset=50&sort=-1` 自动翻页（筛 `type===14`，上限 1000 条，排除进行中的课堂）。收集页须带 `#yks-collect-<runId>` hash 标记才会自动运行——避免用户手动浏览报告页时被劫持点击/下载/关页；进度经 `GM_setValue` + `GM_addValueChangeListener` 跨标签实时推送（不可用时退化为 1s 轮询），超时保护为 **120s 无进展** 与 **15min 绝对上限**。
+
+**日志分级（`core/log.js`）。** 默认只输出 `warn` / `error`；在控制台执行 `localStorage.setItem('yksDebug','1')` 后刷新即可全量输出（`log.enable()/disable()` 亦可运行时切换）。
+
+**构建与质量门禁。** `npm run check` = ESLint（flat config）+ Rollup 构建 + 回归测试；版本号单一来源（`package.json` → `userscript.meta.js` 与产物文件名）。回归测试含 PDF 去重（`scripts/test-pdf-dedup.mjs`）与课堂列表翻页（`scripts/test-activities-paging.mjs`）；开发者模式端到端用例 `scripts/test-devmode.mjs` 因含解锁码未入库，全新克隆后 `npm test` 可能因缺该文件而失败（**待确认**，可单独运行其余用例）。构建前置检查会校验生成的 `src/core/devmode-blob.js` 是否存在，缺失时给出 `node scripts/gen-devmode.js` 指引。
+
+---
+
+## ❓ 常见问题
+
+**Q：需要 Chrome 扩展吗？还是篡改猴就行？**
+A：只装篡改猴（Tampermonkey）即可，脚本是用户脚本而非独立扩展。
+
+**Q：手机能用吗？**
+A：可以，推荐 **Firefox 安卓版**（官方支持篡改猴）。雨课堂服务端会按 UA 把移动设备弹回功能受限的移动版（`/m/v2`），需在浏览器里开启「请求桌面网站」。**Edge 安卓的桌面模式不修改 `Sec-CH-UA-Mobile` 请求头**，可能仍被弹回——此时脚本会弹出黄色引导条建议改用 Firefox。
+
+**Q：AI 功能收费吗？**
+A：脚本本身免费且不上传数据；AI 解答与 PPT 对话需调用你自己的 LLM API，费用由对应厂商计收。请自行核对 AI 答案。
+
+**Q：会不会丢课件 / 丢题？**
+A：课件与题目按课程分组存在浏览器本地（`GM_*` / `localStorage`），每门课默认保留最近 `maxPresentations`（默认 5）份课件。历史收集页在无进展 120s 或总时长 15min 后判定失败，避免无限等待。
+
+**Q：为什么导出的 PDF 每页尺寸不一样？**
+A：这是刻意的——页面尺寸等于原图尺寸，横图出横页，观感等同无边框幻灯片。若混入异比例图片也不会被裁切或留白。
+
+---
+
+## ⚠️ 注意事项
+
+- **数据在本地**：脚本直接读写雨课堂页面上下文与浏览器本地存储；雨课堂前端升级可能改变页面结构或存储格式，届时适配逻辑需同步更新。
+- **自动作答**：默认关闭。开启后会在设定延时（默认基础 3s + 随机 0–2s）后自动提交 AI 答案——**AI 可能出错**，请自行核对；未配置 API Key 时默认跳过（「宁缺答不误答」）。使用自动功能造成的后果由使用者承担。
+- **学术诚信**：本工具仅供个人学习参考，请独立思考完成学业，勿用于考试作弊等学术不端场景（见 LICENSE 使用条款）。
+- **隐私**：API Key 存于浏览器本地；题目内容仅在你主动触发 AI 时发送给你配置的模型厂商，脚本不经过任何中间服务器。
+- **CDN 依赖**：富媒体渲染与 jsPDF/MathJax 需从 CDN 加载，离线环境相关能力不可用。
+
+---
+
+## 📄 License
+
+本项目以 **MIT** 协议开放（见 [LICENSE](./LICENSE)，文件内含额外的使用条款与免责声明）。仓库未声明独立版权人信息，如需二次分发请保留原许可与声明。
+
+---
+
+## 🙏 致谢 / Credits
+
+- [ZaytsevZY/yuketang-helper-auto](https://github.com/ZaytsevZY/yuketang-helper-auto) —— 本项目基于其代码重构发展而来，核心的 WebSocket 拦截与答题流程源自该项目。
+- [hotwords123/yuketang-helper](https://github.com/hotwords123/yuketang-helper) —— 项目灵感来源。
+- 运行时依赖：jsPDF、MathJax、marked、DOMPurify、mermaid（均按需加载）。
+- 本仓库的图标、README（中英双语）与架构图为本项目重制。
+
+---
+
+<div align="center">
+<sub>YuketangStudio · 让每一页课件都为你所用</sub>
+</div>
