@@ -11,11 +11,17 @@ import { log } from './core/log.js';
 
 (function loadFA() {
   // document-start 极早期 document.head 可能尚未解析出来（手动 CDP 注入/异常时序），需兜底
-  const target = document.head || document.documentElement || document;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
-  target.appendChild(link);
+  const target = document.head || document.documentElement;
+  if (target) { try { target.appendChild(link); return; } catch {} }
+  // head/documentElement 都还没出现（极早期注入）——等 DOM 出来再挂
+  const t = setInterval(() => {
+    const el = document.head || document.documentElement;
+    if (el) { clearInterval(t); try { el.appendChild(link); } catch {} }
+  }, 50);
+  setTimeout(() => clearInterval(t), 15000);
 })();
 
 /** 用户正在页面里输入时，不要刷新打断 */
@@ -75,6 +81,16 @@ function startPeriodicReload(opts = {}) {
         // 用户正在输入时不刷新
         if (userIsTyping()) {
           log.dbg('skip reload: user typing');
+          return;
+        }
+        // AI 流式进行中不刷新——刷新直接掐断在途请求且无法恢复
+        if (document.body?.dataset?.yksStreaming === '1') {
+          log.dbg('skip reload: AI streaming in progress');
+          return;
+        }
+        // 批量课件导入进行中不刷新（收集页 active:true 会让本页变 hidden，最易被误杀）
+        if (document.getElementById('ykt-import-progress')) {
+          log.dbg('skip reload: batch import in progress');
           return;
         }
 

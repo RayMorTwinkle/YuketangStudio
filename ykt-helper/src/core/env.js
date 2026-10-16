@@ -8,7 +8,9 @@ export const gm = {
     else {
       const s = document.createElement('style');
       s.textContent = css;
-      document.head.appendChild(s);
+      // document-start 早期 head 可能为 null
+      const target = document.head || document.documentElement;
+      if (target) try { target.appendChild(s); } catch {}
     }
   },
   xhr(opt) {
@@ -130,5 +132,6 @@ export async function ensureFontAwesome() {
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = href;
-  document.head.appendChild(link);
+  const target = document.head || document.documentElement;
+  if (target) try { target.appendChild(link); } catch {}
 }

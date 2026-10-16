@@ -5,7 +5,7 @@ export function toast(message, duration = 2000) {
   el.style.cssText = `
     position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
     background: rgba(0,0,0,.7); color: #fff; padding: 10px 20px;
-    border-radius: 4px; z-index: 10000000; max-width: 80%;
+    border-radius: 4px; z-index: 2147483646; max-width: 80%;   /* 顶层 toast：压过所有浮层（遮罩 99999999、进度条 99999998） */
   `;
   document.body.appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .5s';

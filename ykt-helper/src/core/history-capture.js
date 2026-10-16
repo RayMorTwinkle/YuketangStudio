@@ -7,6 +7,15 @@ import { log } from './log.js';
 
 const RESULT_KEY_PREFIX = 'ykt-history-result:';
 const PROGRESS_KEY_PREFIX = 'ykt-history-progress:';
+const TITLE_KEY_PREFIX = 'ykt-history-title:';   // 主页面预置的课堂标题（多次同名课时靠 (N) 后缀区分文件名）
+
+/** 收集完成后清理该 lessonId 的三个 GM 键（不留垃圾键——GM 存储无 TTL） */
+function cleanupLessonKeys(lessonId) {
+  if (typeof GM_deleteValue !== 'function') return;
+  try { GM_deleteValue(RESULT_KEY_PREFIX + lessonId); } catch {}
+  try { GM_deleteValue(PROGRESS_KEY_PREFIX + lessonId); } catch {}
+  try { GM_deleteValue(TITLE_KEY_PREFIX + lessonId); } catch {}
+}
 
 /** 收集页内的可见状态条（进度对本页用户可见） */
 function statusEl(text, pct) {
@@ -99,8 +108,11 @@ export async function runHistoryCapture() {
     }
     if (!card) throw new Error('课件卡片未渲染（可能该课堂无课件）');
 
-    // 2. 取标题
-    const title = (document.querySelector('.ppt_name')?.textContent || '历史课件').trim();
+    // 2. 取标题：优先用主页面传进来的课堂标题+时间戳（activity.title + create_time，
+    //    保证「06第6章树 V2」这种同名多课时文件名不撞 → 不会被浏览器 uniquify 成 (N)）
+    let title = '';
+    try { if (typeof GM_getValue === 'function') title = GM_getValue(TITLE_KEY_PREFIX + lessonId) || ''; } catch {}
+    title = title || (document.querySelector('.ppt_name')?.textContent || '历史课件').trim();
     statusEl(`已找到课件「${title}」，打开全页预览…`);
 
     // 3. 点击缩略图打开全页预览；懒加载兜底：反复滚动容器+重扫，直到 img 计数稳定
@@ -185,8 +197,16 @@ export async function importHistoryLesson(classId, activity, opts = {}) {
   const progressKey = PROGRESS_KEY_PREFIX + lessonId;
   // runId：区分本次 run 与上一次超时残留收集 tab 的写值（旧 run 的回报直接丢弃）
   const runId = Math.random().toString(36).slice(2, 10);
-  // 清旧结果与进度
-  if (typeof GM_setValue === 'function') { GM_setValue(resultKey, null); GM_setValue(progressKey, null); }
+  // 清旧结果与进度；预置课堂标题+时间戳（activity.title + create_time，收集页跨 tab 读来做文件名）
+  // 时间戳后缀保证同名多课时（06第6章树 V2 ×4 这种）文件名唯一，不触发浏览器 (N) uniquify
+  if (typeof GM_setValue === 'function') {
+    GM_setValue(resultKey, null); GM_setValue(progressKey, null);
+    if (activity.title) {
+      const d = new Date(activity.create_time || 0);
+      const ts = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+      GM_setValue(TITLE_KEY_PREFIX + lessonId, `${String(activity.title)} ${ts}`);
+    }
+  }
 
   // #yks-collect-<runId> 标记：收集器只在这种脚本开的 tab 里自动运行（并在完成后自动关闭）
   const url = `${location.origin}/v2/web/student-v3/${classId}/${lessonId}/${activityId}#yks-collect-${runId}`;
@@ -268,6 +288,8 @@ export async function importHistoryLesson(classId, activity, opts = {}) {
     // 完成/失败后关闭收集页（GM_openInTab 返回的 tab 对象支持 close）
     try { collectTab?.close?.(); } catch {}
     setTimeout(() => { try { collectTab?.close?.(); } catch {} }, 1500);
+    // 结果已收到（或超时放弃），把该 lessonId 的 GM 键删干净——不留垃圾键累积
+    setTimeout(() => cleanupLessonKeys(lessonId), 500);
   }
 }
 

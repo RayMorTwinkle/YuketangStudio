@@ -7,16 +7,17 @@ import { imageCacheKey, idbGet, idbSet, idbDel } from './idb-cache.js';
 /** 让出事件循环：phase-2 的同步编码循环必须定期 yield，否则主线程阻塞 → 进度不 paint、关闭/取消按钮失灵。
  *  用 MessageChannel 而非 setTimeout(0)：后台标签页里定时器被节流到 1s+（实测 yield 一次 ~4s，
  *  158 页拖到 10min+），MessageChannel 走任务队列不受定时器节流影响。
- *  且距上次 yield <32ms 时直接跳过——前台页全速跑，不为一页一次的调度开销买单。 */
+ *  且距上次 yield <32ms 时直接跳过——前台页全速跑，不为一页一次的调度开销买单。
+ *  注意：resolve 用数组队列，并发导出时不能让后一个调用覆盖前一个的 resolve（否则前者永久挂起）。 */
 const _yieldCh = new MessageChannel();
-let _yieldResolve = null;
-_yieldCh.port1.onmessage = () => { const r = _yieldResolve; _yieldResolve = null; r?.(); };
+const _yieldResolvers = [];
+_yieldCh.port1.onmessage = () => { const r = _yieldResolvers.shift(); r?.(); };
 let _lastYield = 0;
 const yieldFrame = () => {
   const now = performance.now();
   if (now - _lastYield < 32) return Promise.resolve();
   _lastYield = now;
-  return new Promise(r => { _yieldResolve = r; _yieldCh.port2.postMessage(0); });
+  return new Promise(r => { _yieldResolvers.push(r); _yieldCh.port2.postMessage(0); });
 };
 
 /**
@@ -148,7 +149,11 @@ export async function exportImagesToPdf(urls, title, opts = {}) {
         jspdf: Math.round(_prof.jspdf), progress: Math.round(_prof.progress), yield: Math.round(_prof.yield)
       });
       log.dbg('[PDF][prof] 页累计ms:', _s);
-      try { localStorage.setItem('yksProf', (localStorage.getItem('yksProf') || '') + _s + '\n'); } catch {}
+      try {
+        // 诊断日志限长 8KB，防长期累积撑爆 localStorage 配额
+        const prev = localStorage.getItem('yksProf') || '';
+        localStorage.setItem('yksProf', (prev + _s + '\n').slice(-8192));
+      } catch {}
       _prof.page = _prof.grey = _prof.jspdf = _prof.progress = _prof.yield = 0;
     }
     const _ty2 = performance.now(); await yieldFrame(); _prof.yield += performance.now() - _ty2;

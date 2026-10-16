@@ -93,9 +93,20 @@ async function downloadImageAsBase64(url) {
   return new Promise((resolve) => {
     try {
       const img = new Image();
-      img.crossOrigin = 'anonymous'; 
-      
+      img.crossOrigin = 'anonymous';
+
+      // 兜底计时器：挂起的 TCP 连接下 onload/onerror 都可能不触发——
+      // 没有它，Promise 永不 settle，外层 auto-answer 的 answering 标志永久卡死
+      const timer = setTimeout(() => {
+        try { img.src = ''; } catch {}
+        log.err('[downloadImageAsBase64] Image 加载超时');
+        resolve(null);
+      }, 30000);
+
+      const clear = () => clearTimeout(timer);
+
       img.onload = () => {
+        clear();
         try {
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
@@ -120,6 +131,7 @@ async function downloadImageAsBase64(url) {
       };
       
       img.onerror = (e) => {
+        clear();
         log.err('[雨课堂助手][ERR][downloadImageAsBase64] 图片加载失败:', e);
         resolve(null);
       };

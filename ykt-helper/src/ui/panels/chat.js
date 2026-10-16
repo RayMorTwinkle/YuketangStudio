@@ -17,6 +17,7 @@ let root;
 let history = [];           // OpenAI 格式消息
 let streaming = false;      // 防并发发送
 let abortCtrl = null;
+let lastSendText = null;    // 上一次发送的用户文本（重试用）
 
 const systemPrompt = () => String(ui?.config?.systemPromptChat || '').trim() || DEFAULT_SYSTEM_PROMPT_CHAT;
 
@@ -76,9 +77,11 @@ export function mountChatPanel() {
   });
   $sel('#ykt-chat-plus-slides')?.addEventListener('click', () => { hideMenu(); openSlidePicker(); });
 
-  // shell 生命周期钩子：切到本 tab 刷新上下文缩略图，切走/关闭时中止流式
+  // shell 生命周期钩子：切到本 tab 刷新上下文缩略图；
+  // 不中断流式：tab 切换/收起壳都继续后台生成，切回来直接看结果；
+  // 只有页面刷新（JS 上下文没了）、清空会话、用户主动取消才断
   root.__yksOnShow = () => { refreshCtxThumb(); };
-  root.__yksOnHide = () => abortStreaming('面板已隐藏');
+  root.__yksOnHide = () => {};
 
   warmupRichAssets();
   mounted = true;
@@ -87,8 +90,6 @@ export function mountChatPanel() {
 
 export function showChatPanel(visible = true) {
   if (!mounted) mountChatPanel();
-  // 关闭面板时终止仍在进行的流式请求，避免后台继续消耗 token
-  if (!visible) abortStreaming('面板已关闭');
   root.classList.toggle('visible', visible);
   if (visible) {
     refreshCtxThumb();
@@ -286,14 +287,26 @@ function openSlidePicker() {
   document.body.appendChild(mask);
 }
 
-async function sendCurrent() {
+/** 流式进行时在 body 打标——periodic reload / 其他全局逻辑据此避开在途请求 */
+function setStreamingFlag(on) {
+  try {
+    if (on) document.body.dataset.yksStreaming = '1';
+    else delete document.body.dataset.yksStreaming;
+  } catch {}
+}
+
+async function sendCurrent({ retryText = null } = {}) {
   if (streaming) return;
   const $input = $sel('#ykt-chat-input');
-  const text = $input.value.trim();
+  // retryText 非 null = 重试：用上次的文本，弹出上一条 user 历史避免重复
+  const text = retryText !== null ? retryText : $input.value.trim();
+  if (retryText !== null && history.length && history[history.length - 1]?.role === 'user') history.pop();
   if (!text) { ui.toast?.('先输入问题'); return; }
   const attach = $sel('#ykt-chat-attach')?.checked;
 
+  lastSendText = text;
   streaming = true;
+  setStreamingFlag(true);
   $sel('#ykt-chat-send').disabled = true;
   try {
     const content = [{ type: 'text', text }];
@@ -387,13 +400,22 @@ async function sendCurrent() {
     const emsg = String(e?.message || '');
     const isTimeout = /timeout|超时/i.test(emsg);
     const aborted = (e?.name === 'AbortError' && !isTimeout) || /abort|cancel/i.test(emsg);
+    const retryBtn = lastSendText !== null
+      ? `<button class="ykt-retry-btn" style="margin-left:8px;padding:2px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:12px">↻ 重试</button>`
+      : '';
     if (aborted) {
-      addBubble('ai', '<span class="muted">（已取消）</span>');
+      addBubble('ai', `<span class="muted">（已中断：${escapeHtml(emsg || '请求被中止')}）</span>${retryBtn}`);
     } else {
-      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span><br/><small>提示：到设置里检查 API 配置是否正确。</small>`);
+      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>提示：到设置里检查 API 配置是否正确。</small>`);
     }
+    const lastBubble = $sel('#ykt-chat-log')?.lastElementChild;
+    lastBubble?.querySelector('.ykt-retry-btn')?.addEventListener('click', () => {
+      lastBubble.remove();
+      sendCurrent({ retryText: lastSendText });
+    });
   } finally {
     streaming = false;
+    setStreamingFlag(false);
     abortCtrl = null;
     $sel('#ykt-chat-send').disabled = false;
     $sel('#ykt-chat-log').scrollTop = $sel('#ykt-chat-log').scrollHeight;

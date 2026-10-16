@@ -62,7 +62,7 @@ export function showShell(visible = true, tabId = null) {
   // 工具栏按钮态跟着真实可见性走
   document.getElementById('ykt-btn-shell')?.classList.toggle('active', !!visible);
   if (visible) switchTo(tabId || activeTab);
-  else currentPanel()?.__yksOnHide?.();   // 收起时给激活面板一次清理机会（中止流式等）
+  else currentPanel()?.__yksOnHide?.('shell-close');   // 收起时给激活面板一次清理机会（中止流式等）
 }
 
 export function toggleShell() {
@@ -82,7 +82,7 @@ export function switchTo(tabId) {
   for (const panel of content.querySelectorAll(':scope > .ykt-panel')) {
     const isActive = panel.id === t.panelId;
     if (!isActive && panel.classList.contains('active-tab')) {
-      panel.__yksOnHide?.();   // 切走之前激活的面板（中止它的流式请求等）
+      panel.__yksOnHide?.('tab-switch');   // 切走之前激活的面板（仅通知切走，流式由面板决定是否中断）
     }
     panel.classList.toggle('active-tab', isActive);
     panel.classList.toggle('visible', isActive);

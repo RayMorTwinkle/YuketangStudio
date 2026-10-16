@@ -39,6 +39,7 @@ export default defineConfig([
         GM_setValue: 'readonly',
         GM_addValueChangeListener: 'readonly',
         GM_removeValueChangeListener: 'readonly',
+        GM_deleteValue: 'readonly',
         GM_getTab: 'readonly',
         GM_getTabs: 'readonly',
         GM_saveTab: 'readonly',

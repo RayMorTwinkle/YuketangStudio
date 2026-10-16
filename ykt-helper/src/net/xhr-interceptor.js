@@ -7,10 +7,11 @@ export function installXHRInterceptor() {
   class MyXHR extends XMLHttpRequest {
     static handlers = [];
     static addHandler(h) { this.handlers.push(h); }
-    open(method, url, async) {
+    open(method, url, async, user, password) {
       const parsed = new URL(url, location.href);
       for (const h of this.constructor.handlers) h(this, method, parsed);
-      return super.open(method, url, async ?? true);
+      // 透传全部参数——吃掉 user/password 会让依赖基本认证的 XHR 改变语义
+      return super.open(method, url, async ?? true, user, password);
     }
     intercept(cb) {
       let payload;
@@ -52,10 +53,11 @@ export function installXHRInterceptor() {
       return;
     }
 
-    // 答题
+    // 答题：精确端点 + 收紧包含匹配（避免 /problem/answerlist 这类非答题接口被劫持）
     if (
       pathname === '/api/v3/lesson/problem/answer' ||
-      (pathname.includes('problem') && pathname.includes('answer'))
+      pathname === '/mooc-api/v1/lms/lesson/problem/answer' ||
+      pathname.endsWith('/problem/answer')
     ) {
       log.dbg('[雨课堂助手][INFO] 拦截答题请求');
       xhr.intercept((resp, payload) => {

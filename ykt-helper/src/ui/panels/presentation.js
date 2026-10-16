@@ -257,8 +257,8 @@ export function mountPresentationPanel() {
   L('mountPresentationPanel 完成');
   // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
   host.__yksOnShow = () => updatePresentationList();
-  // 收起/切走时中止进行中的整册导出（否则用户以为关了其实还在跑）
-  host.__yksOnHide = () => { pdfAbortCtrl?.abort(); };
+  // 不中止导出：切 tab/收起壳时 PDF 继续在后台生成（不刷新页面就不丢进度）
+  host.__yksOnHide = () => {};
   return host;
 }
 
@@ -309,8 +309,8 @@ export function updatePresentationList() {
     let times = 0;
 
     const mo = new MutationObserver(() => {
-      if (!isStudentLessonReportPage()) return;
-      if (++times > 20) return;
+      if (!isStudentLessonReportPage()) { try { mo.disconnect(); } catch {} return; }
+      if (++times > 20) { try { mo.disconnect(); } catch {} return; }   // 20 次未命中就放弃——不再让 observer 永久空转
 
       log.dbg('[presentation][static-report] DOM 变更，尝试重新收集 slide URL (times =', times, ')');
       const injected = ensureStaticReportPresentation();
@@ -579,6 +579,15 @@ async function openHistoryImporter() {
   const box = document.createElement('div');
   box.style.cssText = 'background:#fff;border-radius:10px;max-width:520px;max-height:70vh;overflow:auto;padding:16px 20px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);';
   box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂（可多选）</div>`;
+  // 已下载记录（key: ykt-dl-done:<classId> = [lessonId,...]）——重开浮层时标灰，避免重复下载
+  const doneKey = `ykt-dl-done:${classId}`;
+  let doneSet = new Set();
+  try { doneSet = new Set(typeof GM_getValue === 'function' ? (GM_getValue(doneKey) || []) : []); } catch {}
+  const markDone = (lessonId) => {
+    if (!lessonId) return;
+    doneSet.add(String(lessonId));
+    try { if (typeof GM_setValue === 'function') GM_setValue(doneKey, [...doneSet]); } catch {}
+  };
   const chosen = new Set();
   const rowEls = [];
   // 选中态高亮：选中行加背景+边框色（解决选中/未选中看不出区别）
@@ -591,7 +600,8 @@ async function openHistoryImporter() {
     const d = new Date(a.create_time || 0);
     const t = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     const row = document.createElement('label');
-    row.style.cssText = 'padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fff;';
+    const isDone = doneSet.has(String(a.courseware_id));   // markDone 存的是 courseware_id（lessonId）
+    row.style.cssText = 'padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fff;' + (isDone ? 'opacity:.55;' : '');
     // 课堂标题来自服务端——不用 innerHTML 注入
     const cb = document.createElement('input');
     cb.type = 'checkbox';
@@ -602,7 +612,7 @@ async function openHistoryImporter() {
     titleSpan.textContent = a.title || '未命名课堂';
     const timeSpan = document.createElement('span');
     timeSpan.style.cssText = 'color:#607190;white-space:nowrap';
-    timeSpan.textContent = `${t}${a.attend_status ? ' ✅' : ''}`;
+    timeSpan.textContent = `${t}${a.attend_status ? ' ✅' : ''}${isDone ? ' ·已下载' : ''}`;
     row.appendChild(cb);
     row.appendChild(titleSpan);
     row.appendChild(timeSpan);
@@ -669,6 +679,7 @@ async function openHistoryImporter() {
         });
         if (r?.ok) {
           okList.push(r.title || a.title || '未命名');
+          markDone(a.courseware_id);
           const warnBit = (r.expectedTotal && r.total < r.expectedTotal) ? ` ⚠️仅${r.total}/${r.expectedTotal}页` : '';
           ui.toast(`✅「${r.title || a.title}」完成：${r.pages} 页${r.skipped ? `（去重 ${r.skipped}）` : ''}${warnBit}`, 2500);
         } else {
@@ -748,6 +759,9 @@ function showImportProgressBar(title) {
 let pdfAbortCtrl = null;   // 进行中的整册导出（取消按钮/关面板时中止）
 
 async function downloadPresentationPDF() {
+  // 并发守卫：导出中再点直接提示——否则新 AbortController 覆盖旧的，
+  // 旧导出失控且 yield 队列会让双方都概率性挂起
+  if (pdfAbortCtrl) return ui.toast('已有导出任务进行中，请先取消或等它完成', 2500);
   let pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
   // 回退：用户没点过缩略图/课件标题时，自动选用列表里的课件（通常只有一份），
   // 而不是让他「请先选择」再点一次——37 页都收好了却导不出，纯属多一步

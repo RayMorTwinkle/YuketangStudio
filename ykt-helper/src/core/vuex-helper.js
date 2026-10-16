@@ -111,8 +111,9 @@ export function watchMainPageChange(callback) {
   }
 
   // 移动版实时课堂：watch「最后一个含 sid 卡片的 sid 值」——
-  // 不能只 watch 数量：数量不变的重发/回跳也需要触发
-  if (Array.isArray(store.state?.cards)) {
+  // 不能只 watch 数量：数量不变的重发/回跳也需要触发。
+  // 守卫：桌面版 store 有 currSlide 时绝不走这条分支（哪怕它恰好也有 cards 字段）
+  if (store.state?.currSlide === undefined && Array.isArray(store.state?.cards)) {
     const lastSid = (s) => {
       const arr = s.cards;
       if (!Array.isArray(arr)) return null;
@@ -158,7 +159,7 @@ export function getMainPageSlides() {
     const st = store?.state;
     const tl = st?.lessonTimelineSlides;
     if (Array.isArray(tl) && tl.length) {
-      return tl.map(s => ({
+      return tl.filter(s => (s?.sid ?? s?.id) != null).map(s => ({
         id: String(s.sid ?? s.id),
         index: s.index,
         title: `第 ${s.index} 页`,

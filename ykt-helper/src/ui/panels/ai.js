@@ -25,6 +25,7 @@ let preferredSlideFromPresentation = null; // 来自课件面板/事件的指定
 let history = [];           // OpenAI 格式消息
 let streaming = false;      // 防并发发送
 let abortCtrl = null;
+let lastSendText = null;    // 上一次发送的用户文本（重试用；空串=解答此页）
 
 const systemPrompt = () => String(ui?.config?.systemPromptAI || '').trim() || DEFAULT_SYSTEM_PROMPT_AI;
 
@@ -102,13 +103,14 @@ export function mountAIPanel() {
       queueMicrotask(() => sendCurrent({ auto: true }));
     }
   };
-  root.__yksOnHide = () => abortStreaming('面板已隐藏');
+  // 不中断流式：tab 切换/收起壳都继续后台生成，切回来直接看结果；
+  // 只有页面刷新（JS 上下文没了）、清空会话、用户主动取消才断
+  root.__yksOnHide = () => {};
   return root;
 }
 
 export function showAIPanel(v = true) {
   if (!mounted) mountAIPanel();
-  if (!v) abortStreaming('面板已关闭');
   root.classList.toggle('visible', !!v);
   if (v) {
     renderCtxStatus();
@@ -298,16 +300,30 @@ export function getOverride() {
   };
 }
 
-async function sendCurrent({ auto = false } = {}) {
+/** 流式进行时在 body 打标——periodic reload / 其他全局逻辑据此避开在途请求 */
+function setStreamingFlag(on) {
+  try {
+    if (on) document.body.dataset.yksStreaming = '1';
+    else delete document.body.dataset.yksStreaming;
+  } catch {}
+}
+
+async function sendCurrent({ auto = false, retryText = null } = {}) {
   if (streaming) return;
   const $input = $sel('#ykt-ai-input');
-  const text = ($input?.value || '').trim();
+  // retryText 非 null = 重试：用上次的文本，并弹出上一条 user 历史避免重复
+  const text = retryText !== null ? retryText : ($input?.value || '').trim();
+  if (retryText !== null) {
+    if (history.length && history[history.length - 1]?.role === 'user') history.pop();
+  }
   const isAnalyze = !text;                       // 空输入 = 解答此页
   if (!text && !auto) { /* 空输入也允许：解答此页 */ }
   const customPrompt = ($sel('#ykt-ai-custom-prompt')?.value || '').trim();
   const attach = $sel('#ykt-ai-attach')?.checked ?? true;
 
+  lastSendText = text;
   streaming = true;
+  setStreamingFlag(true);
   $sel('#ykt-ai-send').disabled = true;
   try {
     const content = [{ type: 'text', text: text || DEFAULT_ANALYZE_PROMPT }];
@@ -395,13 +411,23 @@ async function sendCurrent({ auto = false } = {}) {
     const emsg = String(e?.message || '');
     const isTimeout = /timeout|超时/i.test(emsg);
     const aborted = (e?.name === 'AbortError' && !isTimeout) || /abort|cancel/i.test(emsg);
+    const retryBtn = lastSendText !== null
+      ? `<button class="ykt-retry-btn" style="margin-left:8px;padding:2px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:12px">↻ 重试</button>`
+      : '';
     if (aborted) {
-      addBubble('ai', '<span class="muted">（已取消）</span>');
+      addBubble('ai', `<span class="muted">（已中断：${escapeHtml(emsg || '请求被中止')}）</span>${retryBtn}`);
     } else {
-      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span><br/><small>提示：到设置里检查 AI 配置的 API Key。</small>`);
+      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>提示：到设置里检查 AI 配置的 API Key。</small>`);
     }
+    // 重试按钮绑事件（addBubble 用 innerHTML，需手动绑）
+    const lastBubble = $sel('#ykt-ai-log')?.lastElementChild;
+    lastBubble?.querySelector('.ykt-retry-btn')?.addEventListener('click', () => {
+      lastBubble.remove();
+      sendCurrent({ retryText: lastSendText });
+    });
   } finally {
     streaming = false;
+    setStreamingFlag(false);
     abortCtrl = null;
     $sel('#ykt-ai-send').disabled = false;
     $sel('#ykt-ai-log').scrollTop = $sel('#ykt-ai-log').scrollHeight;
@@ -591,25 +617,37 @@ export async function renderRich(el) {
       codeEl.parentElement.replaceWith(div);
     }
     rescueLooseMermaid(el);
-    // 1) mermaid → SVG
+    // 1) mermaid → SVG：占位符先显示加载态，渲染完成/失败都有明确反馈（不再是空白等干等）
     const mermaidEls = [...el.querySelectorAll('.ykt-mermaid[data-raw]')];
     if (mermaidEls.length) {
+      for (const node of mermaidEls) {
+        node.innerHTML = '<div class="ykt-mermaid-loading" style="padding:14px 10px;color:#94a3b8;font-size:12px;text-align:center;background:#f8fafc;border-radius:6px"><i class="fas fa-circle-notch fa-spin"></i> 正在渲染图表…</div>';
+      }
       try {
         const mermaid = await ensureMermaid();
         for (const node of mermaidEls) {
           // AI 偶尔在 mermaid 源码里混入 <p>/<br/> 等标签导致解析失败——渲染前剥掉
           const src = stripHtmlWrappers(node.getAttribute('data-raw') || '');
           try {
-            const { svg } = await mermaid.render(`ykmmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, src);
+            // 渲染超时兜底：卡住 15s 不再干等
+            const { svg } = await Promise.race([
+              mermaid.render(`ykmmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, src),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('渲染超时（15s）')), 15000)),
+            ]);
             const wrap = document.createElement('div');
             wrap.className = 'ykt-mermaid-render';
             wrap.innerHTML = svg;
             node.replaceWith(wrap);
           } catch (e) {
-            log.warn('[Rich] mermaid 渲染失败，显示源码:', e?.message);
+            const reason = String(e?.message || e || '语法错误');
+            log.warn('[Rich] mermaid 渲染失败:', reason);
             const pre = document.createElement('pre');
             pre.className = 'ykt-md-code';
-            pre.textContent = src;
+            pre.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:6px 8px;background:#fef2f2;border-radius:4px 4px 0 0;border-bottom:1px solid #fecaca">⚠️ Mermaid 渲染失败：${escapeHtml(reason.slice(0, 120))}</div>`;
+            const code = document.createElement('div');
+            code.style.cssText = 'padding:8px;white-space:pre-wrap;font-size:12px;color:#475569;';
+            code.textContent = src;
+            pre.appendChild(code);
             node.replaceWith(pre);
           }
         }
@@ -618,7 +656,11 @@ export async function renderRich(el) {
         mermaidEls.forEach(node => {
           const pre = document.createElement('pre');
           pre.className = 'ykt-md-code';
-          pre.textContent = node.getAttribute('data-raw') || '';
+          pre.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:6px 8px;background:#fef2f2;border-radius:4px 4px 0 0">⚠️ Mermaid 库加载失败（CDN 不可达）</div>`;
+          const code = document.createElement('div');
+          code.style.cssText = 'padding:8px;white-space:pre-wrap;font-size:12px;color:#475569;';
+          code.textContent = node.getAttribute('data-raw') || '';
+          pre.appendChild(code);
           node.replaceWith(pre);
         });
       }

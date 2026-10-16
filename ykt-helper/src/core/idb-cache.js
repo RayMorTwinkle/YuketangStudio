@@ -11,9 +11,10 @@ function openDb() {
   if (_dbPromise) return _dbPromise;
   _dbPromise = new Promise((resolve, reject) => {
     try {
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(DB_NAME, 2);   // v2：历史遗留 fs store（下载目录句柄功能已撤，store 保留无害）
       req.onupgradeneeded = () => {
         try { req.result.createObjectStore(STORE); } catch {}
+        try { req.result.createObjectStore('fs'); } catch {}
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error || new Error('idb open failed'));
