@@ -1,6 +1,15 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// 签名凭据：读 local.properties（不入库）
+val localPropsFile = rootProject.file("local.properties")
+val localProps = Properties().apply {
+    if (localPropsFile.exists()) FileInputStream(localPropsFile).use { load(it) }
 }
 
 android {
@@ -11,8 +20,25 @@ android {
         applicationId = "com.yuketangstudio.shell"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 4
+        versionName = "0.4.0"
+    }
+
+    // 签名：凭据存 local.properties（不入库），keystore 文件也不入库
+    signingConfigs {
+        create("release") {
+            storeFile = file("release.keystore")
+            storePassword = localProps.getProperty("ykt.storePassword") ?: ""
+            keyAlias = localProps.getProperty("ykt.keyAlias") ?: "ykt"
+            keyPassword = localProps.getProperty("ykt.keyPassword") ?: ""
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
 
     buildFeatures {

@@ -10,10 +10,10 @@
 
 把「跟不上翻页 / 课件存不下 / 题目答不出」这三件事，变成一个装进浏览器的小工具。
 
-![Platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20Android-4285F4?logo=googlechrome&logoColor=white)
-![Type](https://img.shields.io/badge/userscript-Tampermonkey-000000?logo=tampermonkey&logoColor=white)
-![Lang](https://img.shields.io/badge/JavaScript-ES%20Modules-F7DF1E?logo=javascript&logoColor=black)
-![Version](https://img.shields.io/badge/version-0.3.1-1d63df)
+![Platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20Android-4285F4?logo=googlechrome&logoColor=white)
+![Type](https://img.shields.io/badge/userscript-Tampermonkey%20%7C%20APK-000000?logo=tampermonkey&logoColor=white)
+![Lang](https://img.shields.io/badge/JavaScript%20%7C%20Kotlin-ES%20Modules-F7DF1E?logo=javascript&logoColor=black)
+![Version](https://img.shields.io/badge/version-0.4.0-1d63df)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
 </div>
@@ -41,8 +41,10 @@
 - 💬 **PPT 对话**：像聊天一样对任意一页课件连续追问；AI 回复里的 **mermaid 流程图 / 思维导图、SVG 示意图、HTML 片段、MathJax 公式**都会直接渲染
 - ➕ **对话附件**：左下「＋」可选择多张 PPT 页面或上传本地图片，一起发给 AI
 - 📑 **课件面板**：「跟随当前页」自动追着老师翻页；「只看题目页」筛选；「整册下载 (PDF)」横屏零白边
+- ✅ **题目面板**：课堂全部题目列表（答/未答筛选）、分题型简化作答输入、过期题**一键补交**（`problem/retry`）、直接跳转到题目所在课件页
 - 🗂 **历史课件归档**：从学习日志页多选往期课堂，脚本逐个打开收集页、内容级去重后批量导出 PDF，失败不中断
-- 📱 **手机端适配**：窄屏下工具栏转纵向 40×40 触控按钮、面板 tab 移顶部；移动版页面内置「切桌面版」引导
+- 📱 **Android 套壳 App**：自带 WebView + 内嵌脚本（无需篡改猴），多标签页、历史记录、下载管理、桌面端 UA 切换、显示大小调节、**登录态备份/还原**（文件/剪贴板）
+- 📱 **手机浏览器也可用**：窄屏下工具栏转纵向 40×40 触控按钮、面板 tab 移顶部；移动版页面内置「切桌面版」引导
 
 ---
 
@@ -74,17 +76,28 @@ AI 解答、PPT 多轮对话、课件导出横屏 PDF、历史课件归档。
    （主面板 / 习题提醒 / 自动作答）各自的用途。
 ````
 
-### 方式二：面向人类用户
+### 方式二：面向人类用户（浏览器安装脚本）
 
 1. 安装浏览器扩展 [篡改猴 (Tampermonkey)](https://www.tampermonkey.net/)（Chrome / Edge 商店，或 Firefox 附加组件）。
 2. 打开 **[📥 YuketangStudio-latest.user.js](https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js)**，篡改猴自动弹出安装界面 → 点「安装」。
 3. 打开雨课堂并登录，页面左下角出现工具栏即成功。
+
+### 方式三：Android 套壳 App（无需浏览器/篡改猴）
+
+1. 从 [Releases](https://github.com/RayMorTwinkle/YuketangStudio/releases) 下载 `app-release.apk` 安装。
+2. 首次打开扫码或输账号密码登录雨课堂；登录态只存在本机 WebView。
+3. 顶部工具栏：后退/前进/刷新/环境切换（长江/雨课堂/荷塘）/桌面端模式/菜单。
+4. 菜单里：多标签页（＋新建、长按关闭）、历史记录、下载管理、显示大小调节、登录态备份/还原（文件或剪贴板）。
+
+> APK 用本地 keystore 自签，仅用于分发本仓库构建产物；覆盖安装 debug 版会提示签名不一致，先 `pm uninstall` 再装。
 
 > **环境要求**：Chrome / Edge / Firefox（含安卓版）+ Tampermonkey。
 > 脚本自身无需构建即可使用（安装地址指向已构建的 `dist/YuketangStudio-latest.user.js`）。
 > 手机端需在浏览器里开启「请求桌面网站」（雨课堂服务端会依据 UA 把移动设备弹回功能受限的移动版）。
 
 ### 从源码构建
+
+**用户脚本**：
 
 ```bash
 git clone https://github.com/RayMorTwinkle/YuketangStudio.git
@@ -94,6 +107,16 @@ npm run check     # ESLint + Rollup 构建 + 回归测试
 ```
 
 产物在 `ykt-helper/dist/`，其中 `YuketangStudio-latest.user.js` 始终指向最新构建。
+
+**Android 壳**（可选，仅源码参考）：
+
+```bash
+cd android
+# 需要 JDK17 + Android SDK（cmdline-tools 即可）
+echo 'sdk.dir=<你的 SDK 路径>' > local.properties
+./gradlew assembleRelease    # 产出 app-release.apk（需先造 release.keystore）
+./gradlew assembleDebug      # 或 debug 版直装测试机
+```
 
 ---
 
@@ -107,14 +130,15 @@ npm run check     # ESLint + Rollup 构建 + 回归测试
 | 🔔 习题提醒 | 开 / 关新题弹窗与提示音 |
 | ✨ 自动作答 | 开 / 关自动作答（到点自动提交） |
 
-### 主面板的 5 个 tab
+### 主面板的 6 个 tab
 
 | tab | 能做什么 |
 |---|---|
 | 💬 **PPT 对话** | 围绕当前课件多轮追问；「＋」可加 PPT 页 / 上传图片；回复支持图表与公式渲染 |
 | 🤖 **AI 解答** | 底部状态行显示识别到的页面；**输入留空点发送 = 解答此页题目**（自动附带题干文本 + 截图），输入内容则围绕此页追问 |
 | 📑 **课件** | 缩略图浏览；跟随当前页 / 只看题目页 / 整册下载 (PDF)；历史课件批量导入 |
-| ⚙️ **设置** | AI Profile（多档）、自动作答参数、PPT 对话/AI 解答两套系统提示词（可改可恢复默认）、自定义提示音、开发者模式解锁 |
+| ✅ **题目** | 全部题目列表（已答/未答筛选）、分题型简化作答（选项点选/文本输入，非 JSON）、过期题「补交」确认框、点击题目跳转课件页、查看解析 |
+| ⚙️ **设置** | AI Profile（多档）、自动作答参数、PPT 对话/AI 解答两套系统提示词（可改可恢复默认）、自定义提示音 |
 | ❓ **教程** | 面板内快速上手 |
 
 ### 三个典型工作流
@@ -279,25 +303,24 @@ YuketangStudio/
 │   ├── src/
 │   │   ├── index.js             # 入口：挂载时序、拦截器安装、防僵尸刷新
 │   │   ├── ai/                  # LLM 适配
-│   │   │   ├── agnes.js         # OpenAI 兼容流式（思考链/取消/降级）
-│   │   │   ├── openai.js        # 两段式 Vision（结构抽取 + 纯文本解题）
-│   │   │   ├── kimi.js          # Kimi 直连（历史保留）
-│   │   │   ├── deepseek.js      # DeepSeek 直连（备用）
-│   │   │   └── gemini.js / openrouter.js   # 占位（未实现）
 │   │   ├── capture/             # 截图兜底 screenshoot.js
 │   │   ├── core/                # env / storage / log / types / pdf-export /
 │   │   │                        # history-capture / devmode / idb-cache / vuex-helper
 │   │   ├── net/                 # ws / xhr / fetch 三种拦截器
-│   │   ├── state/               # repo（内存状态）· actions（答题/进课堂）
-│   │   ├── tsm/                 # ai-format（Prompt/解析）· answer（提交）
-│   │   └── ui/                  # shell / toolbar / toast / ui-api / slide-image / panels/
+│   │   ├── state/               # repo（内存状态）· actions（答题/进课堂/补交）
+│   │   ├── tsm/                 # ai-format（Prompt/解析）· answer（提交/补交）
+│   │   └── ui/                  # shell（6 tab）/ toolbar / toast / panels/
 │   ├── scripts/                 # 构建辅助与回归测试
 │   ├── rollup.config.mjs        # 版本注入 + 构建前置检查
 │   ├── userscript.meta.js       # @match / @grant 元数据（版本号来自 package.json）
 │   └── dist/                    # 构建产物（latest 随版本提交，即 README 安装地址）
+├── android/                     # Android WebView 壳（GM_* shim 注入同一份 user.js）
+│   └── app/src/main/            #   MainActivity（多tab/历史/下载/桌面UA/缩放/登录备份还原）
+│                                #   YktBridge（GM_*→localStorage/fetch/下载桥）
+│                                #   assets/gm-shim.js + yuketangstudio.user.js
 ├── static/                      # 图标与 README 截图
 ├── assets/                      # README 头图 logo
-├── docs/spec/                   # 设计/修复规格（spec-001 ~ spec-004）
+├── docs/spec/                   # 设计/修复规格
 ├── CODE_WIKI.md                 # 早期版本代码百科（部分内容为旧版命名，以 src 为准）
 ├── LICENSE                      # MIT + 使用条款
 └── changelog.md
@@ -354,7 +377,7 @@ YuketangStudio/
 A：只装篡改猴（Tampermonkey）即可，脚本是用户脚本而非独立扩展。
 
 **Q：手机能用吗？**
-A：可以，推荐 **Firefox 安卓版**（官方支持篡改猴）。雨课堂服务端会按 UA 把移动设备弹回功能受限的移动版（`/m/v2`），需在浏览器里开启「请求桌面网站」。**Edge 安卓的桌面模式不修改 `Sec-CH-UA-Mobile` 请求头**，可能仍被弹回——此时脚本会弹出黄色引导条建议改用 Firefox。
+A：两条路都可以。**Android 套壳 App**（推荐，见「方式三」）开箱即用、不用装浏览器扩展；或者手机浏览器 + 篡改猴（推荐 Firefox 安卓版）。后者需在浏览器里开启「请求桌面网站」，Edge 安卓桌面模式不改 `Sec-CH-UA-Mobile` 头可能被弹回，脚本会弹黄色引导条建议改用 Firefox。
 
 **Q：AI 功能收费吗？**
 A：脚本本身免费且不上传数据；AI 解答与 PPT 对话需调用你自己的 LLM API，费用由对应厂商计收。请自行核对 AI 答案。

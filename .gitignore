@@ -37,3 +37,4 @@ android/app/build/
 android/build/
 android/local.properties
 android/app/release/
+android/app/release.keystore

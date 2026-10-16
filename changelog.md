@@ -1,5 +1,27 @@
 # 更新日志
 
+0.4.0:
+
+- ✅ **题目面板（新 tab）**：课堂全部题目列表，已答/未答筛选、分题型简化作答
+  （选项点选/文本输入，不再要求 JSON）、点击题目跳转课件页、过期题走
+  `/problem/retry` **补交**（带确认对话框）、查看已答解析
+- 🔧 **unlockproblem 多键兼容**：`problemId`/`prob`/`sid`/`pres`/`dt`/`limit`
+  各变体统一归一化，重放队列同样规范化
+- 🌊 **流式不中断**：切 tab、收起面板均不 abort 正在进行的流式回答
+- 🧮 **MathJax `$...$` 修复**：提示词改教模型输出 `\(...\)`/`\[...\]` +
+  `dollarToParen` 文本节点正则兜底（pandoc 边界规则，价格/`\$`/跨行不误伤）
+- 📱 **Android 套壳 App**（`android/`）：WebView + `addDocumentStartJavaScript`
+  注入 `gm-shim.js` + user.js（GM_* 映射 localStorage/fetch/下载桥），
+  无需篡改猴。功能：多标签页（＋新建/长按关闭）、历史记录（300 条）、
+  下载管理（FileProvider 打开）、桌面端 UA 切换、显示大小调节（50–200%）、
+  **登录态备份/还原**（SAF 文件 / 剪贴板，含 HttpOnly Cookie + localStorage）
+- 🛠 **壳 Debug 基建**：console→logcat、onReceivedError/HttpError、
+  WebViewRenderProcessClient 崩溃自愈、DownloadListener 走系统下载器
+- 📖 README 重写：三安装方式、6-tab 说明、Android 章节
+
+0.3.2（未发版，已并入 0.4.0）: 流式不中断 / mermaid 渲染反馈 / 移动浮层钉底
+0.3.0-0.3.1（未发版）: 课件面板重构、历史归档、移动端适配完善
+
 0.2.3:
 
 - 📱 引导条二次升级：检测到「点了前往桌面版仍被弹回」（Edge 安卓桌面模式

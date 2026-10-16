@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.3.2
+// @version      0.4.0
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
@@ -269,8 +269,8 @@
     4: "填空题",
     5: "主观题"
   };
-  /** 内置默认提示词（设置里可覆盖；空 = 使用默认） */  const DEFAULT_SYSTEM_PROMPT_CHAT = [ "你是「YuketangStudio」雨课堂学习助手，通过对话帮助学生理解课件与解决问题。", "要求：", "1) 用户消息可能附带课件截图与题目文本，优先依据文本、结合图片回答；", "2) 回答使用简体中文，生动形象、条理清晰，善用类比和例子；", "3) 鼓励使用多种可视化形式帮助理解，在适合的场景主动使用：mermaid 流程图/思维导图（```mermaid 代码块）、表格、SVG 示意图（```svg）、HTML 片段（```html）；", "4) 数学公式用 $...$（行内）与 $$...$$（独立成行）；", "5) 解题类问题给出思路与关键步骤，不要只给结论；", "6) 无法识别图片或文本时直接说明，不要编造。" ].join("\n");
-  const DEFAULT_SYSTEM_PROMPT_AI = [ "你是「YuketangStudio」雨课堂学习助手，专注快速、准确地解答课堂题目。", "要求：", "1) 用户消息附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；", "2) 优先确保答案快速且准确：选择题先给答案再给理由（格式：答案: [字母] / 解释: [理由]）；填空/主观题直接给完整答案与必要思路；", "3) 回答简洁直接，避免冗长铺垫；", "4) 数学公式用 $...$；无法识别时直接说明，不要编造。" ].join("\n");
+  /** 内置默认提示词（设置里可覆盖；空 = 使用默认） */  const DEFAULT_SYSTEM_PROMPT_CHAT = [ "你是「YuketangStudio」雨课堂学习助手，通过对话帮助学生理解课件与解决问题。", "要求：", "1) 用户消息可能附带课件截图与题目文本，优先依据文本、结合图片回答；", "2) 回答使用简体中文，生动形象、条理清晰，善用类比和例子；", "3) 鼓励使用多种可视化形式帮助理解，在适合的场景主动使用：mermaid 流程图/思维导图（```mermaid 代码块）、表格、SVG 示意图（```svg）、HTML 片段（```html）；", "4) 数学公式用 \\(...\\)（行内）与 \\[...\\]（独立成行）——不要用 $...$ / $$...$$ 定界符；", "5) 解题类问题给出思路与关键步骤，不要只给结论；", "6) 无法识别图片或文本时直接说明，不要编造。" ].join("\n");
+  const DEFAULT_SYSTEM_PROMPT_AI = [ "你是「YuketangStudio」雨课堂学习助手，专注快速、准确地解答课堂题目。", "要求：", "1) 用户消息附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；", "2) 优先确保答案快速且准确：选择题先给答案再给理由（格式：答案: [字母] / 解释: [理由]）；填空/主观题直接给完整答案与必要思路；", "3) 回答简洁直接，避免冗长铺垫；", "4) 数学公式用 \\(...\\)（行内）与 \\[...\\]（独立成行）——不要用 $...$ / $$...$$ 定界符；无法识别时直接说明，不要编造。" ].join("\n");
   const DEFAULT_CONFIG = {
     notifyProblems: true,
     autoAnswer: false,
@@ -1119,6 +1119,28 @@
     if (!ok) log.warn("[ai] MathJax 未就绪（未通过 @require 预置？）");
     return Promise.resolve(ok);
   }
+  /** MathJax 默认不认单 $ 行内公式（防价格文本误匹配）。
+   *  typeset 前把文本节点里的 $...$ 转成 \(...\)：
+   *  pandoc 式规则——开 $ 前不能是 \、后紧跟非空白；闭 $ 前非空白、后不跟数字；内部不含换行/$。
+   *  只处理文本节点，跳过代码/公式容器，幂等（已 typeset 的 mjx-container 不再扫）。 */  const MATH_SKIP_SEL = "pre, code, script, style, textarea, mjx-container, .ykt-mermaid, .ykt-md-code, .ykt-mermaid-render";
+  const DOLLAR_MATH_RE = /(?<!\\)\$((?!\s)[^\n$]*?[^\s$])\$(?!\d)/g;
+  function dollarToParen(el) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || node.nodeValue.indexOf("$") === -1) return NodeFilter.FILTER_REJECT;
+        if (node.parentElement?.closest(MATH_SKIP_SEL)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.nodeValue;
+      if (!DOLLAR_MATH_RE.test(text)) continue;
+      DOLLAR_MATH_RE.lastIndex = 0;
+      node.nodeValue = text.replace(DOLLAR_MATH_RE, "\\($1\\)");
+    }
+  }
   function typesetTexIn(el) {
     const mj = window.MathJax;
     if (!el || !mj || typeof mj.typesetPromise !== "function") return Promise.resolve(false);
@@ -1711,10 +1733,11 @@
         }
         node.removeAttribute("data-raw");
       }
-      // 3) MathJax 公式
+      // 3) MathJax 公式（先把 $...$ 转成 \( \)，MathJax 默认不认单 $）
             if (ui?.config?.iftex) {
         const ok = await ensureMathJax();
         if (ok) {
+          dollarToParen(el);
           el.classList.add("tex-enabled");
           await typesetTexIn(el);
         }
@@ -4616,8 +4639,8 @@
   function mountTutorialPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // 注入构建版本号（"0.3.2" 由 rollup 从 package.json 替换，单一来源）
-        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.3.2"}<`);
+    // 注入构建版本号（"0.4.0" 由 rollup 从 package.json 替换，单一来源）
+        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.4.0"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-tutorial-panel");
     // 面板嵌在 shell 里——关闭=通知 shell 收起
