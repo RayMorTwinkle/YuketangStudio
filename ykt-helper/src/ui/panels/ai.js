@@ -38,6 +38,30 @@ function ensureMathJax() {
   return Promise.resolve(ok);
 }
 
+/** MathJax 默认不认单 $ 行内公式（防价格文本误匹配）。
+ *  typeset 前把文本节点里的 $...$ 转成 \(...\)：
+ *  pandoc 式规则——开 $ 前不能是 \、后紧跟非空白；闭 $ 前非空白、后不跟数字；内部不含换行/$。
+ *  只处理文本节点，跳过代码/公式容器，幂等（已 typeset 的 mjx-container 不再扫）。 */
+const MATH_SKIP_SEL = 'pre, code, script, style, textarea, mjx-container, .ykt-mermaid, .ykt-md-code, .ykt-mermaid-render';
+const DOLLAR_MATH_RE = /(?<!\\)\$((?!\s)[^\n$]*?[^\s$])\$(?!\d)/g;
+function dollarToParen(el) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue || node.nodeValue.indexOf('$') === -1) return NodeFilter.FILTER_REJECT;
+      if (node.parentElement?.closest(MATH_SKIP_SEL)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    if (!DOLLAR_MATH_RE.test(text)) continue;
+    DOLLAR_MATH_RE.lastIndex = 0;
+    node.nodeValue = text.replace(DOLLAR_MATH_RE, '\\($1\\)');
+  }
+}
+
 function typesetTexIn(el) {
   const mj = window.MathJax;
   if (!el || !mj || typeof mj.typesetPromise !== 'function') return Promise.resolve(false);
@@ -676,10 +700,10 @@ export async function renderRich(el) {
       }
       node.removeAttribute('data-raw');
     }
-    // 3) MathJax 公式
+    // 3) MathJax 公式（先把 $...$ 转成 \( \)，MathJax 默认不认单 $）
     if (ui?.config?.iftex) {
       const ok = await ensureMathJax();
-      if (ok) { el.classList.add('tex-enabled'); await typesetTexIn(el); }
+      if (ok) { dollarToParen(el); el.classList.add('tex-enabled'); await typesetTexIn(el); }
     }
   } catch (e) {
     log.warn('[Rich] renderRich 失败:', e);

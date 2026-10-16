@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.yuketangstudio.shell.app-mergeDebugResources-34:/values-watch-v20/values-watch-v20.xml",
+            "map": [
+                {
+                    "source": "/Users/Ray/.gradle/caches/9.5.1/transforms/cc9a15eb2ed9c330f4fda4cee9a3081c/transformed/appcompat-1.7.1/res/values-watch-v20/values-watch-v20.xml",
+                    "from": {
+                        "startLines": "2,5,8",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,214,385",
+                        "endLines": "4,7,10",
+                        "endColumns": "12,12,12",
+                        "endOffsets": "209,380,553"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -20,6 +20,24 @@ let _autoOnLessonClickStarted = false;
 let _autoOnLessonClickInProgress = false;
 let _routerHooked = false;
 
+/** 取首个非空值（WS payload 字段名有多个变体） */
+function firstValue(...vals) {
+  return vals.find(v => v !== undefined && v !== null && String(v).trim() !== '');
+}
+
+/**
+ * 规范化 unlockproblem 的 payload：服务器字段名有多个变体
+ * （prob/problemId/problemid、sid/slideId、pres/presentationId），
+ * 统一成 { prob, sid, pres, dt, limit, ...rest }，暂存队列也只放规范副本
+ */
+export function normalizeUnlock(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const prob = firstValue(d.prob, d.problemId, d.problemid, d.problem?.problemId, d.problem?.id, d.id);
+  const sid = firstValue(d.sid, d.slideId, d.slide?.id);
+  const pres = firstValue(d.pres, d.presentationId, d.presentation_id, d.presentation?.id);
+  return { ...d, prob, sid, pres, dt: d.dt ?? d.unlockedAt, limit: d.limit ?? d.timeLimit };
+}
+
 // 无AI默认答案生成
 function makeDefaultAnswer(problem) {
   switch (problem.problemType) {
@@ -205,7 +223,8 @@ export const actions = {
   _replayPendingUnlocks() {
     if (!repo.pendingUnlocks.length) return;
     const list = repo.pendingUnlocks.splice(0);
-    for (const d of list) {
+    for (const d0 of list) {
+      const d = normalizeUnlock(d0);
       const ok = repo.problems.has(String(d.prob)) && repo.slides.has(String(d.sid));
       if (ok) { this.onUnlockProblem(d); continue; }
       // 仍未命中→限次放回队列（课件永不到达时防止队列无限膨胀）
@@ -220,6 +239,7 @@ export const actions = {
   },
 
   onUnlockProblem(data) {
+    data = normalizeUnlock(data);
     const problem = repo.problems.get(String(data.prob));
     const slide = repo.slides.get(String(data.sid));
     if (!problem || !slide) {
@@ -285,6 +305,7 @@ export const actions = {
       p.result = result;
       const i = repo.encounteredProblems.findIndex(e => String(e.problemId) === String(problemId));
       if (i !== -1) repo.encounteredProblems[i].result = result;
+      ui.updateProblemList?.();
     }
   },
 
@@ -292,16 +313,21 @@ export const actions = {
     return handleAutoAnswerInternal(problem);
   },
 
-  async submit(problem, content) {
+  async submit(problem, content, opts = {}) {
     const result = this.parseManual(problem.problemType, content);
     if (!result || (Array.isArray(result) && !result.length)) {
-      return ui.toast('答案为空或无法识别（选择题为选项字母，填空每空一行/逗号分隔）', 2500);
+      ui.toast('答案为空或无法识别（选择题为选项字母，填空每空一行/逗号分隔）', 2500);
+      return null;
     }
-    await submitAnswer(problem, result,{
+    const { route } = await submitAnswer(problem, result, {
       lessonId: repo.currentLessonId,
-      autoGate: false  // 手动提交
+      autoGate: false,               // 手动提交不套自动延迟
+      startTime: opts.startTime,
+      endTime: opts.endTime,
+      forceRetry: !!opts.forceRetry, // 过期题补交走 /problem/retry
     });
     this.onAnswerProblem(problem.problemId, result);
+    return route;   // 'answer' | 'retry'，UI 据此提示「提交成功」/「补交成功」
   },
 
   parseManual(problemType, content) {

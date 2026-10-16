@@ -462,7 +462,7 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$6 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-clear">清空会话</button>\n    <span class="close-btn" id="ykt-ai-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
+  var tpl$7 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-clear">清空会话</button>\n    <span class="close-btn" id="ykt-ai-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
   const L$2 = (...a) => log.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
   const W$2 = (...a) => log.warn("[雨课堂助手][WARN][vuex-helper]", ...a);
   const E = (...a) => log.err("[雨课堂助手][ERR][vuex-helper]", ...a);
@@ -1100,8 +1100,8 @@
   //         override 来自当前激活的 AI Profile——任意 OpenAI 兼容端点都能用。
     const L$1 = (...a) => log.dbg("[ai]", ...a);
   const W$1 = (...a) => log.warn("[ai]", ...a);
-  let mounted$6 = false;
-  let root$5;
+  let mounted$7 = false;
+  let root$6;
   let preferredSlideFromPresentation = null;
  // 来自课件面板/事件的指定页
     let history$1 = [];
@@ -1119,6 +1119,28 @@
     if (!ok) log.warn("[ai] MathJax 未就绪（未通过 @require 预置？）");
     return Promise.resolve(ok);
   }
+  /** MathJax 默认不认单 $ 行内公式（防价格文本误匹配）。
+   *  typeset 前把文本节点里的 $...$ 转成 \(...\)：
+   *  pandoc 式规则——开 $ 前不能是 \、后紧跟非空白；闭 $ 前非空白、后不跟数字；内部不含换行/$。
+   *  只处理文本节点，跳过代码/公式容器，幂等（已 typeset 的 mjx-container 不再扫）。 */  const MATH_SKIP_SEL = "pre, code, script, style, textarea, mjx-container, .ykt-mermaid, .ykt-md-code, .ykt-mermaid-render";
+  const DOLLAR_MATH_RE = /(?<!\\)\$((?!\s)[^\n$]*?[^\s$])\$(?!\d)/g;
+  function dollarToParen(el) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || node.nodeValue.indexOf("$") === -1) return NodeFilter.FILTER_REJECT;
+        if (node.parentElement?.closest(MATH_SKIP_SEL)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.nodeValue;
+      if (!DOLLAR_MATH_RE.test(text)) continue;
+      DOLLAR_MATH_RE.lastIndex = 0;
+      node.nodeValue = text.replace(DOLLAR_MATH_RE, "\\($1\\)");
+    }
+  }
   function typesetTexIn(el) {
     const mj = window.MathJax;
     if (!el || !mj || typeof mj.typesetPromise !== "function") return Promise.resolve(false);
@@ -1126,14 +1148,14 @@
     return ready.then(() => mj.typesetPromise([ el ]).then(() => true).catch(() => false));
   }
   function $sel$1(sel) {
-    return root$5.querySelector(sel);
+    return root$6.querySelector(sel);
   }
   function mountAIPanel() {
-    if (mounted$6) return root$5;
+    if (mounted$7) return root$6;
     const host = document.createElement("div");
-    host.innerHTML = tpl$6;
+    host.innerHTML = tpl$7;
     document.body.appendChild(host.firstElementChild);
-    root$5 = document.getElementById("ykt-ai-answer-panel");
+    root$6 = document.getElementById("ykt-ai-answer-panel");
     // 面板嵌在 shell 里——关闭=通知 shell 收起（并触发 __yksOnHide 中止流式）
         $sel$1("#ykt-ai-close").addEventListener("click", () => window.dispatchEvent(new CustomEvent("ykt:close-shell")));
     $sel$1("#ykt-ai-clear").addEventListener("click", () => {
@@ -1176,10 +1198,10 @@
     });
     // ykt:open-ai 统一由 ui-api → Shell.openTab('ai') 处理，走 __yksOnShow
         warmupRichAssets();
-    mounted$6 = true;
+    mounted$7 = true;
     renderCtxStatus();
     // shell 切到本 tab 时刷新（数据晚于挂载到达的场景：WS 课件、页面切换）
-        root$5.__yksOnShow = () => {
+        root$6.__yksOnShow = () => {
       renderCtxStatus();
       if (history$1.length === 0 && !$sel$1("#ykt-ai-log").children.length) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
       // 「打开时自动分析」原来挂在 showAIPanel——改走 shell tab 后挪进 show 钩子
@@ -1189,8 +1211,8 @@
     };
     // 不中断流式：tab 切换/收起壳都继续后台生成，切回来直接看结果；
     // 只有页面刷新（JS 上下文没了）、清空会话、用户主动取消才断
-        root$5.__yksOnHide = () => {};
-    return root$5;
+        root$6.__yksOnHide = () => {};
+    return root$6;
   }
   /** 中止正在进行的流式请求 */  function abortStreaming$1(reason = "已取消") {
     if (abortCtrl$1) try {
@@ -1271,7 +1293,7 @@
     return parts.join("\n");
   }
   /** 页面识别状态行（面板底部小字） */  function renderCtxStatus() {
-    if (!mounted$6) return;
+    if (!mounted$7) return;
     const statusEl = $sel$1("#ykt-ai-text-status");
     if (!statusEl) return;
     const {slide: slide, source: source} = pickCurrentSlide();
@@ -1711,10 +1733,11 @@
         }
         node.removeAttribute("data-raw");
       }
-      // 3) MathJax 公式
+      // 3) MathJax 公式（先把 $...$ 转成 \( \)，MathJax 默认不认单 $）
             if (ui?.config?.iftex) {
         const ok = await ensureMathJax();
         if (ok) {
+          dollarToParen(el);
           el.classList.add("tex-enabled");
           await typesetTexIn(el);
         }
@@ -1734,7 +1757,7 @@
     }).catch(e => log.warn("[Rich] marked 预热失败", e?.message));
     ensureDOMPurify().catch(e => log.warn("[Rich] DOMPurify 预热失败", e?.message));
   }
-  var tpl$5 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.active {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 / 跟随当前页开关 */\n    #ykt-filter-problems,\n    #ykt-follow-current {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active,\n    #ykt-follow-current.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-follow-current" title="选中项自动跟随课堂翻页；手动选择页面会脱离跟随">🎯 跟随当前页</button>\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n      <button id="ykt-pdf-cancel" title="取消导出" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:13px;padding:0 2px;">✕</button>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$6 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.active {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 / 跟随当前页开关 */\n    #ykt-filter-problems,\n    #ykt-follow-current {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active,\n    #ykt-follow-current.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-follow-current" title="选中项自动跟随课堂翻页；手动选择页面会脱离跟随">🎯 跟随当前页</button>\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n      <button id="ykt-pdf-cancel" title="取消导出" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:13px;padding:0 2px;">✕</button>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // src/core/idb-cache.js
   // PDF 导出图片缓存：下载的 dataURL 落 IndexedDB，刷新/中断后重导可断点续传。
   // key = 图片 URL 去掉 query（签名 token 会过期轮换，path 部分才是稳定身份）。
@@ -2549,7 +2572,7 @@
  // 移动版：/logs/{courseId}/{classId}
         return m ? m[2] || m[1] : null;
   }
-  let mounted$5 = false;
+  let mounted$6 = false;
   let host;
   let staticReportReady = false;
  //已结束课程
@@ -2565,7 +2588,7 @@
   }
   const L = (...a) => log.dbg("[presentation]", ...a);
   const W = (...a) => log.warn("[presentation]", ...a);
-  function $$2(sel) {
+  function $$3(sel) {
     return document.querySelector(sel);
   }
   /** —— 运行时自愈：把 repo.slides 的数字键迁移为字符串键 —— */  function normalizeRepoSlidesKeys(tag = "presentation.mount") {
@@ -2718,16 +2741,16 @@
     return true;
   }
   function mountPresentationPanel() {
-    if (mounted$5) return host;
+    if (mounted$6) return host;
     normalizeRepoSlidesKeys("presentation.mount");
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = tpl$5;
+    wrapper.innerHTML = tpl$6;
     document.body.appendChild(wrapper.firstElementChild);
     host = document.getElementById("ykt-presentation-panel");
     // 面板嵌在 shell 里——关闭=通知 shell 收起
-        $$2("#ykt-presentation-close")?.addEventListener("click", () => window.dispatchEvent(new CustomEvent("ykt:close-shell")));
+        $$3("#ykt-presentation-close")?.addEventListener("click", () => window.dispatchEvent(new CustomEvent("ykt:close-shell")));
     // 题目页筛选开关（原「题目列表」功能的替代：点一下只看题目页，再点恢复全部）
-        const filterBtn = $$2("#ykt-filter-problems");
+        const filterBtn = $$3("#ykt-filter-problems");
     const syncFilterBtn = () => filterBtn?.classList.toggle("active", !!ui.config.filterProblemsOnly);
     syncFilterBtn();
     filterBtn?.addEventListener("click", () => {
@@ -2739,7 +2762,7 @@
       updatePresentationList();
     });
     // 跟随当前页开关：开启时选中项自动跟随课堂翻页；手动点缩略图会脱离
-        const followBtn = $$2("#ykt-follow-current");
+        const followBtn = $$3("#ykt-follow-current");
     const syncFollowBtn = () => followBtn?.classList.toggle("active", followCurrent);
     syncFollowBtn();
     followBtn?.addEventListener("click", () => {
@@ -2772,9 +2795,9 @@
         } else renderFollowBadge();
       });
     }).catch(e => W("Vue 初始化失败，跟随功能降级:", e));
-    $$2("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
-    $$2("#ykt-import-history")?.addEventListener("click", openHistoryImporter);
-    mounted$5 = true;
+    $$3("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
+    $$3("#ykt-import-history")?.addEventListener("click", openHistoryImporter);
+    mounted$6 = true;
     L("mountPresentationPanel 完成");
     // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
         host.__yksOnShow = () => updatePresentationList();
@@ -2991,8 +3014,8 @@
   }
   function updateSlideView() {
     mountPresentationPanel();
-    const slideView = $$2("#ykt-slide-view");
-    const problemView = $$2("#ykt-problem-view");
+    const slideView = $$3("#ykt-slide-view");
+    const problemView = $$3("#ykt-problem-view");
     slideView.querySelector(".slide-cover")?.classList.add("hidden");
     problemView.innerHTML = "";
     const curId = getCurrentSlideId();
@@ -3345,30 +3368,30 @@
       setTimeout(hideProgress, 1500);
     }
   }
-  var tpl$4 = '<div id="ykt-active-problems-panel" class="ykt-active-wrapper">\n  <div id="ykt-active-problems" class="active-problems"></div>\n</div>\n';
-  let mounted$4 = false;
-  let root$4;
-  function $$1(sel) {
+  var tpl$5 = '<div id="ykt-active-problems-panel" class="ykt-active-wrapper">\n  <div id="ykt-active-problems" class="active-problems"></div>\n</div>\n';
+  let mounted$5 = false;
+  let root$5;
+  function $$2(sel) {
     return document.querySelector(sel);
   }
   function mountActiveProblemsPanel() {
-    if (mounted$4) return root$4;
+    if (mounted$5) return root$5;
     const wrap = document.createElement("div");
-    wrap.innerHTML = tpl$4;
+    wrap.innerHTML = tpl$5;
     document.body.appendChild(wrap.firstElementChild);
-    root$4 = document.getElementById("ykt-active-problems-panel");
-    mounted$4 = true;
+    root$5 = document.getElementById("ykt-active-problems-panel");
+    mounted$5 = true;
     setInterval(() => updateActiveProblems(), 1e3);
-    return root$4;
+    return root$5;
   }
   function updateActiveProblems() {
     mountActiveProblemsPanel();
-    const box = $$1("#ykt-active-problems");
+    const box = $$2("#ykt-active-problems");
     // 没有任何状态时直接跳过 DOM 重建（每秒重扫问题集，空转不值得）
         if (repo.problemStatus.size === 0) {
-      if (root$4.style.display !== "none") {
+      if (root$5.style.display !== "none") {
         box.innerHTML = "";
-        root$4.style.display = "none";
+        root$5.style.display = "none";
       }
       return;
     }
@@ -3393,9 +3416,9 @@
       });
     });
     if (!items.length) {
-      if (root$4.style.display !== "none") {
+      if (root$5.style.display !== "none") {
         box.innerHTML = "";
-        root$4.style.display = "none";
+        root$5.style.display = "none";
       }
       return;
     }
@@ -3424,7 +3447,342 @@
       card.appendChild(bar);
       box.appendChild(card);
     }
-    root$4.style.display = "";
+    root$5.style.display = "";
+  }
+  var tpl$4 = '<div id="ykt-problem-list-panel" class="ykt-panel">\n  <style>\n    #ykt-problem-list-panel { display:flex; flex-direction:column; }\n    #ykt-problem-list-panel .panel-header { display:flex; align-items:center; gap:8px; }\n    #ykt-problem-list-panel .panel-header h3 { margin:0; flex:1; font-size:15px; }\n    #ykt-problem-list-panel .pl-filter { font-size:12px; border:1px solid var(--ykt-border-strong,#ccc); border-radius:6px; padding:4px 6px; background:#fff; }\n    #ykt-problem-list-panel .panel-body { flex:1; min-height:0; overflow-y:auto; padding:10px 12px; }\n    .pl-empty { text-align:center; color:#607190; padding:40px 0; font-size:13px; }\n    .pl-row { border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; margin-bottom:8px; background:#fff; }\n    .pl-row.done { opacity:.62; }\n    .pl-row.expired { border-color:#f0c9c9; }\n    .pl-title { font-size:13px; font-weight:600; color:#1f2937; margin-bottom:4px; line-height:1.4; }\n    .pl-meta { font-size:11px; color:#607190; margin-bottom:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }\n    .pl-badge { display:inline-block; padding:1px 7px; border-radius:9px; font-size:11px; }\n    .pl-badge.todo { background:#fff7ed; color:#c2410c; }\n    .pl-badge.done { background:#f0fdf4; color:#15803d; }\n    .pl-badge.expired { background:#fef2f2; color:#b91c1c; }\n    .pl-actions { display:flex; gap:6px; flex-wrap:wrap; }\n    .pl-actions button { padding:5px 12px; border:1px solid #d5dbe7; border-radius:6px; background:#f7f8fa; cursor:pointer; font-size:12px; }\n    .pl-actions button:hover { border-color:#1d63df; color:#1d63df; }\n    .pl-actions button.primary { background:#1d63df; border-color:#1d63df; color:#fff; }\n    .pl-actions button.primary:hover { background:#1750b8; }\n    .pl-actions button.danger { color:#b91c1c; }\n    .pl-editor { margin-top:8px; border-top:1px dashed #e5e7eb; padding-top:8px; }\n    .pl-editor .pl-hint { font-size:11px; color:#8a94a6; margin-bottom:6px; }\n    .pl-editor textarea { width:100%; box-sizing:border-box; border:1px solid #d5dbe7; border-radius:6px; padding:8px; font-size:13px; font-family:inherit; resize:vertical; min-height:56px; }\n    .pl-editor input[type="text"] { width:100%; box-sizing:border-box; border:1px solid #d5dbe7; border-radius:6px; padding:8px; font-size:14px; height:38px; }\n    .pl-editor .pl-submitbar { display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap; }\n    .pl-editor .pl-submitbar button { padding:7px 16px; border-radius:6px; border:1px solid #d5dbe7; background:#f7f8fa; cursor:pointer; font-size:13px; }\n    .pl-editor .pl-submitbar button.primary { background:#1d63df; border-color:#1d63df; color:#fff; font-weight:600; }\n    .pl-editor .pl-submitbar button.danger { border-color:#f0c9c9; color:#b91c1c; }\n    .pl-editor .pl-answered { font-size:12px; color:#15803d; }\n    /* 确认小弹窗（补交二次确认） */\n    .pl-confirm-mask { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:99999999; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; }\n    .pl-confirm-box { background:#fff; border-radius:10px; max-width:360px; width:100%; padding:18px; font-size:13px; box-shadow:0 10px 40px rgba(0,0,0,.25); }\n    .pl-confirm-box .pl-confirm-actions { display:flex; gap:8px; margin-top:14px; }\n    .pl-confirm-box .pl-confirm-actions button { flex:1; padding:8px; border-radius:6px; cursor:pointer; font-size:13px; }\n    .pl-confirm-box .btn-ok { background:#b91c1c; color:#fff; border:none; font-weight:600; }\n    .pl-confirm-box .btn-no { background:#f7f8fa; border:1px solid #d5dbe7; }\n    @media (max-width:560px){ .pl-actions button{ min-height:36px; } }\n  </style>\n  <div class="panel-header">\n    <h3>题目列表</h3>\n    <select id="ykt-pl-filter" class="pl-filter">\n      <option value="all">全部题目</option>\n      <option value="todo">未作答</option>\n      <option value="done">已作答</option>\n      <option value="expired">已过期</option>\n    </select>\n    <span class="close-btn" id="ykt-problem-list-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="panel-body" id="ykt-problem-list"></div>\n</div>\n';
+  // src/ui/panels/problem-list.js
+  // 题目列表：汇聚所有已收集课件内的题目页，支持查看/AI解答/手动作答/过期补交。
+  // 数据以 repo.presentations 内的 slide.problem 为准（XHR 拦截到达最全），
+  // repo.problems / problemStatus / encounteredProblems 做状态补充。
+    let mounted$4 = false;
+  let root$4;
+  const expandedEditors = new Set;
+ // problemId 集合：展开中的作答编辑区
+    function $$1(sel) {
+    return root$4?.querySelector(sel);
+  }
+  const HEADERS = () => ({
+    "Content-Type": "application/json",
+    xtbz: "ykt",
+    "X-Client": "h5",
+    Authorization: "Bearer " + (typeof localStorage !== "undefined" ? localStorage.getItem("Authorization") || "" : "")
+  });
+  function httpGet(url) {
+    return new Promise((resolve, reject) => {
+      try {
+        const xhr = new XMLHttpRequest;
+        xhr.open("GET", url, true);
+        const h = HEADERS();
+        for (const k in h) xhr.setRequestHeader(k, h[k]);
+        xhr.onload = () => {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch {
+            reject(new Error("解析响应失败"));
+          }
+        };
+        xhr.onerror = () => reject(new Error("网络请求失败"));
+        xhr.send();
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+  /** 多端点尝试拉题目详情（不同服务端命名不一致） */  async function fetchProblemDetail(problemId) {
+    const candidates = [ `/api/v3/lesson/problem/detail?problemId=${problemId}`, `/api/v3/lesson/problem/get?problemId=${problemId}`, `/mooc-api/v1/lms/problem/detail?problem_id=${problemId}` ];
+    for (const url of candidates) try {
+      const resp = await httpGet(url);
+      if (resp && typeof resp === "object" && (resp.code === 0 || resp.success === true)) return resp;
+    } catch {/* try next */}
+    throw new Error("无法获取题目详情");
+  }
+  /**
+   * 把所有课件里的题目页灌入 repo.problems / repo.encounteredProblems。
+   * 兜底 WS/拦截漏题：presentations 是页面数据最全的来源。
+   */  function hydrateProblemsFromPresentations() {
+    try {
+      for (const [, pres] of repo.presentations) for (const s of pres?.slides || []) {
+        const p = s?.problem;
+        if (!p) continue;
+        const pid = p.problemId ?? p.id;
+        if (pid == null) continue;
+        if (!repo.problems.has(String(pid))) repo.problems.set(String(pid), {
+          ...p,
+          problemId: pid,
+          problemType: p.problemType ?? p.type ?? p.questionType,
+          body: p.body || p.title || "",
+          options: p.options || []
+        });
+        repo.pushEncounteredProblem({
+          ...p,
+          problemId: pid,
+          problemType: p.problemType ?? p.type
+        }, s, String(pres.id));
+      }
+    } catch (e) {
+      log.warn("[ProblemList] hydrate 失败:", e);
+    }
+  }
+  /** 题目状态：'done' 已作答 / 'expired' 已过期 / 'active' 进行中（含不限时）/ 'todo' 未到 */  function problemState(pidStr, prob) {
+    const status = repo.problemStatus.get(pidStr);
+    const answered = !!(prob?.result || prob?.status?.myAnswer || status?.done);
+    if (answered) return "done";
+    const endTime = Number(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
+    if (Number.isFinite(endTime) && endTime > 0) {
+      const serverNow = Date.now() + (status?.clockOffset || 0);
+      if (serverNow > endTime) return "expired";
+      return "active";
+    }
+    return status ? "active" : "todo";
+  }
+  function endTimeText(pidStr, prob) {
+    const status = repo.problemStatus.get(pidStr);
+    const endTime = Number(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
+    if (!Number.isFinite(endTime) || endTime <= 0) return "不限时";
+    const d = new Date(endTime);
+    return `截止 ${d.getMonth() + 1}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+  /** 二次确认弹窗（Promise<boolean>） */  function confirmBox(text) {
+    return new Promise(resolve => {
+      const mask = document.createElement("div");
+      mask.className = "pl-confirm-mask";
+      const box = document.createElement("div");
+      box.className = "pl-confirm-box";
+      box.innerHTML = `<div>${escapeHtml(text)}</div>`;
+      const bar = document.createElement("div");
+      bar.className = "pl-confirm-actions";
+      const no = document.createElement("button");
+      no.className = "btn-no";
+      no.textContent = "取消";
+      const ok = document.createElement("button");
+      ok.className = "btn-ok";
+      ok.textContent = "确认补交";
+      const done = v => {
+        mask.remove();
+        resolve(v);
+      };
+      no.onclick = () => done(false);
+      ok.onclick = () => done(true);
+      mask.addEventListener("click", e => {
+        if (e.target === mask) done(false);
+      });
+      bar.appendChild(no);
+      bar.appendChild(ok);
+      box.appendChild(bar);
+      mask.appendChild(box);
+      document.body.appendChild(mask);
+    });
+  }
+  /** 各题型的输入提示 */  const INPUT_HINTS = {
+    1: "填写单个大写字母，如 A",
+    2: "填写多个字母，逗号/空格/顿号分隔均可，如 A、B、C 或 ABC",
+    3: "填写单个大写字母，如 A",
+    4: "每空一行，或同一行用逗号分隔多个填空",
+    5: "直接输入答案正文"
+  };
+  const PLACEHOLDERS = {
+    1: "A",
+    2: "A、B、C",
+    3: "A",
+    4: "第一空\n第二空",
+    5: "输入答案…"
+  };
+  function buildEditor(rowEl, e, prob, state) {
+    const editor = document.createElement("div");
+    editor.className = "pl-editor";
+    const ptype = Number(prob?.problemType ?? e.problemType);
+    const hint = document.createElement("div");
+    hint.className = "pl-hint";
+    hint.textContent = `格式提示：${INPUT_HINTS[ptype] || "直接输入答案"}`;
+    editor.appendChild(hint);
+    // 已作答的答案回显
+        const existing = prob?.result ?? prob?.status?.myAnswer;
+    const existingText = existing == null ? "" : typeof existing === "object" && existing.content != null ? String(existing.content) : Array.isArray(existing) ? existing.join(", ") : JSON.stringify(existing);
+    let input;
+    if (ptype === 4 || ptype === 5) {
+      input = document.createElement("textarea");
+      input.rows = ptype === 5 ? 4 : 3;
+      if (ptype === 5 && existing && typeof existing === "object" && existing.content != null) input.value = existing.content; else input.value = existingText;
+    } else {
+      input = document.createElement("input");
+      input.type = "text";
+      input.value = existingText;
+    }
+    input.placeholder = PLACEHOLDERS[ptype] || "";
+    editor.appendChild(input);
+    const bar = document.createElement("div");
+    bar.className = "pl-submitbar";
+    const doSubmit = async forceRetry => {
+      const content = input.value;
+      if (!content.trim()) return ui.toast("请先输入答案", 1500);
+      const status = repo.problemStatus.get(String(e.problemId));
+      try {
+        rowEl.classList.add("loading");
+        const route = await actions.submit({
+          problemId: e.problemId,
+          problemType: ptype
+        }, content, {
+          startTime: status?.startTime,
+          endTime: status?.endTime,
+          forceRetry: forceRetry
+        });
+        if (route) ui.toast(route === "retry" ? "✅ 补交成功" : "✅ 提交成功", 2500);
+        updateProblemList();
+      } catch (err) {
+        ui.toast("提交失败：" + (err?.message || err), 3e3);
+      } finally {
+        rowEl.classList.remove("loading");
+      }
+    };
+    if (state === "expired") {
+      const btnRetry = document.createElement("button");
+      btnRetry.className = "danger";
+      btnRetry.textContent = "⏰ 补交";
+      btnRetry.onclick = async () => {
+        const ok = await confirmBox("这道题已过截止时间，将以补交方式提交（服务端会记录补交标记）。确定继续吗？");
+        if (ok) doSubmit(true);
+      };
+      bar.appendChild(btnRetry);
+      const tag = document.createElement("span");
+      tag.style.cssText = "font-size:11px;color:#b91c1c;";
+      tag.textContent = "已过期，只能补交";
+      bar.appendChild(tag);
+    } else {
+      const btn = document.createElement("button");
+      btn.className = "primary";
+      btn.textContent = "提交答案";
+      btn.onclick = () => doSubmit(false);
+      bar.appendChild(btn);
+      if (existingText) {
+        const tag = document.createElement("span");
+        tag.className = "pl-answered";
+        tag.textContent = `已作答：${existingText.slice(0, 30)}`;
+        bar.appendChild(tag);
+      }
+    }
+    editor.appendChild(bar);
+    return editor;
+  }
+  function buildRow(e, prob) {
+    const pidStr = String(e.problemId);
+    const ptype = Number(prob?.problemType ?? e.problemType);
+    const state = problemState(pidStr, prob);
+    const row = document.createElement("div");
+    row.className = "pl-row" + (state === "done" ? " done" : "") + (state === "expired" ? " expired" : "");
+    const title = document.createElement("div");
+    title.className = "pl-title";
+    title.textContent = (prob?.body || e.body || `题目 ${pidStr}`).slice(0, 120) || `题目 ${pidStr}`;
+    row.appendChild(title);
+    const meta = document.createElement("div");
+    meta.className = "pl-meta";
+    const badge = document.createElement("span");
+    badge.className = `pl-badge ${state === "done" ? "done" : state === "expired" ? "expired" : "todo"}`;
+    badge.textContent = {
+      done: "已作答",
+      expired: "已过期",
+      active: "进行中",
+      todo: "未开始"
+    }[state];
+    meta.appendChild(badge);
+    const info = document.createElement("span");
+    info.textContent = `${PROBLEM_TYPE_MAP[ptype] || `类型${ptype}`} · ${endTimeText(pidStr, prob)}`;
+    meta.appendChild(info);
+    row.appendChild(meta);
+    const bar = document.createElement("div");
+    bar.className = "pl-actions";
+    const mk = (text, cls, fn) => {
+      const b = document.createElement("button");
+      b.textContent = text;
+      if (cls) b.className = cls;
+      b.onclick = fn;
+      bar.appendChild(b);
+      return b;
+    };
+    const presId = e.presentationId || prob?.presentationId;
+    const slideId = e.slide?.id || e.slideId || prob?.slideId;
+    mk("查看", "", () => {
+      if (presId && slideId) actions.navigateTo(String(presId), String(slideId)); else ui.toast("缺少跳转信息", 1500);
+    });
+    mk("AI解答", "", () => {
+      if (slideId) window.dispatchEvent(new CustomEvent("ykt:presentation:slide-selected", {
+        detail: {
+          slideId: String(slideId),
+          imageUrl: e.slide?.image || e.slide?.thumbnail || repo.slides.get(String(slideId))?.image || ""
+        }
+      }));
+      window.dispatchEvent(new CustomEvent("ykt:open-ai"));
+    });
+    mk("刷新", "", async ev => {
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      try {
+        const resp = await fetchProblemDetail(pidStr);
+        const detail = resp.data?.problem || resp.data || resp.result || {};
+        repo.problems.set(pidStr, {
+          ...prob || {},
+          ...detail,
+          problemId: e.problemId,
+          problemType: ptype
+        });
+        ui.toast("已刷新题目", 1500);
+        updateProblemList();
+      } catch (err) {
+        ui.toast("刷新失败：" + (err?.message || err), 2e3);
+        btn.disabled = false;
+      }
+    });
+    mk(expandedEditors.has(pidStr) ? "收起作答" : "作答", expandedEditors.has(pidStr) ? "" : "primary", () => {
+      if (expandedEditors.has(pidStr)) expandedEditors.delete(pidStr); else expandedEditors.add(pidStr);
+      updateProblemList();
+    });
+    row.appendChild(bar);
+    if (expandedEditors.has(pidStr)) row.appendChild(buildEditor(row, e, prob, state));
+    return row;
+  }
+  function mountProblemListPanel() {
+    if (mounted$4) return root$4;
+    const wrap = document.createElement("div");
+    wrap.innerHTML = tpl$4;
+    document.body.appendChild(wrap.firstElementChild);
+    root$4 = document.getElementById("ykt-problem-list-panel");
+    $$1("#ykt-problem-list-close")?.addEventListener("click", () => window.dispatchEvent(new CustomEvent("ykt:close-shell")));
+    $$1("#ykt-pl-filter")?.addEventListener("change", () => updateProblemList());
+    mounted$4 = true;
+    hydrateProblemsFromPresentations();
+    // shell 切到本 tab 时重灌数据（课件可能晚于面板挂载到达）
+        root$4.__yksOnShow = () => updateProblemList();
+    return root$4;
+  }
+  function updateProblemList() {
+    if (!mounted$4) return;
+    hydrateProblemsFromPresentations();
+    const container = $$1("#ykt-problem-list");
+    if (!container) return;
+    const filter = $$1("#ykt-pl-filter")?.value || "all";
+    container.innerHTML = "";
+    const list = repo.encounteredProblems || [];
+    if (!list.length) {
+      const empty = document.createElement("div");
+      empty.className = "pl-empty";
+      empty.textContent = "暂无题目（打开课堂或课件后自动收集）";
+      container.appendChild(empty);
+      return;
+    }
+    for (const e of list) {
+      const pidStr = String(e.problemId);
+      const prob = repo.problems.get(pidStr) || e;
+      const state = problemState(pidStr, prob);
+      if (filter === "todo" && state === "done") continue;
+      if (filter === "done" && state !== "done") continue;
+      if (filter === "expired" && state !== "expired") continue;
+      container.appendChild(buildRow(e, prob));
+    }
+    if (!container.children.length) {
+      const empty = document.createElement("div");
+      empty.className = "pl-empty";
+      empty.textContent = "当前筛选下没有题目";
+      container.appendChild(empty);
+    }
   }
   var tpl$3 = '<div id="ykt-shell-panel" class="ykt-panel ykt-shell">\n  <style>\n    #ykt-shell-panel { display: none; flex-direction: column;\n      width: min(760px, calc(100vw - 48px));       /* 窄窗口不溢出 */\n      height: min(78vh, calc(100vh - 140px));      /* 留出工具栏与边距 */\n      max-height: calc(100vh - 120px);\n      padding: 0; }\n    #ykt-shell-panel.visible { display: flex; }\n    .ykt-shell-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--ykt-border, #ddd); }\n    .ykt-shell-header .shell-title { font-weight: 600; font-size: 14px; color: var(--ykt-accent, #1d63df); flex: 1; }\n    .ykt-shell-header .shell-close { cursor: pointer; color: #607190; padding: 2px 6px; }\n    .ykt-shell-header .shell-close:hover { color: #222; }\n    .ykt-shell-body { flex: 1; display: flex; min-height: 0; }\n    .ykt-shell-tabs { width: 118px; border-right: 1px solid var(--ykt-border, #ddd); padding: 8px 6px; display: flex; flex-direction: column; gap: 2px; background: #f7f9fc; }\n    .ykt-shell-tab { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: #44506b; font-size: 13px; user-select: none; }\n    .ykt-shell-tab:hover { background: #eaeffa; }\n    .ykt-shell-tab.active { background: var(--ykt-accent, #1d63df); color: #fff; }\n    .ykt-shell-tab i { width: 16px; text-align: center; }\n    /* 窄屏（手机/Mac 分屏）：侧栏转顶部图标条，内容区占满宽度 */\n    @media (max-width: 560px) {\n      .ykt-shell-body { flex-direction: column; }\n      .ykt-shell-tabs { width: 100%; flex-direction: row; border-right: none; border-bottom: 1px solid var(--ykt-border, #ddd); padding: 6px; gap: 4px; overflow-x: auto; }\n      .ykt-shell-tab { flex: 1 0 auto; flex-direction: column; gap: 3px; padding: 6px 8px; font-size: 11px; justify-content: center; }\n      .ykt-shell-tab i { width: auto; font-size: 15px; }\n      .ykt-shell-tab span { white-space: nowrap; }\n      #ykt-shell-panel { width: calc(100vw - 16px); height: calc(100vh - 120px); }\n      .ykt-shell-header { padding: 8px 10px; }\n    }\n    .ykt-shell-content { flex: 1; overflow: hidden; position: relative; display: flex; }\n    /* 迁移进来的原面板：从 fixed 弹窗变为 tab 内容。\n       display 交给面板自身规则（chat 需 flex，其余 block），shell 只负责： */\n    #ykt-shell-content > .ykt-panel {\n      position: static !important;\n      width: 100% !important; max-height: none !important; height: 100% !important;\n      border: none !important; box-shadow: none !important; border-radius: 0 !important;\n      overflow: hidden;               /* 滚动交给内部区域，避免双层滚动条 */\n    }\n    /* 对话类面板：log 区在 shell 内撑满可用高度，消除底部空白 */\n    #ykt-shell-content #ykt-chat-log,\n    #ykt-shell-content #ykt-ai-log { flex: 1 1 auto; max-height: none; min-height: 120px; }\n    #ykt-shell-content #ykt-chat-panel .panel-body,\n    #ykt-shell-content #ykt-ai-answer-panel .panel-body { flex: 1; min-height: 0; }\n    /* 课件面板在 shell 内填满：两列各自滚动，不再受独立弹窗的 72vh 限制 */\n    #ykt-shell-content #ykt-presentation-panel .panel-body { height: 100%; grid-template-columns: minmax(220px, 300px) 1fr; }\n    #ykt-shell-content #ykt-presentation-panel .panel-left,\n    #ykt-shell-content #ykt-presentation-panel .panel-right { max-height: none; height: 100%; overflow: auto; position: static; }\n    #ykt-shell-content #ykt-presentation-panel .slide-view { max-height: none; height: auto; min-height: 240px; }\n    /* 设置面板在 shell 内整体滚动 */\n    #ykt-shell-content #ykt-settings-panel { overflow: auto; }\n    /* 窄屏（手机）：课件面板单列堆叠、工具栏按钮换行、输入区自适应 */\n    @media (max-width: 560px) {\n      #ykt-shell-content #ykt-presentation-panel .panel-body { grid-template-columns: 1fr; height: auto; }\n      #ykt-shell-content #ykt-presentation-panel .panel-left,\n      #ykt-shell-content #ykt-presentation-panel .panel-right { height: auto; max-height: none; }\n      #ykt-presentation-panel .panel-controls { flex-wrap: wrap; gap: 6px; }\n      #ykt-presentation-panel .panel-header { flex-wrap: wrap; }\n      .ykt-chat-inputbar, .ykt-ai-inputbar { flex-wrap: nowrap; }\n      #ykt-chat-input, #ykt-ai-input { min-width: 0; }\n      #ykt-chat-send, #ykt-ai-send { padding: 7px 10px; }\n      /* 触控目标放大到 ≥40px（移动端可点性） */\n      .close-btn, #ykt-chat-plus { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }\n      #ykt-chat-clear, #ykt-ai-clear { min-height: 36px; }\n      .ykt-shell-tab { min-height: 44px; }\n    }\n    /* 非当前 tab 的面板无条件隐藏（压过面板自身 ID 样式） */\n    #ykt-shell-content > .ykt-panel:not(.active-tab) { display: none !important; }\n  </style>\n  <div class="ykt-shell-header">\n    <span class="shell-title"><i class="fas fa-briefcase"></i> YuketangStudio</span>\n    <span class="shell-close" id="ykt-shell-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="ykt-shell-body">\n    <div class="ykt-shell-tabs" id="ykt-shell-tabs"></div>\n    <div class="ykt-shell-content" id="ykt-shell-content"></div>\n  </div>\n</div>\n';
   var tpl$2 = '<div id="ykt-chat-panel" class="ykt-panel">\n  <style>\n    #ykt-chat-panel { display: none; flex-direction: column; }\n    #ykt-chat-panel.visible { display: flex; }\n    #ykt-chat-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-chat-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 240px; max-height: 52vh; }\n    .ykt-chat-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-chat-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-chat-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-chat-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-chat-msg.ai p { margin: 0 0 6px; }\n    .ykt-chat-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-chat-msg.ai details { margin-bottom: 6px; }\n    .ykt-chat-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-chat-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    #ykt-chat-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    .ykt-chat-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-chat-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-chat-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-chat-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; }\n    #ykt-chat-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-chat-clear { padding: 3px 8px; font-size: 12px; }\n    #ykt-chat-plus { width: 30px; height: 30px; border: 1px dashed var(--ykt-border-strong, #ccc); border-radius: 6px; background: #f7f8fa; cursor: pointer; font-size: 16px; color: #607190; flex: 0 0 auto; }\n    #ykt-chat-plus:hover { border-color: var(--ykt-accent, #1d63df); color: var(--ykt-accent, #1d63df); }\n    /* 附件预览条 */\n    #ykt-chat-atts { display: none; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-chat-atts .att { position: relative; width: 56px; height: 42px; border-radius: 4px; overflow: hidden; border: 1px solid #ddd; }\n    #ykt-chat-atts .att img { width: 100%; height: 100%; object-fit: cover; display: block; }\n    #ykt-chat-atts .att .rm { position: absolute; top: 0; right: 0; width: 16px; height: 16px; line-height: 14px; text-align: center; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 11px; border-radius: 0 0 0 4px; }\n    /* 加号菜单 */\n    #ykt-chat-plus-menu { position: fixed; z-index: 10000001; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 6px; display: none; flex-direction: column; min-width: 160px; }\n    #ykt-chat-plus-menu button { border: none; background: transparent; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }\n    #ykt-chat-plus-menu button:hover { background: #eef3ff; }\n    .ykt-chat-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-chat-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n  </style>\n  <div class="panel-header">\n    <h3>💬 PPT 对话</h3>\n    <button id="ykt-chat-clear">清空会话</button>\n    <span class="close-btn" id="ykt-chat-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-chat-log"></div>\n    <div id="ykt-chat-atts"></div>\n    <div id="ykt-chat-ctx"><label><input type="checkbox" id="ykt-chat-attach" checked> 每条消息附带当前 PPT 页</label><span id="ykt-chat-ctx-thumb"></span></div>\n    <div class="ykt-chat-inputbar">\n      <button id="ykt-chat-plus" title="添加 PPT 页面或图片">＋</button>\n      <textarea id="ykt-chat-input" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>\n      <button id="ykt-chat-send">发送</button>\n    </div>\n    <input type="file" id="ykt-chat-file" accept="image/*" multiple style="display:none">\n    <div id="ykt-chat-plus-menu">\n      <button id="ykt-chat-plus-slides">📑 选择 PPT 页面</button>\n      <button id="ykt-chat-plus-upload">🖼 上传图片</button>\n    </div>\n  </div>\n</div>\n';
@@ -4315,6 +4673,12 @@
     panelId: "ykt-presentation-panel",
     mount: () => mountPresentationPanel()
   }, {
+    id: "problems",
+    icon: "fa-list-check",
+    label: "题目",
+    panelId: "ykt-problem-list-panel",
+    mount: () => mountProblemListPanel()
+  }, {
     id: "settings",
     icon: "fa-gear",
     label: "设置",
@@ -4478,6 +4842,7 @@
     updateSlideView: updateSlideView,
     askAIForCurrent: askAIForCurrent,
     updateActiveProblems: updateActiveProblems,
+    updateProblemList: updateProblemList,
     // 提升面板层级的辅助函数
     _bringToFront(panelElement) {
       // notify 弹层创建后立即调用，此时 classList 还没有 visible——不能把它当前置条件
@@ -5888,6 +6253,27 @@
   let _autoOnLessonClickStarted = false;
   let _autoOnLessonClickInProgress = false;
   let _routerHooked = false;
+  /** 取首个非空值（WS payload 字段名有多个变体） */  function firstValue(...vals) {
+    return vals.find(v => v !== void 0 && v !== null && String(v).trim() !== "");
+  }
+  /**
+   * 规范化 unlockproblem 的 payload：服务器字段名有多个变体
+   * （prob/problemId/problemid、sid/slideId、pres/presentationId），
+   * 统一成 { prob, sid, pres, dt, limit, ...rest }，暂存队列也只放规范副本
+   */  function normalizeUnlock(data) {
+    const d = data && typeof data === "object" ? data : {};
+    const prob = firstValue(d.prob, d.problemId, d.problemid, d.problem?.problemId, d.problem?.id, d.id);
+    const sid = firstValue(d.sid, d.slideId, d.slide?.id);
+    const pres = firstValue(d.pres, d.presentationId, d.presentation_id, d.presentation?.id);
+    return {
+      ...d,
+      prob: prob,
+      sid: sid,
+      pres: pres,
+      dt: d.dt ?? d.unlockedAt,
+      limit: d.limit ?? d.timeLimit
+    };
+  }
   // 无AI默认答案生成
     function makeDefaultAnswer(problem) {
     switch (problem.problemType) {
@@ -6059,7 +6445,8 @@
     _replayPendingUnlocks() {
       if (!repo.pendingUnlocks.length) return;
       const list = repo.pendingUnlocks.splice(0);
-      for (const d of list) {
+      for (const d0 of list) {
+        const d = normalizeUnlock(d0);
         const ok = repo.problems.has(String(d.prob)) && repo.slides.has(String(d.sid));
         if (ok) {
           this.onUnlockProblem(d);
@@ -6075,6 +6462,7 @@
       }
     },
     onUnlockProblem(data) {
+      data = normalizeUnlock(data);
       const problem = repo.problems.get(String(data.prob));
       const slide = repo.slides.get(String(data.sid));
       if (!problem || !slide) {
@@ -6137,20 +6525,30 @@
         p.result = result;
         const i = repo.encounteredProblems.findIndex(e => String(e.problemId) === String(problemId));
         if (i !== -1) repo.encounteredProblems[i].result = result;
+        ui.updateProblemList?.();
       }
     },
     async handleAutoAnswer(problem) {
       return handleAutoAnswerInternal(problem);
     },
-    async submit(problem, content) {
+    async submit(problem, content, opts = {}) {
       const result = this.parseManual(problem.problemType, content);
-      if (!result || Array.isArray(result) && !result.length) return ui.toast("答案为空或无法识别（选择题为选项字母，填空每空一行/逗号分隔）", 2500);
-      await submitAnswer(problem, result, {
+      if (!result || Array.isArray(result) && !result.length) {
+        ui.toast("答案为空或无法识别（选择题为选项字母，填空每空一行/逗号分隔）", 2500);
+        return null;
+      }
+      const {route: route} = await submitAnswer(problem, result, {
         lessonId: repo.currentLessonId,
-        autoGate: false
+        autoGate: false,
+        // 手动提交不套自动延迟
+        startTime: opts.startTime,
+        endTime: opts.endTime,
+        forceRetry: !!opts.forceRetry
       });
       this.onAnswerProblem(problem.problemId, result);
-    },
+      return route;
+ // 'answer' | 'retry'，UI 据此提示「提交成功」/「补交成功」
+        },
     parseManual(problemType, content) {
       switch (problemType) {
        // 选择/投票：只取选项字母（防混入空格/标点被当成答案提交）
@@ -6659,7 +7057,7 @@
         };
     log.dbg("[雨课堂助手][INFO][fetch-interceptor] fetch() 已被拦截");
   })();
-  var css = '/* ===== 通用 & 修复 ===== */\n#watermark_layer { display: none !important; visibility: hidden !important; }\n.hidden { display: none !important; }\n\n:root{\n  --ykt-z: 10000000;\n  --ykt-border: #ddd;\n  --ykt-border-strong: #ccc;\n  --ykt-bg: #fff;\n  --ykt-fg: #222;\n  --ykt-muted: #607190;\n  --ykt-accent: #1d63df;\n  --ykt-hover: #1e3050;\n  --ykt-shadow: 0 10px 30px rgba(0,0,0,.18);\n}\n\n/* ===== 工具栏 ===== */\n#ykt-helper-toolbar{\n  position: fixed; z-index: calc(var(--ykt-z) + 1);\n  left: 15px; bottom: 15px;\n  /* 移除固定宽度，让内容自适应 */\n  height: 36px; padding: 5px;\n  display: flex; gap: 6px; align-items: center;\n  background: var(--ykt-bg);\n  border: 1px solid var(--ykt-border-strong);\n  border-radius: 4px;\n  box-shadow: 0 1px 4px 3px rgba(0,0,0,.1);\n}\n\n#ykt-helper-toolbar .btn{\n  display: inline-block; padding: 4px; cursor: pointer;\n  color: var(--ykt-muted); line-height: 1;\n}\n#ykt-helper-toolbar .btn:hover{ color: var(--ykt-hover); }\n#ykt-helper-toolbar .btn.active{ color: var(--ykt-accent); }\n\n/* 手机/窄屏：工具栏改为纵向贴左，按钮放大到可触控尺寸 */\n@media (max-width: 560px) {\n  #ykt-helper-toolbar{\n    left: 8px; bottom: 8px;\n    flex-direction: column;\n    height: auto; padding: 4px;\n  }\n  #ykt-helper-toolbar .btn{\n    width: 40px; height: 40px;\n    display: inline-flex; align-items: center; justify-content: center;\n    font-size: 17px;\n  }\n}\n\n/* ===== 面板通用样式 ===== */\n.ykt-panel{\n  position: fixed; right: 20px; bottom: 60px;\n  width: min(560px, calc(100vw - 48px));   /* 窄窗口不溢出 */\n  max-height: min(72vh, calc(100vh - 140px)); overflow: auto;\n  background: var(--ykt-bg); color: var(--ykt-fg);\n  border: 1px solid var(--ykt-border-strong); border-radius: 8px;\n  box-shadow: var(--ykt-shadow);\n  display: none;\n  /* 提高z-index，确保后打开的面板在最上层 */\n  z-index: var(--ykt-z);\n}\n.ykt-panel.visible{ \n  display: block; \n  /* 动态提升z-index */\n  z-index: calc(var(--ykt-z) + 10);\n}\n\n.panel-header{\n  display: flex; align-items: center; justify-content: space-between;\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\n}\n.panel-header h3{ margin: 0; font-size: 16px; font-weight: 600; }\n.panel-body{ padding: 10px 12px; }\n.close-btn{ cursor: pointer; color: var(--ykt-muted); }\n.close-btn:hover{ color: var(--ykt-hover); }\n\n/* ===== 设置面板 (#ykt-settings-panel) ===== */\n#ykt-settings-panel .settings-content{ display: flex; flex-direction: column; gap: 14px; }\n#ykt-settings-panel .setting-group{ border: 1px dashed var(--ykt-border); border-radius: 6px; padding: 10px; }\n#ykt-settings-panel .setting-group h4{ margin: 0 0 8px 0; font-size: 14px; }\n#ykt-settings-panel .setting-item{ display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }\n#ykt-settings-panel label{ font-size: 13px; }\n#ykt-settings-panel input[type="text"],\n#ykt-settings-panel input[type="number"]{\n  height: 30px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 4px; padding: 0 8px; min-width: 160px; max-width: 100%;\n  box-sizing: border-box; flex: 1 1 160px;\n}\n#ykt-settings-panel small{ color: #666; }\n#ykt-settings-panel .setting-actions{ display: flex; gap: 8px; margin-top: 6px; }\n#ykt-settings-panel button{\n  height: 30px; padding: 0 12px; border-radius: 6px;\n  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\n}\n#ykt-settings-panel button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\n\n/* 自定义复选框（与手写脚本一致的视觉语义） */\n#ykt-settings-panel .checkbox-label{ position: relative; padding-left: 26px; cursor: pointer; user-select: none; }\n#ykt-settings-panel .checkbox-label input{ position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }\n#ykt-settings-panel .checkbox-label .checkmark{\n  position: absolute; left: 0; top: 50%; transform: translateY(-50%);\n  height: 16px; width: 16px; border:1px solid var(--ykt-border-strong); border-radius: 3px; background: #fff;\n}\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark{\n  background: var(--ykt-accent); border-color: var(--ykt-accent);\n}\n#ykt-settings-panel .checkbox-label .checkmark:after{\n  content: ""; position: absolute; display: none;\n  left: 5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);\n}\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark:after{ display: block; }\n\n/* ===== AI 解答面板 (#ykt-ai-answer-panel) =====\n   气泡的 markdown 排版样式见文件底部（作用于 .ykt-ai-msg.ai / .ykt-chat-msg.ai） */\n\n/* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */\n#ykt-presentation-panel{ width: 900px; }\n#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n#ykt-presentation-panel .panel-body{\n  display: grid; grid-template-columns: 300px 1fr; gap: 10px;\n}\n#ykt-presentation-panel .panel-left,\n#ykt-presentation-panel .panel-right{\n  display: flex;\n  flex-direction: column;\n}\n#ykt-presentation-panel .presentation-list{\n  border: 1px solid var(--ykt-border);\n  border-radius: 8px;\n  background: #fff;\n  padding: 10px;\n  box-sizing: border-box;\n}\n#ykt-presentation-panel .presentation-title{\n  font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);\n}\n#ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }\n#ykt-presentation-panel .slide-thumb{\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;\n  min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;\n}\n#ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }\n#ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }\n#ykt-presentation-panel .slide-index {\n  position: absolute; top: 4px; left: 4px; z-index: 2;               \n  padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 1;\n  background: rgba(0, 0, 0, 0.6); color: #fff; pointer-events: none;\n}\n#ykt-presentation-panel .slide-view{\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;\n}\n#ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }\n#ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }\n#ykt-presentation-panel .problem-box{\n  position: absolute; left: 12px; right: 12px; bottom: 12px;\n  background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);\n  border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);\n}\n#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; padding-right: 28px; }\n#ykt-presentation-panel .problem-box-close{\n  position: absolute; top: 6px; right: 6px;\n  width: 22px; height: 22px; border-radius: 999px;\n  border: 1px solid var(--ykt-border-strong);\n  background: #fff; color: #555;\n  cursor: pointer; font-size: 16px; line-height: 18px;\n  padding: 0;\n}\n#ykt-presentation-panel .problem-box-close:hover{ color: #111; border-color: var(--ykt-accent); }\n#ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }\n#ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }\n\n\n\n/* ===== 活动题目列表（右下角小卡片） ===== */\n#ykt-active-problems-panel.ykt-active-wrapper{\n  position: fixed; right: 20px; bottom: 60px; z-index: var(--ykt-z);\n}\n#ykt-active-problems{ display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }\n#ykt-active-problems .active-problem-card{\n  position: relative;\n  width: 320px; background: #fff; border: 1px solid var(--ykt-border);\n  border-radius: 8px; box-shadow: var(--ykt-shadow); padding: 10px;\n}\n#ykt-active-problems .ap-close{\n  position: absolute; top: 6px; right: 6px;\n  width: 20px; height: 20px; border-radius: 999px;\n  border: 1px solid var(--ykt-border-strong);\n  background: #fff; color: #555;\n  cursor: pointer; padding: 0; font-size: 14px; line-height: 16px;\n}\n#ykt-active-problems .ap-close:hover{ color: #111; border-color: var(--ykt-accent); }\n#ykt-active-problems .ap-title{ font-weight: 600; margin-bottom: 4px; }\n#ykt-active-problems .ap-info{ color: #666; font-size: 12px; margin-bottom: 8px; }\n#ykt-active-problems .ap-actions{ display: flex; gap: 8px; }\n#ykt-active-problems .ap-actions button{\n  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\n}\n#ykt-active-problems .ap-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\n\n/* ===== 教程面板 (#ykt-tutorial-panel) ===== */\n#ykt-tutorial-panel .tutorial-content h4{ margin: 8px 0 6px; }\n#ykt-tutorial-panel .tutorial-content p,\n#ykt-tutorial-panel .tutorial-content li{ line-height: 1.5; }\n#ykt-tutorial-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }\n#ykt-tutorial-panel .tutorial-content a:hover{ text-decoration: underline; }\n\n/* ===== 小屏适配 ===== */\n@media (max-width: 1200px){\n  #ykt-presentation-panel{ width: 760px; }\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 260px 1fr; }\n}\n@media (max-width: 900px){\n  .ykt-panel{ right: 12px; left: 12px; width: auto; }\n  #ykt-presentation-panel{ width: auto; }\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 1fr; }\n}\n\n/* ===== 自动作答成功弹窗 ===== */\n.auto-answer-popup{\n  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 2);\n  background: rgba(0,0,0,.2);\n  display: flex; align-items: flex-end; justify-content: flex-end;\n  opacity: 0; transition: opacity .18s ease;\n}\n.auto-answer-popup.visible{ opacity: 1; }\n\n.auto-answer-popup .popup-content{\n  width: min(560px, 96vw);\n  background: #fff; border: 1px solid var(--ykt-border-strong);\n  border-radius: 10px; box-shadow: var(--ykt-shadow);\n  margin: 16px; overflow: hidden;\n}\n\n.auto-answer-popup .popup-header{\n  display: flex; align-items: center; justify-content: space-between;\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\n}\n.auto-answer-popup .popup-header h4{ margin: 0; font-size: 16px; }\n.auto-answer-popup .close-btn{ cursor: pointer; color: var(--ykt-muted); }\n.auto-answer-popup .close-btn:hover{ color: var(--ykt-hover); }\n\n.auto-answer-popup .popup-body{ padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }\n.auto-answer-popup .popup-row{ display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: start; }\n.auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }\n.auto-answer-popup .content{ white-space: normal; word-break: break-word; }\n\n/* ===== 1.16.6: 课件浏览面板：固定右侧详细视图，左侧独立滚动 ===== */\n#ykt-presentation-panel {\n  --ykt-panel-max-h: 72vh;           /* 与 .ykt-panel 的最大高度保持一致 */\n}\n\n/* 两列布局：左列表 + 右详细视图 */\n#ykt-presentation-panel .panel-body{\n  display: grid;\n  grid-template-columns: minmax(200px, 300px) 1fr;\n  gap: 12px;\n  overflow: hidden;\n  align-items: start;\n}\n\n/* 左侧：只让左列滚动，限制在面板可视高度内 */\n#ykt-presentation-panel .panel-left{\n  max-height: var(--ykt-panel-max-h);\n  overflow: auto;\n  min-width: 0;\n  align-self: stretch;\n}\n\n/* 右侧：粘性定位为“固定”，始终在面板可视区内 */\n#ykt-presentation-panel .panel-right{\n  position: sticky;\n  top: 0;                            \n  align-self: start;\n  gap: 12px;\n}\n\n/* 右侧详细视图自身也限制高度并允许内部滚动 */\n#ykt-presentation-panel .slide-view{\n  max-height: var(--ykt-panel-max-h);\n  overflow: auto;\n  border: 1px solid var(--ykt-border);\n  border-radius: 8px;\n  background: #fff;\n}\n\n/* 小屏自适配：堆叠布局时取消 sticky，避免遮挡 */\n@media (max-width: 900px){\n  #ykt-presentation-panel .panel-body{\n    grid-template-columns: 1fr;\n  }\n  #ykt-presentation-panel .panel-right{\n    position: static;\n  }\n}\n\n\n\n/* ===== Markdown 排版样式 =====\n   作用对象：AI 解答面板（.ykt-ai-msg.ai）与 PPT 对话面板（.ykt-chat-msg.ai）的 AI 气泡。\n   注意：渲染产物里没有 .ai-answer 容器——旧选择器全部落空，是本文件历史遗留的死规则 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) {\n  white-space: normal;\n  line-height: 1.6;\n  font-size: 14px;\n}\n\n/* 段落和标题间距 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) p { margin: 8px 0; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 {\n  margin: 12px 0 6px;\n  line-height: 1.35;\n  font-weight: 600;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1 { font-size: 20px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2 { font-size: 18px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3 { font-size: 16px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4 { font-size: 15px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 { font-size: 14px; }\n\n/* 链接 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) a {\n  text-decoration: underline;\n  cursor: pointer;\n}\n\n/* 引用块 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {\n  margin: 8px 0;\n  padding: 6px 10px;\n  border-left: 3px solid rgba(0,0,0,0.2);\n  background: rgba(0,0,0,0.03);\n}\n\n/* 水平线 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr {\n  border: 0;\n  border-top: 1px solid rgba(0,0,0,0.15);\n  margin: 10px 0;\n}\n\n/* 代码块与行内代码 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code {\n  margin: 8px 0;\n  padding: 10px;\n  overflow: auto;\n  border: 1px solid rgba(0,0,0,0.15);\n  border-radius: 6px;\n  background: #f7f8fa;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code code {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\n  font-size: 12px;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {\n  padding: 1px 4px;\n  border: 1px solid rgba(0,0,0,0.15);\n  border-radius: 4px;\n  background: #f7f8fa;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\n  font-size: 12px;\n}\n\n/* 列表 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol {\n  margin: 6px 0 6px 22px;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul { list-style: disc; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol { list-style: decimal; }\n\n/* 表格 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) table {\n  border-collapse: collapse;\n  margin: 8px 0;\n  width: 100%;\n  max-width: 100%;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td {\n  border: 1px solid rgba(0,0,0,0.15);\n  padding: 6px 8px;\n  text-align: left;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th {\n  background: rgba(0,0,0,0.05);\n  font-weight: 600;\n}\n\n/* 适配深色 */\n@media (prefers-color-scheme: dark) {\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {\n    border-left-color: rgba(255,255,255,0.35);\n    background: rgba(255,255,255,0.06);\n  }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code,\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {\n    background: #111418;\n    border-color: rgba(255,255,255,0.2);\n  }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr { border-top-color: rgba(255,255,255,0.2); }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td { border-color: rgba(255,255,255,0.2); }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th { background: rgba(255,255,255,0.08); }\n}\n\n/* MathJax tex 排版：作用在 AI 气泡上 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled svg { vertical-align: middle; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled .MathJax { line-height: 1; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) .mjx-svg { color: currentColor; }\n';
+  var css = '/* ===== 通用 & 修复 ===== */\n#watermark_layer { display: none !important; visibility: hidden !important; }\n.hidden { display: none !important; }\n\n:root{\n  --ykt-z: 10000000;\n  --ykt-border: #ddd;\n  --ykt-border-strong: #ccc;\n  --ykt-bg: #fff;\n  --ykt-fg: #222;\n  --ykt-muted: #607190;\n  --ykt-accent: #1d63df;\n  --ykt-hover: #1e3050;\n  --ykt-shadow: 0 10px 30px rgba(0,0,0,.18);\n}\n\n/* ===== 工具栏 ===== */\n#ykt-helper-toolbar{\n  position: fixed; z-index: calc(var(--ykt-z) + 1);\n  left: 15px; bottom: 15px;\n  /* 移除固定宽度，让内容自适应 */\n  height: 36px; padding: 5px;\n  display: flex; gap: 6px; align-items: center;\n  background: var(--ykt-bg);\n  border: 1px solid var(--ykt-border-strong);\n  border-radius: 4px;\n  box-shadow: 0 1px 4px 3px rgba(0,0,0,.1);\n}\n\n#ykt-helper-toolbar .btn{\n  display: inline-block; padding: 4px; cursor: pointer;\n  color: var(--ykt-muted); line-height: 1;\n}\n#ykt-helper-toolbar .btn:hover{ color: var(--ykt-hover); }\n#ykt-helper-toolbar .btn.active{ color: var(--ykt-accent); }\n\n/* 手机/窄屏：工具栏改为纵向贴左，按钮放大到可触控尺寸 */\n@media (max-width: 560px) {\n  #ykt-helper-toolbar{\n    left: 8px; bottom: 8px;\n    flex-direction: column;\n    height: auto; padding: 4px;\n  }\n  #ykt-helper-toolbar .btn{\n    width: 40px; height: 40px;\n    display: inline-flex; align-items: center; justify-content: center;\n    font-size: 17px;\n  }\n}\n\n/* ===== 面板通用样式 ===== */\n.ykt-panel{\n  position: fixed; right: 20px; bottom: 60px;\n  width: min(560px, calc(100vw - 48px));   /* 窄窗口不溢出 */\n  max-height: min(72vh, calc(100vh - 140px)); overflow: auto;\n  background: var(--ykt-bg); color: var(--ykt-fg);\n  border: 1px solid var(--ykt-border-strong); border-radius: 8px;\n  box-shadow: var(--ykt-shadow);\n  display: none;\n  /* 提高z-index，确保后打开的面板在最上层 */\n  z-index: var(--ykt-z);\n}\n.ykt-panel.visible{ \n  display: block; \n  /* 动态提升z-index */\n  z-index: calc(var(--ykt-z) + 10);\n}\n\n.panel-header{\n  display: flex; align-items: center; justify-content: space-between;\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\n  flex-wrap: wrap;   /* 窄屏下 actions 允许换行，不再把按钮挤碎 */\n}\n.panel-header h3{ margin: 0; font-size: 16px; font-weight: 600; }\n.panel-body{ padding: 10px 12px; }\n.close-btn{ cursor: pointer; color: var(--ykt-muted); }\n.close-btn:hover{ color: var(--ykt-hover); }\n\n/* 窄屏适配：header 里的按钮不换行、不挤压 */\n@media (max-width: 560px){\n  .panel-header{ gap: 8px; }\n  .panel-header h3{ font-size: 15px; flex: 1 1 60%; }\n  #ykt-settings-panel .setting-actions{ margin-top: 0; flex: 1 1 100%; }\n  #ykt-settings-panel .setting-actions button{ flex: 1; white-space: nowrap; }\n}\n\n/* ===== 设置面板 (#ykt-settings-panel) ===== */\n#ykt-settings-panel .settings-content{ display: flex; flex-direction: column; gap: 14px; }\n#ykt-settings-panel .setting-group{ border: 1px dashed var(--ykt-border); border-radius: 6px; padding: 10px; }\n#ykt-settings-panel .setting-group h4{ margin: 0 0 8px 0; font-size: 14px; }\n#ykt-settings-panel .setting-item{ display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }\n#ykt-settings-panel label{ font-size: 13px; }\n#ykt-settings-panel input[type="text"],\n#ykt-settings-panel input[type="number"]{\n  height: 30px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 4px; padding: 0 8px; min-width: 160px; max-width: 100%;\n  box-sizing: border-box; flex: 1 1 160px;\n}\n#ykt-settings-panel small{ color: #666; }\n#ykt-settings-panel .setting-actions{ display: flex; gap: 8px; margin-top: 6px; }\n#ykt-settings-panel button{\n  height: 30px; padding: 0 12px; border-radius: 6px;\n  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\n}\n#ykt-settings-panel button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\n\n/* 自定义复选框（与手写脚本一致的视觉语义） */\n#ykt-settings-panel .checkbox-label{ position: relative; padding-left: 26px; cursor: pointer; user-select: none; }\n#ykt-settings-panel .checkbox-label input{ position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }\n#ykt-settings-panel .checkbox-label .checkmark{\n  position: absolute; left: 0; top: 50%; transform: translateY(-50%);\n  height: 16px; width: 16px; border:1px solid var(--ykt-border-strong); border-radius: 3px; background: #fff;\n}\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark{\n  background: var(--ykt-accent); border-color: var(--ykt-accent);\n}\n#ykt-settings-panel .checkbox-label .checkmark:after{\n  content: ""; position: absolute; display: none;\n  left: 5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);\n}\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark:after{ display: block; }\n\n/* ===== AI 解答面板 (#ykt-ai-answer-panel) =====\n   气泡的 markdown 排版样式见文件底部（作用于 .ykt-ai-msg.ai / .ykt-chat-msg.ai） */\n\n/* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */\n#ykt-presentation-panel{ width: 900px; }\n#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n#ykt-presentation-panel .panel-body{\n  display: grid; grid-template-columns: 300px 1fr; gap: 10px;\n}\n#ykt-presentation-panel .panel-left,\n#ykt-presentation-panel .panel-right{\n  display: flex;\n  flex-direction: column;\n}\n#ykt-presentation-panel .presentation-list{\n  border: 1px solid var(--ykt-border);\n  border-radius: 8px;\n  background: #fff;\n  padding: 10px;\n  box-sizing: border-box;\n}\n#ykt-presentation-panel .presentation-title{\n  font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);\n}\n#ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }\n#ykt-presentation-panel .slide-thumb{\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;\n  min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;\n}\n#ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }\n#ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }\n#ykt-presentation-panel .slide-index {\n  position: absolute; top: 4px; left: 4px; z-index: 2;               \n  padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 1;\n  background: rgba(0, 0, 0, 0.6); color: #fff; pointer-events: none;\n}\n#ykt-presentation-panel .slide-view{\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;\n}\n#ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }\n#ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }\n#ykt-presentation-panel .problem-box{\n  position: absolute; left: 12px; right: 12px; bottom: 12px;\n  background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);\n  border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);\n}\n#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; padding-right: 28px; }\n#ykt-presentation-panel .problem-box-close{\n  position: absolute; top: 6px; right: 6px;\n  width: 22px; height: 22px; border-radius: 999px;\n  border: 1px solid var(--ykt-border-strong);\n  background: #fff; color: #555;\n  cursor: pointer; font-size: 16px; line-height: 18px;\n  padding: 0;\n}\n#ykt-presentation-panel .problem-box-close:hover{ color: #111; border-color: var(--ykt-accent); }\n#ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }\n#ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }\n\n\n\n/* ===== 活动题目列表（右下角小卡片） ===== */\n#ykt-active-problems-panel.ykt-active-wrapper{\n  position: fixed; right: 20px; bottom: 60px; z-index: var(--ykt-z);\n}\n#ykt-active-problems{ display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }\n#ykt-active-problems .active-problem-card{\n  position: relative;\n  width: 320px; background: #fff; border: 1px solid var(--ykt-border);\n  border-radius: 8px; box-shadow: var(--ykt-shadow); padding: 10px;\n}\n#ykt-active-problems .ap-close{\n  position: absolute; top: 6px; right: 6px;\n  width: 20px; height: 20px; border-radius: 999px;\n  border: 1px solid var(--ykt-border-strong);\n  background: #fff; color: #555;\n  cursor: pointer; padding: 0; font-size: 14px; line-height: 16px;\n}\n#ykt-active-problems .ap-close:hover{ color: #111; border-color: var(--ykt-accent); }\n#ykt-active-problems .ap-title{ font-weight: 600; margin-bottom: 4px; }\n#ykt-active-problems .ap-info{ color: #666; font-size: 12px; margin-bottom: 8px; }\n#ykt-active-problems .ap-actions{ display: flex; gap: 8px; }\n#ykt-active-problems .ap-actions button{\n  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\n}\n#ykt-active-problems .ap-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\n\n/* ===== 教程面板 (#ykt-tutorial-panel) ===== */\n#ykt-tutorial-panel .tutorial-content h4{ margin: 8px 0 6px; }\n#ykt-tutorial-panel .tutorial-content p,\n#ykt-tutorial-panel .tutorial-content li{ line-height: 1.5; }\n#ykt-tutorial-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }\n#ykt-tutorial-panel .tutorial-content a:hover{ text-decoration: underline; }\n\n/* ===== 小屏适配 ===== */\n@media (max-width: 1200px){\n  #ykt-presentation-panel{ width: 760px; }\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 260px 1fr; }\n}\n@media (max-width: 900px){\n  .ykt-panel{ right: 12px; left: 12px; width: auto; }\n  #ykt-presentation-panel{ width: auto; }\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 1fr; }\n}\n\n/* ===== 自动作答成功弹窗 ===== */\n.auto-answer-popup{\n  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 2);\n  background: rgba(0,0,0,.2);\n  display: flex; align-items: flex-end; justify-content: flex-end;\n  opacity: 0; transition: opacity .18s ease;\n}\n.auto-answer-popup.visible{ opacity: 1; }\n\n.auto-answer-popup .popup-content{\n  width: min(560px, 96vw);\n  background: #fff; border: 1px solid var(--ykt-border-strong);\n  border-radius: 10px; box-shadow: var(--ykt-shadow);\n  margin: 16px; overflow: hidden;\n}\n\n.auto-answer-popup .popup-header{\n  display: flex; align-items: center; justify-content: space-between;\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\n}\n.auto-answer-popup .popup-header h4{ margin: 0; font-size: 16px; }\n.auto-answer-popup .close-btn{ cursor: pointer; color: var(--ykt-muted); }\n.auto-answer-popup .close-btn:hover{ color: var(--ykt-hover); }\n\n.auto-answer-popup .popup-body{ padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }\n.auto-answer-popup .popup-row{ display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: start; }\n.auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }\n.auto-answer-popup .content{ white-space: normal; word-break: break-word; }\n\n/* ===== 1.16.6: 课件浏览面板：固定右侧详细视图，左侧独立滚动 ===== */\n#ykt-presentation-panel {\n  --ykt-panel-max-h: 72vh;           /* 与 .ykt-panel 的最大高度保持一致 */\n}\n\n/* 两列布局：左列表 + 右详细视图 */\n#ykt-presentation-panel .panel-body{\n  display: grid;\n  grid-template-columns: minmax(200px, 300px) 1fr;\n  gap: 12px;\n  overflow: hidden;\n  align-items: start;\n}\n\n/* 左侧：只让左列滚动，限制在面板可视高度内 */\n#ykt-presentation-panel .panel-left{\n  max-height: var(--ykt-panel-max-h);\n  overflow: auto;\n  min-width: 0;\n  align-self: stretch;\n}\n\n/* 右侧：粘性定位为“固定”，始终在面板可视区内 */\n#ykt-presentation-panel .panel-right{\n  position: sticky;\n  top: 0;                            \n  align-self: start;\n  gap: 12px;\n}\n\n/* 右侧详细视图自身也限制高度并允许内部滚动 */\n#ykt-presentation-panel .slide-view{\n  max-height: var(--ykt-panel-max-h);\n  overflow: auto;\n  border: 1px solid var(--ykt-border);\n  border-radius: 8px;\n  background: #fff;\n}\n\n/* 小屏自适配：堆叠布局时取消 sticky，避免遮挡 */\n@media (max-width: 900px){\n  #ykt-presentation-panel .panel-body{\n    grid-template-columns: 1fr;\n  }\n  #ykt-presentation-panel .panel-right{\n    position: static;\n  }\n}\n\n\n\n/* ===== Markdown 排版样式 =====\n   作用对象：AI 解答面板（.ykt-ai-msg.ai）与 PPT 对话面板（.ykt-chat-msg.ai）的 AI 气泡。\n   注意：渲染产物里没有 .ai-answer 容器——旧选择器全部落空，是本文件历史遗留的死规则 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) {\n  white-space: normal;\n  line-height: 1.6;\n  font-size: 14px;\n}\n\n/* 段落和标题间距 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) p { margin: 8px 0; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 {\n  margin: 12px 0 6px;\n  line-height: 1.35;\n  font-weight: 600;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1 { font-size: 20px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2 { font-size: 18px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3 { font-size: 16px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4 { font-size: 15px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 { font-size: 14px; }\n\n/* 链接 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) a {\n  text-decoration: underline;\n  cursor: pointer;\n}\n\n/* 引用块 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {\n  margin: 8px 0;\n  padding: 6px 10px;\n  border-left: 3px solid rgba(0,0,0,0.2);\n  background: rgba(0,0,0,0.03);\n}\n\n/* 水平线 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr {\n  border: 0;\n  border-top: 1px solid rgba(0,0,0,0.15);\n  margin: 10px 0;\n}\n\n/* 代码块与行内代码 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code {\n  margin: 8px 0;\n  padding: 10px;\n  overflow: auto;\n  border: 1px solid rgba(0,0,0,0.15);\n  border-radius: 6px;\n  background: #f7f8fa;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code code {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\n  font-size: 12px;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {\n  padding: 1px 4px;\n  border: 1px solid rgba(0,0,0,0.15);\n  border-radius: 4px;\n  background: #f7f8fa;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\n  font-size: 12px;\n}\n\n/* 列表 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol {\n  margin: 6px 0 6px 22px;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul { list-style: disc; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol { list-style: decimal; }\n\n/* 表格 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) table {\n  border-collapse: collapse;\n  margin: 8px 0;\n  width: 100%;\n  max-width: 100%;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td {\n  border: 1px solid rgba(0,0,0,0.15);\n  padding: 6px 8px;\n  text-align: left;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th {\n  background: rgba(0,0,0,0.05);\n  font-weight: 600;\n}\n\n/* 适配深色 */\n@media (prefers-color-scheme: dark) {\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {\n    border-left-color: rgba(255,255,255,0.35);\n    background: rgba(255,255,255,0.06);\n  }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code,\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {\n    background: #111418;\n    border-color: rgba(255,255,255,0.2);\n  }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr { border-top-color: rgba(255,255,255,0.2); }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td { border-color: rgba(255,255,255,0.2); }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th { background: rgba(255,255,255,0.08); }\n}\n\n/* MathJax tex 排版：作用在 AI 气泡上 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled svg { vertical-align: middle; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled .MathJax { line-height: 1; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) .mjx-svg { color: currentColor; }\n';
   // src/ui/styles.js
     function injectStyles() {
     gm.addStyle(css);

@@ -7,6 +7,7 @@ import { toast } from './toast.js';
 import * as AIPanel from './panels/ai.js';
 import * as PresPanel from './panels/presentation.js';
 import * as ActivePanel from './panels/active-problems.js';
+import * as ProblemListPanel from './panels/problem-list.js';
 import * as Shell from './panels/shell.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
 
@@ -97,6 +98,7 @@ export const ui = {
   updateSlideView: PresPanel.updateSlideView,
   askAIForCurrent: AIPanel.askAIForCurrent,
   updateActiveProblems: ActivePanel.updateActiveProblems,
+  updateProblemList: ProblemListPanel.updateProblemList,
 
   // 提升面板层级的辅助函数
   _bringToFront(panelElement) {

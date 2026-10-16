@@ -1,0 +1,14 @@
+R_DEF: Internal format may change without notice
+local
+id btnBack
+id btnForward
+id btnReload
+id collectContainer
+id envSpinner
+id pageProgress
+id tvStatus
+id webView
+layout activity_main
+mipmap ic_launcher
+string app_name
+style Theme.YuketangStudio

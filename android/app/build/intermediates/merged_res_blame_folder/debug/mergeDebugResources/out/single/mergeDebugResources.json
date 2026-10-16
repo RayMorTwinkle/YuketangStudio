@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.yuketangstudio.shell.app-debug-36:/layout_activity_main.xml.flat",
+        "source": "com.yuketangstudio.shell.app-main-38:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.yuketangstudio.shell.app-debug-36:/mipmap-xxhdpi_ic_launcher.xml.flat",
+        "source": "com.yuketangstudio.shell.app-main-38:/mipmap-xxhdpi/ic_launcher.xml"
+    }
+]
