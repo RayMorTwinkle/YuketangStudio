@@ -3,6 +3,8 @@ package com.yuketangstudio.shell
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.DownloadManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -74,6 +76,14 @@ class MainActivity : AppCompatActivity() {
         PRO("荷塘雨课堂", "https://pro.yuketang.cn"),
     }
     private var env = Env.CHANGJIANG
+
+    // ---------- 登录态备份/还原 ----------
+    // 待注入的 localStorage：origin→js，onPageFinished 命中对应 origin 时消费
+    private val pendingRestoreLs = mutableMapOf<String, String>()
+    private var pendingRestoreReload = false
+    private var pendingBackupJson: String? = null
+    private val REQ_PICK_BACKUP_FILE = 41
+    private val REQ_SAVE_BACKUP_FILE = 42
 
     companion object {
         private const val TAG = "YktShell"
@@ -224,6 +234,16 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 CookieManager.getInstance().flush()
+                // 登录态还原：命中排队 origin 时注入 localStorage 再 reload 一次
+                val o = originOf(url)
+                if (o != null && pendingRestoreLs.containsKey(o)) {
+                    val js = pendingRestoreLs.remove(o)!!
+                    view.evaluateJavascript(js) { }
+                    Log.i(TAG, "localStorage 已注入 $o，自动刷新")
+                    view.postDelayed({ view.reload() }, 300)
+                    if (pendingRestoreLs.isEmpty()) { status("还原完成"); toast("登录态还原完成") }
+                    pendingRestoreReload = false
+                }
                 val title = view.title ?: url ?: ""
                 if (view === activeWebView) {
                     tab.title = title.take(20).ifBlank { "页面" }
@@ -410,6 +430,187 @@ class MainActivity : AppCompatActivity() {
         else -> "*/*"
     }
 
+    // ---------- 登录态备份/还原 ----------
+
+    private fun originOf(url: String?): String? = runCatching {
+        val u = URI(url ?: return null)
+        if (u.host == null) return null
+        "${u.scheme}://${u.host}${if (u.port > 0) ":${u.port}" else ""}"
+    }.getOrNull()
+
+    /** 提取登录态：Cookie(全部三个环境) + 当前页面的 localStorage，随后按目标分发 */
+    private fun backupLogin(toClipboard: Boolean) {
+        val cm = CookieManager.getInstance()
+        cm.flush()
+        val cookies = JSONObject()
+        for (e in Env.entries) {
+            cm.getCookie(e.origin)?.takeIf { it.isNotBlank() }?.let { cookies.put(e.origin, it) }
+        }
+        val wv = activeWebView
+        val curUrl = wv?.url
+        val curOrigin = originOf(curUrl)
+        if (wv == null || curOrigin == null || !isYuketang(curUrl!!)) {
+            // 当前不在雨课堂页面：只备份 Cookie，localStorage 拿不着
+            finishBackup(cookies, JSONObject(), toClipboard)
+            return
+        }
+        // evaluateJavascript 回调只给 JSON 字符串字面量——让页面自己 base64 再解，免转义坑
+        wv.evaluateJavascript(
+            "try{btoa(unescape(encodeURIComponent(JSON.stringify(localStorage))))}catch(e){''}"
+        ) { raw ->
+            val ls = JSONObject()
+            runCatching {
+                val b64 = raw?.removeSurrounding("\"") ?: ""
+                if (b64.isNotBlank()) {
+                    val decoded = String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT))
+                    ls.put(curOrigin, JSONObject(decoded))
+                }
+            }
+            finishBackup(cookies, ls, toClipboard)
+        }
+    }
+
+    private fun finishBackup(cookies: JSONObject, ls: JSONObject, toClipboard: Boolean) {
+        val doc = JSONObject()
+            .put("app", "yuketangstudio-login-backup")
+            .put("version", 1)
+            .put("savedAt", System.currentTimeMillis())
+            .put("env", env.name)
+            .put("cookies", cookies)
+            .put("localStorage", ls)
+        val text = doc.toString(2)
+        Log.i(TAG, "备份生成: cookies=${cookies.length()}域 ls=${ls.length()}域 size=${text.length}B")
+        if (toClipboard) {
+            AlertDialog.Builder(this)
+                .setTitle("备份到剪贴板")
+                .setMessage("备份含登录凭证，任何拿到它的人都能登录你的账号。确定复制到剪贴板？")
+                .setPositiveButton("复制") { _, _ ->
+                    (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
+                        .setPrimaryClip(ClipData.newPlainText("ykt-login-backup", text))
+                    toast("已复制登录态备份到剪贴板")
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        } else {
+            pendingBackupJson = text
+            runCatching {
+                startActivityForResult(
+                    Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/json"
+                        putExtra(Intent.EXTRA_TITLE, "ykt-login-backup.json")
+                    }, REQ_SAVE_BACKUP_FILE)
+            }.onFailure {
+                Log.e(TAG, "SAF 创建文件失败", it)
+                toast("无法打开文件选择器，改用剪贴板")
+                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
+                    .setPrimaryClip(ClipData.newPlainText("ykt-login-backup", text))
+            }
+        }
+    }
+
+    /** 从剪贴板或文件还原 */
+    private fun restoreLogin(fromClipboard: Boolean) {
+        if (fromClipboard) {
+            val clip = (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
+            val text = clip.primaryClip?.getItemAt(0)?.text?.toString()
+            if (text.isNullOrBlank()) { toast("剪贴板为空"); return }
+            applyLoginBackup(text)
+        } else {
+            runCatching {
+                startActivityForResult(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                    }, REQ_PICK_BACKUP_FILE)
+            }.onFailure { toast("无法打开文件选择器") }
+        }
+    }
+
+    private fun applyLoginBackup(text: String) {
+        val doc = runCatching { JSONObject(text) }.getOrElse {
+            toast("备份文件不是合法 JSON")
+            return
+        }
+        if (doc.optString("app") != "yuketangstudio-login-backup") {
+            toast("不是 YuketangStudio 登录备份文件")
+            return
+        }
+        val cookies = doc.optJSONObject("cookies") ?: JSONObject()
+        val ls = doc.optJSONObject("localStorage") ?: JSONObject()
+        AlertDialog.Builder(this)
+            .setTitle("还原登录态")
+            .setMessage("将覆盖当前的 Cookie 和 localStorage（${cookies.length()} 个域的 Cookie，${ls.length()} 个域的本地存储）。确定继续？")
+            .setPositiveButton("还原") { _, _ -> doRestore(cookies, ls) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun doRestore(cookies: JSONObject, ls: JSONObject) {
+        val cm = CookieManager.getInstance()
+        // 1) 写 Cookie：逐条 k=v 喂给 setCookie（不能整串塞，分号会被当成属性）
+        for (origin in cookies.keys()) {
+            val cookieStr = cookies.optString(origin)
+            cookieStr.split("; ").forEach { pair ->
+                if (pair.contains('=')) cm.setCookie(origin, pair)
+            }
+            Log.i(TAG, "还原 Cookie → $origin (${cookieStr.split("; ").size}条)")
+        }
+        cm.flush()
+        // 2) 排队 localStorage 注入：onPageFinished 命中 origin 时执行 + reload
+        pendingRestoreLs.clear()
+        for (origin in ls.keys()) {
+            val entries = ls.optJSONObject(origin) ?: continue
+            pendingRestoreLs[origin] =
+                "var m=" + entries.toString() +
+                ";for(var k in m){try{localStorage.setItem(k,m[k])}catch(e){}}'ok'"
+        }
+        // 3) 选一个先落到的 origin：优先当前 env
+        val lsPending = pendingRestoreLs.size
+        val targetOrigin = pendingRestoreLs.keys.firstOrNull { it == env.origin }
+            ?: pendingRestoreLs.keys.firstOrNull()
+        if (targetOrigin != null) {
+            pendingRestoreReload = true
+            val cur = originOf(activeWebView?.url)
+            if (cur != targetOrigin) {
+                activeWebView?.loadUrl("$targetOrigin/web/")
+            } else {
+                activeWebView?.evaluateJavascript(pendingRestoreLs.remove(targetOrigin)!!) { }
+                activeWebView?.reload()
+            }
+            status("还原中")
+        } else {
+            status("Cookie 已还原（备份里无 localStorage）")
+            activeWebView?.reload()
+        }
+        Log.i(TAG, "登录态还原：cookies=${cookies.length()}域 ls=${lsPending}域排队 target=$targetOrigin")
+    }
+
+    @Deprecated("deprecated")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK || data?.data == null) return
+        when (requestCode) {
+            REQ_SAVE_BACKUP_FILE -> {
+                val json = pendingBackupJson ?: return
+                runCatching {
+                    contentResolver.openOutputStream(data.data!!)?.use { it.write(json.toByteArray()) }
+                }.onSuccess { toast("备份已保存") }
+                    .onFailure { Log.e(TAG, "写备份文件失败", it); toast("保存失败") }
+                pendingBackupJson = null
+            }
+            REQ_PICK_BACKUP_FILE -> {
+                val text = runCatching {
+                    contentResolver.openInputStream(data.data!!)?.use {
+                        it.readBytes().toString(Charsets.UTF_8)
+                    }
+                }.getOrNull()
+                if (text == null) { toast("读取文件失败"); return }
+                applyLoginBackup(text)
+            }
+        }
+    }
+
     // ---------- 工具栏/菜单 ----------
 
     private fun configureToolbar() {
@@ -448,6 +649,8 @@ class MainActivity : AppCompatActivity() {
             "🔍 显示大小调节",
             "📜 历史记录",
             "📥 下载管理",
+            "💾 备份登录态",
+            "♻️ 还原登录态",
             "🗑 清空当前标签页数据",
         )
         AlertDialog.Builder(this)
@@ -458,7 +661,9 @@ class MainActivity : AppCompatActivity() {
                     1 -> toggleZoomBar()
                     2 -> showHistory()
                     3 -> showDownloads()
-                    4 -> {
+                    4 -> pickBackupTarget()
+                    5 -> pickRestoreSource()
+                    6 -> {
                         activeWebView?.let {
                             it.clearCache(true)
                             it.clearHistory()
@@ -467,6 +672,24 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
+            }
+            .show()
+    }
+
+    private fun pickBackupTarget() {
+        AlertDialog.Builder(this)
+            .setTitle("备份登录态 · 导出到")
+            .setItems(arrayOf("导出到文件", "复制到剪贴板")) { _, i ->
+                backupLogin(toClipboard = i == 1)
+            }
+            .show()
+    }
+
+    private fun pickRestoreSource() {
+        AlertDialog.Builder(this)
+            .setTitle("还原登录态 · 来源")
+            .setItems(arrayOf("从剪贴板还原", "从文件还原")) { _, i ->
+                restoreLogin(fromClipboard = i == 0)
             }
             .show()
     }
