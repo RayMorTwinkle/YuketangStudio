@@ -69,11 +69,20 @@
 .panel-header{
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);
+  flex-wrap: wrap;   /* 窄屏下 actions 允许换行，不再把按钮挤碎 */
 }
 .panel-header h3{ margin: 0; font-size: 16px; font-weight: 600; }
 .panel-body{ padding: 10px 12px; }
 .close-btn{ cursor: pointer; color: var(--ykt-muted); }
 .close-btn:hover{ color: var(--ykt-hover); }
+
+/* 窄屏适配：header 里的按钮不换行、不挤压 */
+@media (max-width: 560px){
+  .panel-header{ gap: 8px; }
+  .panel-header h3{ font-size: 15px; flex: 1 1 60%; }
+  #ykt-settings-panel .setting-actions{ margin-top: 0; flex: 1 1 100%; }
+  #ykt-settings-panel .setting-actions button{ flex: 1; white-space: nowrap; }
+}
 
 /* ===== 设置面板 (#ykt-settings-panel) ===== */
 #ykt-settings-panel .settings-content{ display: flex; flex-direction: column; gap: 14px; }

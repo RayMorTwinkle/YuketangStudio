@@ -3080,12 +3080,15 @@
     activities = activities.filter(a => a.is_finished !== false);
     if (ongoing.length) ui.toast(`已排除 ${ongoing.length} 个进行中的课堂`, 2500);
     if (!activities.length) return ui.toast(ongoing.length ? "该班级只有进行中的课堂，暂无可导入" : "该班级没有可导入的课堂");
-    // 构建多选浮层
+    // 构建多选浮层：flex 布局——标题/底部按钮固定，列表区滚动（窄屏下按钮不再被顶出视口）
         const mask = document.createElement("div");
-    mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;";
+    mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;";
     const box = document.createElement("div");
-    box.style.cssText = "background:#fff;border-radius:10px;max-width:520px;max-height:70vh;overflow:auto;padding:16px 20px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);";
-    box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px">📥 选择要导入的历史课堂（可多选）</div>`;
+    box.style.cssText = "background:#fff;border-radius:10px;width:520px;max-width:100%;max-height:76vh;display:flex;flex-direction:column;padding:16px 20px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);";
+    box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:10px;flex:0 0 auto">📥 选择要导入的历史课堂（可多选）</div>`;
+    const listWrap = document.createElement("div");
+    listWrap.style.cssText = "flex:1 1 auto;overflow:auto;min-height:0;";
+    box.appendChild(listWrap);
     // 已下载记录（key: ykt-dl-done:<classId> = [lessonId,...]）——重开浮层时标灰，避免重复下载
         const doneKey = `ykt-dl-done:${classId}`;
     let doneSet = new Set;
@@ -3135,7 +3138,7 @@
         downloadBtn.style.opacity = chosen.size ? "1" : ".5";
       });
       rowEls.push(row);
-      box.appendChild(row);
+      listWrap.appendChild(row);
     }
     // 全选/清空
         const selectBar = document.createElement("div");
@@ -3163,10 +3166,11 @@
     selectBar.appendChild(mkSel("全选", true));
     selectBar.appendChild(mkSel("清空", false));
     box.appendChild(selectBar);
+    selectBar.style.flex = "0 0 auto";
     // 下载按钮
         const downloadBtn = document.createElement("button");
     downloadBtn.textContent = "⬇️ 下载选中";
-    downloadBtn.style.cssText = "width:100%;padding:9px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-size:14px;font-weight:600;cursor:pointer;opacity:.5;";
+    downloadBtn.style.cssText = "width:100%;padding:9px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-size:14px;font-weight:600;cursor:pointer;opacity:.5;flex:0 0 auto;";
     downloadBtn.addEventListener("click", async () => {
       const list = [ ...chosen ];
       if (!list.length) return ui.toast("请先勾选要下载的课堂", 2e3);
@@ -3217,7 +3221,7 @@
     box.appendChild(downloadBtn);
     const closeBtn = document.createElement("div");
     closeBtn.textContent = "取消";
-    closeBtn.style.cssText = "text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;";
+    closeBtn.style.cssText = "text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;flex:0 0 auto;";
     closeBtn.addEventListener("click", () => mask.remove());
     box.appendChild(closeBtn);
     mask.appendChild(box);
@@ -3622,10 +3626,13 @@
     }
     if (!slides.length) return ui.toast?.("暂无可选的 PPT 页面（先在课堂里翻页收集）", 2500);
     const mask = document.createElement("div");
-    mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;";
+    mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;";
     const box = document.createElement("div");
-    box.style.cssText = "background:#fff;border-radius:10px;max-width:640px;max-height:76vh;overflow:auto;padding:14px 16px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);";
-    box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:8px">📑 选择 PPT 页面（点击多选）</div>`;
+    box.style.cssText = "background:#fff;border-radius:10px;width:640px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;padding:14px 16px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);";
+    box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:8px;flex:0 0 auto">📑 选择 PPT 页面（点击多选）</div>`;
+    const gridWrap = document.createElement("div");
+    gridWrap.style.cssText = "flex:1 1 auto;overflow:auto;min-height:0;";
+    box.appendChild(gridWrap);
     const grid = document.createElement("div");
     grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;";
     const picked = new Set;
@@ -3653,10 +3660,10 @@
       grid.appendChild(cell);
       cell.__url = url;
     }
-    box.appendChild(grid);
+    gridWrap.appendChild(grid);
     const confirmBtn = document.createElement("button");
     confirmBtn.textContent = "✓ 添加";
-    confirmBtn.style.cssText = "width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-weight:600;cursor:pointer;";
+    confirmBtn.style.cssText = "width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-weight:600;cursor:pointer;flex:0 0 auto;";
     confirmBtn.addEventListener("click", async () => {
       mask.remove();
       const cells = [ ...grid.children ].filter(c => picked.has(c));
@@ -3672,7 +3679,7 @@
     box.appendChild(confirmBtn);
     const cancel = document.createElement("div");
     cancel.textContent = "取消";
-    cancel.style.cssText = "text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;";
+    cancel.style.cssText = "text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;flex:0 0 auto;";
     cancel.addEventListener("click", () => mask.remove());
     box.appendChild(cancel);
     mask.appendChild(box);

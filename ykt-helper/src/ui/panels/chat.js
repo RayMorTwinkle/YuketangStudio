@@ -228,10 +228,13 @@ function openSlidePicker() {
   if (!slides.length) return ui.toast?.('暂无可选的 PPT 页面（先在课堂里翻页收集）', 2500);
 
   const mask = document.createElement('div');
-  mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;';
+  mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;';
   const box = document.createElement('div');
-  box.style.cssText = 'background:#fff;border-radius:10px;max-width:640px;max-height:76vh;overflow:auto;padding:14px 16px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);';
-  box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:8px">📑 选择 PPT 页面（点击多选）</div>`;
+  box.style.cssText = 'background:#fff;border-radius:10px;width:640px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;padding:14px 16px;font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.25);';
+  box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:8px;flex:0 0 auto">📑 选择 PPT 页面（点击多选）</div>`;
+  const gridWrap = document.createElement('div');
+  gridWrap.style.cssText = 'flex:1 1 auto;overflow:auto;min-height:0;';
+  box.appendChild(gridWrap);
   const grid = document.createElement('div');
   grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;';
   const picked = new Set();
@@ -259,10 +262,10 @@ function openSlidePicker() {
     grid.appendChild(cell);
     cell.__url = url;
   }
-  box.appendChild(grid);
+  gridWrap.appendChild(grid);
   const confirmBtn = document.createElement('button');
   confirmBtn.textContent = '✓ 添加';
-  confirmBtn.style.cssText = 'width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-weight:600;cursor:pointer;';
+  confirmBtn.style.cssText = 'width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1d63df;color:#fff;font-weight:600;cursor:pointer;flex:0 0 auto;';
   confirmBtn.addEventListener('click', async () => {
     mask.remove();
     const cells = [...grid.children].filter(c => picked.has(c));
@@ -280,7 +283,7 @@ function openSlidePicker() {
   box.appendChild(confirmBtn);
   const cancel = document.createElement('div');
   cancel.textContent = '取消';
-  cancel.style.cssText = 'text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;';
+  cancel.style.cssText = 'text-align:center;color:#607190;cursor:pointer;padding:8px 0 2px;flex:0 0 auto;';
   cancel.addEventListener('click', () => mask.remove());
   box.appendChild(cancel);
   mask.appendChild(box);
