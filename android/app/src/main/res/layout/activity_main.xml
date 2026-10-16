@@ -5,82 +5,97 @@
     android:orientation="vertical"
     android:fitsSystemWindows="true">
 
+    <!-- 工具栏 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="4dp"
-        android:background="#f7f9fc">
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:background="@color/toolbar_bg">
 
         <ImageButton
             android:id="@+id/btnBack"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@android:drawable/ic_media_rew"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="后退" />
 
         <ImageButton
             android:id="@+id/btnForward"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@android:drawable/ic_media_ff"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="前进" />
 
         <ImageButton
             android:id="@+id/btnReload"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@android:drawable/ic_popup_sync"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="刷新" />
 
-        <Spinner
-            android:id="@+id/envSpinner"
+        <TextView
+            android:id="@+id/btnEnv"
             android:layout_width="0dp"
             android:layout_weight="1"
-            android:layout_height="42dp"
-            android:minWidth="0dp" />
+            android:layout_height="40dp"
+            android:gravity="center"
+            android:text="长江雨课堂 ▾"
+            android:textSize="13sp"
+            android:textColor="@color/text_primary"
+            android:background="?attr/selectableItemBackground"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="10sp"
+            android:textColor="@color/text_secondary"
+            android:paddingStart="2dp"
+            android:paddingEnd="4dp"
+            android:maxWidth="72dp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:text="YKT" />
 
         <ImageButton
             android:id="@+id/btnDesktop"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@android:drawable/ic_menu_view"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="桌面端切换" />
 
         <ImageButton
             android:id="@+id/btnMenu"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@android:drawable/ic_menu_more"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="菜单" />
-
-        <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="58dp"
-            android:layout_height="wrap_content"
-            android:textSize="10sp"
-            android:textColor="#607190"
-            android:paddingStart="2dp"
-            android:paddingEnd="2dp"
-            android:gravity="center"
-            android:maxLines="2"
-            android:ellipsize="end"
-            android:text="YKT" />
     </LinearLayout>
 
-    <!-- 多标签条：多于一个标签或需要新建时出现 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider" />
+
+    <!-- 多标签条：圆角 chip + 显式关闭 × -->
     <HorizontalScrollView
         android:id="@+id/tabStrip"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#eef1f6"
-        android:visibility="gone">
+        android:background="@color/tabstrip_bg"
+        android:scrollbars="none">
 
         <LinearLayout
             android:id="@+id/tabStripInner"
@@ -88,15 +103,17 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:padding="3dp" />
+            android:padding="6dp" />
     </HorizontalScrollView>
 
     <ProgressBar
         android:id="@+id/pageProgress"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
-        android:layout_height="3dp"
+        android:layout_height="2dp"
         android:max="100"
+        android:progressTint="@color/brand"
+        android:progressBackgroundTint="@android:color/transparent"
         android:visibility="gone" />
 
     <FrameLayout
@@ -109,30 +126,32 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <!-- 隐藏收集页 WebView 容器：历史课件批量导入时脚本会 GM_openInTab 打开收集页 -->
+        <!-- 隐藏收集页 WebView 容器 -->
         <FrameLayout
             android:id="@+id/collectContainer"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:visibility="gone" />
 
-        <!-- 缩放控制条（菜单里「显示大小」唤出） -->
+        <!-- 缩放控制条 -->
         <LinearLayout
             android:id="@+id/zoomBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="#f7f9fc"
-            android:padding="6dp"
+            android:background="@drawable/bg_zoombar"
+            android:padding="10dp"
             android:layout_gravity="bottom"
+            android:elevation="8dp"
             android:visibility="gone">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="显示大小"
+                android:text="页面缩放"
                 android:textSize="12sp"
+                android:textColor="@color/text_primary"
                 android:paddingEnd="8dp" />
 
             <SeekBar
@@ -140,7 +159,7 @@
                 android:layout_width="0dp"
                 android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:max="150"
+                android:max="50"
                 android:progress="50" />
 
             <TextView
@@ -149,6 +168,7 @@
                 android:layout_height="wrap_content"
                 android:text="100%"
                 android:textSize="12sp"
+                android:textColor="@color/brand"
                 android:gravity="center" />
 
             <Button

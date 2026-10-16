@@ -1,5 +1,9 @@
 <resources>
-    <style name="Theme.YuketangStudio" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="Theme.YuketangStudio" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand</item>
+        <item name="colorPrimaryVariant">@color/brand_dark</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSurface">@color/toolbar_bg</item>
         <item name="android:statusBarColor">@android:color/white</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>

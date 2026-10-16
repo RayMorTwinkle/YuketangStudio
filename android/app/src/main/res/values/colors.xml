@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#1D63DF</color>
+    <color name="brand_dark">#154DB3</color>
+    <color name="toolbar_bg">#FFFFFF</color>
+    <color name="tabstrip_bg">#F4F6FA</color>
+    <color name="chip_bg">#FFFFFFFF</color>
+    <color name="chip_stroke">#D8DEE9</color>
+    <color name="chip_active_bg">#EAF1FE</color>
+    <color name="chip_active_stroke">#1D63DF</color>
+    <color name="text_primary">#1A2233</color>
+    <color name="text_secondary">#66718A</color>
+    <color name="divider">#E5E9F0</color>
+    <color name="zoombar_bg">#F4F6FA</color>
+</resources>
