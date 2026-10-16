@@ -30,3 +30,10 @@ ykt-helper/scripts/gen-devmode.js
 # 含解锁码的端到端测试：不入库
 ykt-helper/scripts/test-devmode.mjs
 scripts/dev-password.txt
+
+# Android 构建产物（本机路径+缓存，不跟踪）
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/app/release/

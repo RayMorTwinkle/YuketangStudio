@@ -175,11 +175,11 @@ class YktBridge(private val activity: MainActivity) {
                 val bytes = (if (code in 200..299) conn.inputStream else conn.errorStream)?.readBytes() ?: ByteArray(0)
                 val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
                 val ok = code in 200..299
-                activity.evalOnCollectAndMain(
+                activity.evalOnAll(
                     "window['$callbackId']($ok,$code,${JSONObject.quote(b64)},${JSONObject.quote("")})"
                 )
             } catch (e: Exception) {
-                activity.evalOnCollectAndMain(
+                activity.evalOnAll(
                     "window['$callbackId'](false,0,null,${JSONObject.quote(e.message ?: "error")})"
                 )
             } finally {
