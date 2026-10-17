@@ -6,7 +6,7 @@ import { ui } from '../ui-api.js';
 import { fetchAsDataURL } from '../../core/env.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { repo } from '../../state/repo.js';
-import { mdToHtml, renderRich, getOverride, warmupRichAssets } from './ai.js';
+import { mdToHtml, getOverride, warmupRichAssets, StreamRenderer } from './ai.js';
 import { escapeHtml } from '../../core/dom.js';
 import { resolveCurrentSlideImage, slideImageUrl } from '../slide-image.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT } from '../../core/types.js';
@@ -354,6 +354,7 @@ async function sendCurrent({ retryText = null } = {}) {
     // AI 气泡（流式）
     const aiBubble = addBubble('ai', '<em>思考中…</em>');
     const acc = { content: '', reasoning: '' };
+    const renderer = new StreamRenderer();           // 封板/活跃区增量渲染：公式、mermaid 流中即渲染
     let raf = 0;
     let phase = 'waiting';          // waiting → thinking → answering
     const paint = () => {
@@ -369,7 +370,9 @@ async function sendCurrent({ retryText = null } = {}) {
           (acc.reasoning
             ? `<details ${thinking ? 'open' : ''}><summary>💭 思考过程${thinking ? '（进行中…）' : '（点击展开）'}</summary><div class="reasoning-body"></div></details>`
             : '')
-          + (acc.content ? mdToHtml(acc.content) : (thinking ? '' : '<em>…</em>'));
+          + '<div class="ykt-sr-content"></div>';
+        renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
+        renderer.update(acc.content, thinking ? '' : '<em>…</em>');
         const rBody = aiBubble.querySelector('.reasoning-body');
         if (rBody) { rBody.textContent = acc.reasoning; rBody.scrollTop = rBody.scrollHeight; }
         const $log = $sel('#ykt-chat-log');
@@ -395,8 +398,10 @@ async function sendCurrent({ retryText = null } = {}) {
     if (raf) { cancelAnimationFrame(raf); raf = 0; }   // 防止挂起的 paint 覆盖 renderRich 成果
     aiBubble.innerHTML =
       (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : '')
-      + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
-    renderRich(aiBubble);
+      + '<div class="ykt-sr-content"></div>';
+    renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
+    if (acc.content) await renderer.finish(acc.content);
+    else aiBubble.querySelector('.ykt-sr-content').innerHTML = '<span class="err">（空回复）</span>';
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {

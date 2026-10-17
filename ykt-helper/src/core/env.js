@@ -1,14 +1,19 @@
 // src/core/env.js
-// 离线内嵌依赖（?raw 打进 dist）：jsdelivr/cdnjs 断连时脚本仍能工作
-import SRC_KATEX from '../vendor/katex.min.js.txt';
-import SRC_KATEX_AUTO from '../vendor/katex-auto-render.min.js.txt';
-import SRC_MARKED from '../vendor/marked.min.js.txt';
-import SRC_PURIFY from '../vendor/purify.min.js.txt';
-import SRC_MERMAID from '../vendor/mermaid.min.js.txt';
-import SRC_JSPDF from '../vendor/jspdf.umd.min.js.txt';
-import SRC_H2C from '../vendor/html2canvas.min.js.txt';
-import CSS_KATEX from '../vendor/katex.inline.css.txt';
-import CSS_FA from '../vendor/fontawesome.inline.css.txt';
+// 离线内嵌依赖（.txt 经 rollup string plugin 以字符串打进 dist）：jsdelivr/cdnjs 断连时脚本仍能工作。
+// 一律动态 import()——node 端 npm test 直接跑源码不认识 .txt 扩展，静态 import 会炸；
+// 必须用字面量路径（import(变量) rollup 解析不了会原样保留导致运行时爆炸）；
+// rollup inlineDynamicImports 会把字面量动态 import 同步打进 bundle，不产生额外请求。
+const VENDOR = {
+  katex:      () => import('../vendor/katex.min.js.txt').then(m => m.default),
+  katexAuto:  () => import('../vendor/katex-auto-render.min.js.txt').then(m => m.default),
+  marked:     () => import('../vendor/marked.min.js.txt').then(m => m.default),
+  purify:     () => import('../vendor/purify.min.js.txt').then(m => m.default),
+  mermaid:    () => import('../vendor/mermaid.min.js.txt').then(m => m.default),
+  jspdf:      () => import('../vendor/jspdf.umd.min.js.txt').then(m => m.default),
+  h2c:        () => import('../vendor/html2canvas.min.js.txt').then(m => m.default),
+  cssKatex:   () => import('../vendor/katex.inline.css.txt').then(m => m.default),
+  cssFA:      () => import('../vendor/fontawesome.inline.css.txt').then(m => m.default),
+};
 export const gm = {
   notify(opt) {
     if (typeof window.GM_notification === 'function') window.GM_notification(opt);
@@ -56,14 +61,16 @@ function injectInlineScript(src, globalCheck) {
   } catch { return false; }
 }
 
-/** 离线优先加载：先试内联注入（不走网络），CSP 拦时退回 CDN script src */
+/** 离线优先加载：先试内联注入（不走网络），CSP 拦时退回 CDN script src。
+ *  inlineSrc 可以是字符串或 async 加载函数（vendor .txt 走动态 import）。 */
 async function ensureLib(globalName, check, inlineSrc, cdnUrl) {
   const w = gm.uw || window;
   if (check(w)) return w[globalName];
-  // 内联：U街库同步执行，成则立即返回
-  if (inlineSrc && injectInlineScript(inlineSrc, check)) {
-    return w[globalName];
-  }
+  // 内联：UMD 库同步执行，成则立即返回
+  try {
+    const src = typeof inlineSrc === 'function' ? await inlineSrc() : inlineSrc;
+    if (src && injectInlineScript(src, check)) return w[globalName];
+  } catch { /* vendor 缺失/注入失败 → 走 CDN 兜底 */ }
   // CSP 拦内联 → 退回 CDN
   await loadScriptOnce(cdnUrl);
   if (!check(w)) throw new Error(`${globalName} 未正确加载`);
@@ -111,7 +118,7 @@ function hostOf(url) {
 }
 
 export async function ensureHtml2Canvas() {
-  const h = await ensureLib('html2canvas', w => typeof w.html2canvas === 'function' || typeof w.html2canvas?.default === 'function', SRC_H2C, 'https://html2canvas.hertzen.com/dist/html2canvas.min.js');
+  const h = await ensureLib('html2canvas', w => typeof w.html2canvas === 'function' || typeof w.html2canvas?.default === 'function', VENDOR.h2c, 'https://html2canvas.hertzen.com/dist/html2canvas.min.js');
   return h?.default || h;
 }
 
@@ -120,7 +127,7 @@ export async function ensureJsPDF() {
   const pick = () => (window.jspdf?.jsPDF ? window.jspdf : (gm.uw?.jspdf?.jsPDF ? gm.uw.jspdf : null));
   const ready = pick();
   if (ready) return ready;
-  await ensureLib('jspdf', w => !!w.jspdf?.jsPDF, SRC_JSPDF, 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+  await ensureLib('jspdf', w => !!w.jspdf?.jsPDF, VENDOR.jspdf, 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
   const after = pick();
   if (!after) throw new Error('jsPDF 未加载成功');
   return after;
@@ -128,7 +135,7 @@ export async function ensureJsPDF() {
 
 /** mermaid 按需加载（AI 回复里出现 ```mermaid 块时才拉取） */
 export async function ensureMermaid() {
-  const m = await ensureLib('mermaid', w => !!w.mermaid?.render, SRC_MERMAID, 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js');
+  const m = await ensureLib('mermaid', w => !!w.mermaid?.render, VENDOR.mermaid, 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js');
   try { m.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' }); } catch {}
   return m;
 }
@@ -139,7 +146,7 @@ export async function ensureKaTeX() {
   if (w.katex?.renderToString) return w.katex;
   // css：GM_addStyle 走扩展通道（可绕页面 CSP），字体已 data-URI 内嵌；
   // 同时补 CDN <link>（壳内会本地回源）——内联 style 被 CSP 静默拦时仍可用
-  try { gm.addStyle(CSS_KATEX); } catch {}
+  try { gm.addStyle(await VENDOR.cssKatex()); } catch {}
   try {
     if (!document.querySelector('link[data-ykt-katex]')) {
       const link = document.createElement('link');
@@ -148,7 +155,7 @@ export async function ensureKaTeX() {
       (document.head || document.documentElement).appendChild(link);
     }
   } catch {}
-  await ensureLib('katex', x => !!x.katex?.renderToString, SRC_KATEX, 'https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js');
+  await ensureLib('katex', x => !!x.katex?.renderToString, VENDOR.katex, 'https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js');
   const k = w.katex;
   if (!k?.renderToString) throw new Error('KaTeX 未正确加载');
   return k;
@@ -158,7 +165,7 @@ export async function ensureKaTeX() {
 export async function ensureMarked() {
   const w = gm.uw || window;
   if (w.marked?.parse) return w.marked;
-  await ensureLib('marked', x => !!x.marked?.parse, SRC_MARKED, 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js');
+  await ensureLib('marked', x => !!x.marked?.parse, VENDOR.marked, 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js');
   return w.marked;
 }
 
@@ -166,7 +173,7 @@ export async function ensureMarked() {
 export async function ensureDOMPurify() {
   const w = gm.uw || window;
   if (w.DOMPurify?.sanitize) return w.DOMPurify;
-  await ensureLib('DOMPurify', x => !!x.DOMPurify?.sanitize, SRC_PURIFY, 'https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js');
+  await ensureLib('DOMPurify', x => !!x.DOMPurify?.sanitize, VENDOR.purify, 'https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js');
   return w.DOMPurify;
 }
 
@@ -182,7 +189,7 @@ export function ensureFontAwesome() {
   if (faDone) return;
   faDone = true;
   if ([...document.styleSheets].some(s => s.href?.includes('font-awesome'))) return;
-  try { gm.addStyle(CSS_FA); } catch {}                          // GM_addStyle or DOM <style> fallback
+  VENDOR.cssFA().then(css => { try { gm.addStyle(css); } catch {} }).catch(() => {});
   const href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
   const link = document.createElement('link');
   link.rel = 'stylesheet'; link.dataset.yktFa = '1'; link.href = href;

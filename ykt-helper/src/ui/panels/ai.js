@@ -49,7 +49,7 @@ function ensureMathJax() {
  *  typeset 前把文本节点里的 $...$ 转成 \(...\)：
  *  pandoc 式规则——开 $ 前不能是 \、后紧跟非空白；闭 $ 前非空白、后不跟数字；内部不含换行/$。
  *  只处理文本节点，跳过代码/公式容器，幂等（已 typeset 的 mjx-container 不再扫）。 */
-const MATH_SKIP_SEL = 'pre, code, script, style, textarea, mjx-container, .ykt-mermaid, .ykt-md-code, .ykt-mermaid-render';
+const MATH_SKIP_SEL = 'pre, code, script, style, textarea, mjx-container, .katex, .ykt-mermaid, .ykt-md-code, .ykt-mermaid-render';
 const DOLLAR_MATH_RE = /(?<!\\)\$((?!\s)[^\n$]*?[^\s$])\$(?!\d)/g;
 function dollarToParen(el) {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
@@ -73,7 +73,6 @@ function dollarToParen(el) {
 async function typesetWithKaTeX(el) {
   try {
     const katex = await ensureKaTeX();
-    const w = gm.uw || window;
     dollarToParen(el);   // 先把 $...$ 统一成 \(...\)
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
       acceptNode(n) {
@@ -449,6 +448,7 @@ async function sendCurrent({ auto = false, retryText = null } = {}) {
     // AI 气泡（流式，思考中自动展开 → 正文自动折叠）
     const aiBubble = addBubble('ai', '<em>思考中…</em>');
     const acc = { content: '', reasoning: '' };
+    const renderer = new StreamRenderer();           // 封板/活跃区增量渲染：公式、mermaid 流中即渲染
     let raf = 0;
     let phase = 'waiting';
     const paint = () => {
@@ -462,7 +462,9 @@ async function sendCurrent({ auto = false, retryText = null } = {}) {
           (acc.reasoning
             ? `<details ${thinking ? 'open' : ''}><summary>💭 思考过程${thinking ? '（进行中…）' : '（点击展开）'}</summary><div class="reasoning-body"></div></details>`
             : '')
-          + (acc.content ? mdToHtml(acc.content) : (thinking ? '' : '<em>…</em>'));
+          + '<div class="ykt-sr-content"></div>';
+        renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
+        renderer.update(acc.content, thinking ? '' : '<em>…</em>');
         const rBody = aiBubble.querySelector('.reasoning-body');
         if (rBody) { rBody.textContent = acc.reasoning; rBody.scrollTop = rBody.scrollHeight; }
         const $log = $sel('#ykt-ai-log');
@@ -487,8 +489,10 @@ async function sendCurrent({ auto = false, retryText = null } = {}) {
     if (raf) { cancelAnimationFrame(raf); raf = 0; }   // 防止挂起的 paint 覆盖 renderRich 成果
     aiBubble.innerHTML =
       (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : '')
-      + (acc.content ? mdToHtml(acc.content) : '<span class="err">（空回复）</span>');
-    renderRich(aiBubble);
+      + '<div class="ykt-sr-content"></div>';
+    renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
+    if (acc.content) await renderer.finish(acc.content);
+    else aiBubble.querySelector('.ykt-sr-content').innerHTML = '<span class="err">（空回复）</span>';
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {
@@ -551,7 +555,7 @@ const getMarked = () => (gm.uw || window).marked || window.marked;
 /** marked 产物进 innerHTML 前的清洗：优先 DOMPurify（已预热则同步可用），否则 sanitizeHtml */
 function sanitizeFinal(md) {
   const purify = (gm.uw || window).DOMPurify || window.DOMPurify;
-  if (purify?.sanitize) return purify.sanitize(md, { ADD_ATTR: ['target', 'data-raw'] });
+  if (purify?.sanitize) return purify.sanitize(md, { ADD_ATTR: ['target', 'data-raw', 'data-raw-b64'] });
   return sanitizeHtml(md);
 }
 
@@ -606,7 +610,19 @@ export function mdToHtml(mdRaw = '') {
     mathSpans.push(m);
     return `\uE000M${mathSpans.length - 1}\uE001`;
   });
-  const restoreMath = (s) => String(s).replace(/\uE000M(\d+)\uE001/g, (_, i) => mathSpans[Number(i)] ?? '');
+  // KaTeX 已就绪 → 占位符直接渲染成 <span class="katex">（流式期间公式即时出图）；
+  // 未加载/渲染失败 → 还原裸文本 \(...\)，留给流末 MathJax/KaTeX 扫尾接管
+  const katexReady = ((gm.uw || window).katex || window.katex)?.renderToString;
+  const restoreMath = (s, render = false) => String(s).replace(/\uE000M(\d+)\uE001/g, (_, i) => {
+    const raw2 = mathSpans[Number(i)] ?? '';
+    if (!render || !katexReady) return raw2;
+    const m = /^\\\[([\s\S]*?)\\\]$/.exec(raw2);
+    const display = !!m;
+    const src = display ? m[1] : (/^\\\(([\s\S]*?)\\\)$/.exec(raw2) || [])[1] ?? '';
+    try {
+      return katexReady(src, { displayMode: display, throwOnError: true });
+    } catch { return raw2; }
+  });
   let md;
 
   const marked = getMarked();
@@ -651,15 +667,17 @@ export function mdToHtml(mdRaw = '') {
     const b = blocks[Number(i)];
     if (!b) return '';
     const looksMermaid = b.lang === 'mermaid' || (!b.lang && MERMAID_START_RE.test(b.code));
-    if (looksMermaid) return `<div class="ykt-mermaid" data-raw="${escapeHtml(b.code).replace(/"/g, '&quot;')}"></div>`;
+    // data-raw 存 base64：mermaid 源码里的 --> 会被 HTML parser 当注释结束符吃掉属性，
+    // <svg>/<div> 里的 < > " 同理——b64 全程安全（不含这些字符）
+    if (looksMermaid) return `<div class="ykt-mermaid" data-raw-b64="${btoa(unescape(encodeURIComponent(b.code)))}"></div>`;
     if (b.lang === 'svg' || b.lang === 'html') {
-      return `<div class="ykt-embed" data-raw="${escapeHtml(b.code).replace(/"/g, '&quot;')}"></div>`;
+      return `<div class="ykt-embed" data-raw-b64="${btoa(unescape(encodeURIComponent(b.code)))}"></div>`;
     }
     return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ''}>${escapeHtml(restoreMath(b.code))}</code></pre>`;
   });
 
-  // 还原公式占位符 → 原始 \(...\)/\[...\] 文本节点，交给 typesetWithKaTeX/MathJax
-  md = restoreMath(md);
+  // 还原公式占位符：KaTeX 可用则直接渲染成 HTML（流式即时出图），否则还原裸文本给流末 typeset
+  md = restoreMath(md, true);
 
   // marked 透传 markdown 里的原始 HTML——模型输出可能含危险标签，innerHTML 前必须清洗
   if (marked?.parse) return sanitizeFinal(md);
@@ -690,7 +708,7 @@ function rescueLooseMermaid(el) {
     if (MERMAID_LOOSE_RE.test(text) && text.split('\n').length >= 2) {
       const div = document.createElement('div');
       div.className = 'ykt-mermaid';
-      div.setAttribute('data-raw', text);
+      div.setAttribute('data-raw-b64', btoa(unescape(encodeURIComponent(text))));
       p.replaceWith(div);
     }
   }
@@ -710,12 +728,17 @@ export async function renderRich(el) {
       if (!['mermaid', 'html', 'svg'].includes(lang)) continue;
       const div = document.createElement('div');
       div.className = lang === 'mermaid' ? 'ykt-mermaid' : 'ykt-embed';
-      div.setAttribute('data-raw', codeEl.textContent || '');
+      div.setAttribute('data-raw-b64', btoa(unescape(encodeURIComponent(codeEl.textContent || ''))));
       codeEl.parentElement.replaceWith(div);
     }
     rescueLooseMermaid(el);
     // 1) mermaid → SVG：占位符先显示加载态，渲染完成/失败都有明确反馈（不再是空白等干等）
-    const mermaidEls = [...el.querySelectorAll('.ykt-mermaid[data-raw]')];
+    const decodeRaw = (node) => {
+      const b64 = node.getAttribute('data-raw-b64');
+      if (b64) try { return decodeURIComponent(escape(atob(b64))); } catch {}
+      return node.getAttribute('data-raw') || '';
+    };
+    const mermaidEls = [...el.querySelectorAll('.ykt-mermaid[data-raw-b64], .ykt-mermaid[data-raw]')];
     if (mermaidEls.length) {
       for (const node of mermaidEls) {
         node.innerHTML = '<div class="ykt-mermaid-loading" style="padding:14px 10px;color:#94a3b8;font-size:12px;text-align:center;background:#f8fafc;border-radius:6px"><i class="fas fa-circle-notch fa-spin"></i> 正在渲染图表…</div>';
@@ -724,7 +747,7 @@ export async function renderRich(el) {
         const mermaid = await ensureMermaid();
         for (const node of mermaidEls) {
           // AI 偶尔在 mermaid 源码里混入 <p>/<br/> 等标签导致解析失败——渲染前剥掉
-          const src = stripHtmlWrappers(node.getAttribute('data-raw') || '');
+          const src = stripHtmlWrappers(decodeRaw(node));
           try {
             // 渲染超时兜底：卡住 15s 不再干等
             const { svg } = await Promise.race([
@@ -756,15 +779,15 @@ export async function renderRich(el) {
           pre.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:6px 8px;background:#fef2f2;border-radius:4px 4px 0 0">⚠️ Mermaid 库加载失败（CDN 不可达）</div>`;
           const code = document.createElement('div');
           code.style.cssText = 'padding:8px;white-space:pre-wrap;font-size:12px;color:#475569;';
-          code.textContent = node.getAttribute('data-raw') || '';
+          code.textContent = decodeRaw(node);
           pre.appendChild(code);
           node.replaceWith(pre);
         });
       }
     }
     // 2) svg/html 嵌入 → DOMPurify 清洗后渲染
-    for (const node of [...el.querySelectorAll('.ykt-embed[data-raw]')]) {
-      const rawHtml = node.getAttribute('data-raw') || '';
+    for (const node of [...el.querySelectorAll('.ykt-embed[data-raw-b64], .ykt-embed[data-raw]')]) {
+      const rawHtml = decodeRaw(node);
       try {
         const purify = await ensureDOMPurify();
         node.innerHTML = purify.sanitize(rawHtml, { ADD_ATTR: ['target'] });
@@ -772,6 +795,7 @@ export async function renderRich(el) {
         node.innerHTML = sanitizeHtml(rawHtml);
       }
       node.removeAttribute('data-raw');
+      node.removeAttribute('data-raw-b64');
     }
     // 3) 公式渲染：MathJax v3（@require）→ MathJax v2（页面自带）→ KaTeX（壳内 CDN 本地回源）
     if (ui?.config?.iftex) {
@@ -789,8 +813,90 @@ export async function renderRich(el) {
   }
 }
 
-/** 预热富媒体依赖（面板挂载时后台拉 CDN） */
+/** 预热富媒体依赖（面板挂载时后台加载）：marked/DOMPurify 给 mdToHtml，
+ *  KaTeX 给流式期间的公式即时渲染（越早就绪，首条公式越早出图） */
 export function warmupRichAssets() {
   ensureMarked().then(m => { try { m.setOptions({ breaks: true, gfm: true }); } catch {} }).catch(e => log.warn('[Rich] marked 预热失败', e?.message));
   ensureDOMPurify().catch(e => log.warn('[Rich] DOMPurify 预热失败', e?.message));
+  ensureKaTeX().catch(e => log.warn('[Rich] KaTeX 预热失败（流末兜底仍可）', e?.message));
+}
+
+// ===== 流式增量渲染：封板区 + 活跃区 =====
+// 封板边界 = 不在代码围栏、不在公式定界内，且落在 \n\n（段落界）/围栏闭合行/闭合 display math 之后。
+// 围栏和 \(...\)/\[...\]/$$...$$ 之外的裸 $...$ 不跟踪（价格误伤风险，归流末 dollarToParen 处理）。
+function findSafeBoundary(text, from = 0) {
+  const n = text.length;
+  let i = from, inFence = false, inParen = false, inBrack = false, inDbl = false, safe = -1;
+  while (i < n) {
+    const two = text.substr(i, 2);
+    if (inFence) {
+      if (text.startsWith('```', i) && text[i - 1] === '\n') {
+        inFence = false;
+        const e = text.indexOf('\n', i + 3);
+        i = (e < 0 ? n : e + 1);
+        safe = i;                            // 围栏闭合行之后是安全点
+        continue;
+      }
+      i++; continue;
+    }
+    if (inParen) { if (two === '\\)') { inParen = false; i += 2; } else i++; continue; }
+    if (inBrack) { if (two === '\\]') { inBrack = false; i += 2; safe = i; } else i++; continue; }
+    if (inDbl)   { if (two === '$$')  { inDbl = false;   i += 2; safe = i; } else i++; continue; }
+    if (text.startsWith('```', i) && (i === 0 || text[i - 1] === '\n')) { inFence = true; i += 3; continue; }
+    if (two === '\\(') { inParen = true; i += 2; continue; }
+    if (two === '\\[') { inBrack = true; i += 2; continue; }
+    if (two === '$$')  { inDbl = true;   i += 2; continue; }
+    if (text[i] === '\n' && text[i + 1] === '\n') { safe = i + 2; i += 2; continue; }
+    i++;
+  }
+  return safe;
+}
+
+/**
+ * 流式增量渲染器：把输出切成「已封板」（完整段落/闭合代码块/闭合 display 公式——就地 renderRich）
+ * 和「活跃区」（正在输入的尾巴——每帧 mdToHtml 重写，公式占位符走 KaTeX 即时渲染）。
+ * 用法：renderer.attach(slot) → paint 里 renderer.update(text) → 流末 renderer.finish(text)。
+ * paint 每次重建 slot（innerHTML 整段替换），attach 会把 sealed/live 子树搬回新 slot。
+ */
+export class StreamRenderer {
+  attach(slot) {
+    if (!slot) return;
+    if (this.sealed && this.slot === slot && this.sealed.isConnected) return;
+    this.slot = slot;
+    if (!this.sealed?.isConnected) {
+      this.sealed = document.createElement('div');
+      this.sealed.className = 'ykt-sr-sealed';
+      this.live = document.createElement('div');
+      this.live.className = 'ykt-sr-live';
+      slot.textContent = '';
+      slot.append(this.sealed, this.live);
+      this.sealedSoFar = this.sealedSoFar || 0;
+    }
+  }
+  /** @param {string} text 全量已累积文本 @param {string} emptyHint 空内容时 live 区的提示 */
+  update(text, emptyHint = '') {
+    if (!this.slot) return;
+    const t = String(text ?? '');
+    const b = findSafeBoundary(t, this.sealedSoFar || 0);
+    if (b > (this.sealedSoFar || 0)) {
+      const frag = document.createElement('div');
+      frag.innerHTML = mdToHtml(t.slice(this.sealedSoFar || 0, b));
+      this.sealed.appendChild(frag);
+      renderRich(frag);                      // 异步：mermaid/embed/剩余公式就地渲染
+      this.sealedSoFar = b;
+    }
+    const tail = t.slice(this.sealedSoFar || 0);
+    this.live.innerHTML = tail ? mdToHtml(tail) : emptyHint;
+  }
+  /** 流末收尾：尾部并入封板区做一次 renderRich（跨边界结构兜底），live 清空 */
+  async finish(text) {
+    if (!this.slot) { return; }
+    const t = String(text ?? '');
+    const frag = document.createElement('div');
+    frag.innerHTML = mdToHtml(t.slice(this.sealedSoFar || 0));
+    this.sealed.appendChild(frag);
+    this.live.innerHTML = '';
+    this.sealedSoFar = t.length;
+    await renderRich(frag);
+  }
 }

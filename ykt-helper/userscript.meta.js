@@ -57,6 +57,8 @@ export const meta = `
 // @connect      api.longcat.chat
 // @connect      api.agnes-ai.cn
 // @connect      developer.amd.com.cn
+// @connect      api.raymor.top
+// @connect      app.raymor.top
 // @connect      yuketang.cn
 // @connect      *.yuketang.cn
 // @connect      changjiang-private-qn.yuketang.cn

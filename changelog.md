@@ -1,5 +1,14 @@
 # 更新日志
 
+0.5.7:
+
+- 🚀 **流式增量渲染**：新增 `StreamRenderer`（封板区 + 活跃区），`findSafeBoundary` 在「不在围栏/公式内 + `\n\n`/围栏闭合/display math 闭合」处切板，已封板内容就地 `renderRich`——mermaid 图、公式、embed 在流式输出**过程中**就渲染，不再堆到流末
+- 🚀 **公式即时渲染**：`mdToHtml` 的 `\uE000M` 占位符还原升级为 KaTeX 同步 `renderToString`（已加载则直接出 `<span class="katex">`），未加载/失败仍还原裸文本留给 MathJax 兜底；`warmupRichAssets` 预热 KaTeX 让面板打开即就绪
+- 🔧 **mermaid/embed `data-raw` 改 base64**：源码里的 `-->` 会被 HTML parser 当注释结束符吃掉整个属性（DOMPurify `ADD_ATTR` 也救不回来），改用 `data-raw-b64` 存储
+- 🔧 **`@connect api.raymor.top` + `app.raymor.top`**：`@connect *` 在 Tampermonkey 5.5 对云端验码域名不生效（pending 不报错），显式补白名单
+- 🔧 **`env.js` vendor 改动态 `import()`**：node `npm test` 裸跑不认识 `.txt` 扩展（rollup string plugin 只在构建时处理），改成字面量动态 import 后 `npm test` 恢复通过（12/12）
+- 清理：删 `scripts/gen-devmode.js`/`test-devmode.mjs`（云端验码方案后废弃）、`.gitignore` 对应条目、`package.json` `gen:devmode` 脚本
+
 0.5.6:
 
 - 🔧 **@connect 全放开**：`GM_xmlhttpRequest` 域名白名单漏了 `developer.amd.com.cn`（AMD Qwen 解锁码被拒连）。加 `developer.amd.com.cn` + `@connect *`（AI 端点用户自定义，逐一枚举追不上）

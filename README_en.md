@@ -348,7 +348,7 @@ Mobile lesson/live pages don't expose the XHR deck; `syncMobileSlidesIntoRepo()`
 
 **Log levels (`core/log.js`).** Only `warn` / `error` are emitted by default; run `localStorage.setItem('yksDebug','1')` in the console and refresh for full output (`log.enable()/disable()` toggles at runtime too).
 
-**Build & quality gate.** `npm run check` = ESLint (flat config) + Rollup build + regression tests; the version has a single source (`package.json` → `userscript.meta.js` and the artifact filename). The regression tests include PDF dedup (`scripts/test-pdf-dedup.mjs`) and lesson-list pagination (`scripts/test-activities-paging.mjs`); the developer-mode end-to-end case `scripts/test-devmode.mjs` is not committed (it contains an unlock code), so `npm test` may fail on a fresh clone because that file is missing (**to be confirmed**; the other cases can be run individually). A pre-build check verifies the generated `src/core/devmode-blob.js` exists and prints `node scripts/gen-devmode.js` guidance if not.
+**Build & quality gate.** `npm run check` = ESLint (flat config) + Rollup build + regression tests; the version has a single source (`package.json` → `userscript.meta.js` and the artifact filename). The regression tests include PDF dedup (`scripts/test-pdf-dedup.mjs`) and lesson-list pagination (`scripts/test-activities-paging.mjs`). Dev-mode unlocking moved to a server-side code verify + LLM proxy on 2026-10-17 (no local blob, no `gen-devmode`); the old `gen-devmode.js`/`test-devmode.mjs` and `devmode-blob.js` have been removed.
 
 ---
 

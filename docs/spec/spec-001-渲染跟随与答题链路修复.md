@@ -169,12 +169,12 @@
 
 - 删：kimi.js/deepseek.js/gemini.js/openrouter.js（无 import）、`startAutoAnswerLoop` 双定义+`tickAutoAnswer`、`ensureFontAwesome`（index.js 有内联）、`isNarrowDevice`、死按钮查询（ykt-btn-ai/pres/help）、`types.js` 顶层死配置、`.slide-thumb.selected` 死样式、死 CSS 规则（.ykt-problem-list/.text-status/.ykt-custom-prompt/.ai-question 等/.ykt-panel.dark）、ai.js:307 空块、ai.js:88-90 重复事件监听、actions.js:477 无效 replaceState、index.js BOM、rollup 注释勘误。
 - `escapeHtml` 三处重复 → 抽公共 util。
-- `npm test` 在干净检出缺 `test-devmode.mjs`（gitignore）→ 失败：**修法**：test 脚本对缺失文件 skip-on-missing。
+- ~~`npm test` 在干净检出缺 `test-devmode.mjs`（gitignore）→ 失败~~ **已解决（2026-10-17）**：本地加密 blob 方案废弃，`test-devmode.mjs`/`gen-devmode.js` 已随云端验码删除，`npm test` 只剩 `test-pdf-dedup` + `test-activities-paging`。
 - 测试断言/循环论证（#77 #78）：本期仅标注，不阻塞。
 
 ## 验证计划
 
-- `npm run check`（eslint + rollup build + 两个可离线测试；`test-devmode.mjs` 需要网络，缺失时 skip）
+- `npm run check`（eslint + rollup build + 两个可离线测试）
 - 手测重点：① PPT 对话发 markdown 表格/列表/HTML 片段；② 课堂页让老师翻页观察跟随与高亮；③ 自动作答超时不再卡死；④ 手动打开历史报告页不再触发收集。
 - dist 产物随源码重新构建（`npm run build`）。
 
