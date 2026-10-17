@@ -15,7 +15,6 @@ export default defineConfig([
     ignores: [
       'dist/**',
       'node_modules/**',
-      'src/core/devmode-blob.js',   // 自动生成的加密 blob，不参与 lint
     ],
   },
 

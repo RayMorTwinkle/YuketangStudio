@@ -17,18 +17,8 @@ const VERSION = pkg.version;
 /** 产物文件名（跟随 package.json 版本号） */
 const OUT_FILE = `dist/YuketangStudio-${VERSION}.user.js`;
 
-// ===== 构建前置检查：devmode-blob.js 是生成产物，不在 git 里（只提交 dist） =====
-// 缺失时给出明确指引，而不是让 rollup 抛晦涩的 "Could not resolve"
-const BLOB_PATH = join(__dirname, 'src', 'core', 'devmode-blob.js');
-if (!existsSync(BLOB_PATH)) {
-  throw new Error(
-    '\n\n❌ 缺少 src/core/devmode-blob.js（开发者模式的加密配置）\n' +
-    '   该文件由生成器产出，不随源码分发。请先执行：\n\n' +
-    '     node scripts/gen-devmode.js\n\n' +
-    '   首次使用请从模板创建（然后填入自己的密码与 LLM 配置）：\n\n' +
-    '     cp scripts/gen-devmode.example.js scripts/gen-devmode.js\n\n'
-  );
-}
+// devmode-blob.js 已废弃：2026-10-17 起本地加密 blob 全部删除，
+// 解锁码改为 svc 云端验证+代理（ServerX D031），构建无此依赖
 
 export default {
   input: 'src/index.js',
