@@ -7,6 +7,7 @@
 // 解锁后的配置仍缓存 localStorage（devmode.configs），可共存多个；
 // getDevConfig() 返回最后解锁的那个（兼容旧调用方）。
 import { storage } from './storage.js';
+import { gm } from './env.js';
 
 const UNLOCK_URL = 'https://api.raymor.top/yuketangstudio/unlock/verify';
 const CLOUD_BASE = 'https://api.raymor.top/yuketangstudio';
@@ -27,13 +28,23 @@ export async function unlockDevMode(password) {
 
 async function tryCloudUnlock(code) {
   try {
-    const r = await fetch(UNLOCK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+    // gm.xhr 而非 fetch：雨课堂页 → api.raymor.top 跨域，页面 fetch 受 CORS 拦截
+    //（svc 侧已放开 * 但 GM_xmlhttpRequest 路径最稳，@connect * 已声明）
+    const d = await new Promise((resolve, reject) => {
+      gm.xhr({
+        method: 'POST',
+        url: UNLOCK_URL,
+        headers: { 'Content-Type': 'application/json' },
+        data: JSON.stringify({ code }),
+        timeout: 10000,
+        onload: (r) => {
+          try { resolve(JSON.parse(r.responseText || '{}')); }
+          catch { reject(new Error('bad json')); }
+        },
+        onerror: reject,
+        ontimeout: reject,
+      });
     });
-    if (!r.ok) return null;
-    const d = await r.json();
     if (!d?.ok) return null;
     return {
       cfg: {

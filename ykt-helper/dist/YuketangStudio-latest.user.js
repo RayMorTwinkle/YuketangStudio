@@ -768,17 +768,30 @@
   }
   async function tryCloudUnlock(code) {
     try {
-      const r = await fetch(UNLOCK_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          code: code
-        })
+      // gm.xhr 而非 fetch：雨课堂页 → api.raymor.top 跨域，页面 fetch 受 CORS 拦截
+      //（svc 侧已放开 * 但 GM_xmlhttpRequest 路径最稳，@connect * 已声明）
+      const d = await new Promise((resolve, reject) => {
+        gm.xhr({
+          method: "POST",
+          url: UNLOCK_URL,
+          headers: {
+            "Content-Type": "application/json"
+          },
+          data: JSON.stringify({
+            code: code
+          }),
+          timeout: 1e4,
+          onload: r => {
+            try {
+              resolve(JSON.parse(r.responseText || "{}"));
+            } catch {
+              reject(new Error("bad json"));
+            }
+          },
+          onerror: reject,
+          ontimeout: reject
+        });
       });
-      if (!r.ok) return null;
-      const d = await r.json();
       if (!d?.ok) return null;
       return {
         cfg: {
