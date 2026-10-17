@@ -1,5 +1,13 @@
 # 更新日志
 
+0.5.2:
+
+- 🔧 **公式渲染三级兜底**：`ensureMathJax` 只认 v3 `typesetPromise`，但有的页面自带 MathJax v2（`Hub.Typeset`，`/m/v2`）或干脆没有 MathJax（`student-lesson-report`），公式一直是生文本。
+  - `getMathJax()` 依次查：window v3 → window v2 → `gm.uw` v3 → `gm.uw` v2
+  - v2 走 `Hub.Queue(['Typeset', Hub, el])`，`\(...\)` 默认启用
+  - 都没有时落 **KaTeX**（自含单文件，打进 `assets/cdn/katex/` 含 20 个 woff2 字体，经 `shouldInterceptRequest` 前缀映射本地回源），`typesetWithKaTeX` 逐文本节点渲染 `\(...\)`/`\[...\]`/`$...$`
+- 📦 Android：CDN_ASSETS 加 katex 前缀映射（css 里的相对字体路径也能回源）
+
 0.5.1:
 
 - 🔧 **历史课件 ch2 布局修复**：新版大纲页 slide 图是 `img[alt="ppt"]`（`yangtse-pri-ups/common_uploads`，无 `/slide/` 段），旧收集器只认 `/slide/` URL → 「未收集到任何 slide 图片」。`collectSlideUrls` 加 `img[alt="ppt"]` 兜底（按 DOM 顺序），`expectedPageCount` 已兼容 `（77页）` 计数；跳过新版大纲页的缩略图点击（点击会弹 lightbox 丢图）

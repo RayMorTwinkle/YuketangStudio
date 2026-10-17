@@ -338,13 +338,21 @@ class MainActivity : AppCompatActivity() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 val url = request.url
                 if (url.host == "cdn.jsdelivr.net") {
-                    val asset = CDN_ASSETS[url.path?.removePrefix("/")]
+                    val path = url.path?.removePrefix("/") ?: return null
+                    // KaTeX 前缀映射：css 里的 fonts/*.woff2 相对路径也要回源
+                    val asset = when {
+                        path.startsWith("npm/katex@0.16.21/dist/") ->
+                            "katex/" + path.removePrefix("npm/katex@0.16.21/dist/")
+                        else -> CDN_ASSETS[path]
+                    }
                     if (asset != null) {
+                        val mime = when {
+                            asset.endsWith(".woff2") -> "font/woff2"
+                            asset.endsWith(".css") -> "text/css"
+                            else -> "application/javascript"
+                        }
                         return try {
-                            WebResourceResponse(
-                                "application/javascript", "utf-8",
-                                assets.open("cdn/$asset"),
-                            )
+                            WebResourceResponse(mime, "utf-8", assets.open("cdn/$asset"))
                         } catch (e: Exception) {
                             Log.w(TAG, "CDN 本地回源失败: $asset", e); null
                         }

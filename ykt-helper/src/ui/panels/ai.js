@@ -11,7 +11,7 @@ import { repo } from '../../state/repo.js';
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { resolveCurrentSlideImage } from '../slide-image.js';
-import { ensureMermaid, ensureMarked, ensureDOMPurify, gm } from '../../core/env.js';
+import { ensureMermaid, ensureMarked, ensureDOMPurify, ensureKaTeX, gm } from '../../core/env.js';
 import { escapeHtml } from '../../core/dom.js';
 import { PROBLEM_TYPE_MAP, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
@@ -31,10 +31,17 @@ const systemPrompt = () => String(ui?.config?.systemPromptAI || '').trim() || DE
 
 const DEFAULT_ANALYZE_PROMPT = '请解答此页的题目：先给答案，再给简要解题过程。若页面不是题目页，请概述页面内容。';
 
+/** 取 MathJax：脚本注入的 v3 在沙箱 window；页面自带的 v2 在主世界 gm.uw */
+function getMathJax() {
+  return window.MathJax?.typesetPromise ? { v: 3, mj: window.MathJax }
+    : (window.MathJax?.Hub?.Typeset ? { v: 2, mj: window.MathJax }
+    : (gm.uw?.MathJax?.typesetPromise ? { v: 3, mj: gm.uw.MathJax }
+    : (gm.uw?.MathJax?.Hub?.Typeset ? { v: 2, mj: gm.uw.MathJax } : null)));
+}
+
 function ensureMathJax() {
-  const mj = window.MathJax;
-  const ok = !!(mj && mj.typesetPromise);
-  if (!ok) log.warn('[ai] MathJax 未就绪（未通过 @require 预置？）');
+  const ok = !!getMathJax();
+  if (!ok) log.warn('[ai] MathJax 未就绪（v3 未通过 @require 预置，v2 页面也没带？）');
   return Promise.resolve(ok);
 }
 
@@ -62,11 +69,63 @@ function dollarToParen(el) {
   }
 }
 
+/** KaTeX 兜底：MathJax 不在（壳内无 @require）时用它逐节点渲染 \(...\)/\[...\]/$...$ */
+async function typesetWithKaTeX(el) {
+  try {
+    const katex = await ensureKaTeX();
+    const w = gm.uw || window;
+    dollarToParen(el);   // 先把 $...$ 统一成 \(...\)
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        if (!n.nodeValue || !/[\\$]/.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+        if (n.parentElement?.closest(MATH_SKIP_SEL)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.nodeValue;
+      // 逐个替换 \(...\) 和 \[...\] 为 <span class="katex">…</span>
+      const frag = document.createDocumentFragment();
+      let last = 0, matched = false;
+      const re = /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g;
+      let m;
+      while ((m = re.exec(text))) {
+        matched = true;
+        frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const src = m[1] ?? m[2];
+        const display = m[2] != null;
+        const span = document.createElement('span');
+        try {
+          span.innerHTML = katex.renderToString(src, { displayMode: display, throwOnError: false });
+        } catch { span.textContent = m[0]; }
+        frag.appendChild(span);
+        last = m.index + m[0].length;
+      }
+      if (!matched) continue;
+      frag.appendChild(document.createTextNode(text.slice(last)));
+      node.parentNode.replaceChild(frag, node);
+    }
+    el.classList.add('tex-enabled');
+  } catch (e) {
+    log.warn('[ai] KaTeX 兜底渲染失败:', e?.message);
+  }
+}
+
 function typesetTexIn(el) {
-  const mj = window.MathJax;
-  if (!el || !mj || typeof mj.typesetPromise !== 'function') return Promise.resolve(false);
-  const ready = mj.startup && mj.startup.promise ? mj.startup.promise : Promise.resolve();
-  return ready.then(() => mj.typesetPromise([el]).then(() => true).catch(() => false));
+  const pick = getMathJax();
+  if (!el || !pick) return Promise.resolve(false);
+  if (pick.v === 3) {
+    const ready = pick.mj.startup?.promise || Promise.resolve();
+    return ready.then(() => pick.mj.typesetPromise([el]).then(() => true).catch(() => false));
+  }
+  // MathJax v2（页面自带）：Hub.Queue 排版，\(...\) 默认启用
+  return new Promise((resolve) => {
+    try {
+      pick.mj.Hub.Queue(['Typeset', pick.mj.Hub, el], function () { resolve(true); });
+    } catch { resolve(false); }
+  });
 }
 
 function $sel(sel) { return root.querySelector(sel); }
@@ -702,10 +761,16 @@ export async function renderRich(el) {
       }
       node.removeAttribute('data-raw');
     }
-    // 3) MathJax 公式（先把 $...$ 转成 \( \)，MathJax 默认不认单 $）
+    // 3) 公式渲染：MathJax v3（@require）→ MathJax v2（页面自带）→ KaTeX（壳内 CDN 本地回源）
     if (ui?.config?.iftex) {
       const ok = await ensureMathJax();
-      if (ok) { dollarToParen(el); el.classList.add('tex-enabled'); await typesetTexIn(el); }
+      if (ok) {
+        dollarToParen(el);
+        el.classList.add('tex-enabled');
+        await typesetTexIn(el);
+      } else {
+        await typesetWithKaTeX(el);
+      }
     }
   } catch (e) {
     log.warn('[Rich] renderRich 失败:', e);

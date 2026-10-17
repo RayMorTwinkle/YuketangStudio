@@ -104,6 +104,25 @@ export async function ensureMermaid() {
   return m;
 }
 
+/** KaTeX 按需加载（自含单文件，MathJax v3 拉不动时的公式渲染兜底） */
+export async function ensureKaTeX() {
+  const w = gm.uw || window;
+  if (w.katex?.renderToString) return w.katex;
+  await Promise.all([
+    loadScriptOnce('https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js'),
+    (() => {
+      if (w.document.querySelector('link[data-ykt-katex]')) return;
+      const link = w.document.createElement('link');
+      link.rel = 'stylesheet'; link.dataset.yktKatex = '1';
+      link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css';
+      (w.document.head || w.document.documentElement).appendChild(link);
+    })(),
+  ]);
+  const k = w.katex;
+  if (!k?.renderToString) throw new Error('KaTeX 未正确加载');
+  return k;
+}
+
 /** marked（专业 Markdown 解析）按需加载（v9：renderer.code(code, lang) 旧签名稳定） */
 export async function ensureMarked() {
   const w = gm.uw || window;
