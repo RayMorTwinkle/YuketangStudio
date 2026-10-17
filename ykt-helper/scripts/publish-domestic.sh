@@ -5,6 +5,10 @@
 # 前置：export AXOOO_API_KEY=<见 ServerX/敏感/axooo-pan.md>
 #       本机在 EasyTier 内（10.126.126.1 可达）
 # 用法：bash scripts/publish-domestic.sh [apk路径]
+#
+# 直链策略：POST /host 按 path 幂等注册 /f/<id>（永久），
+# yt-latest.json 写 https://dl.raymor.top/f/<id>；svc /dl/{kind} 302 到这里。
+# 每次重发版 path 不变 → /f/<id> 不变 → latest.json 里的 url 也不变。
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -15,21 +19,29 @@ JS="dist/YuketangStudio-${VER}.user.js"
 LATEST_JS="dist/YuketangStudio-latest.user.js"
 [ -f "$JS" ] || { echo "先 npm run build 产出 $JS"; exit 1; }
 
-up() {  # up <本地文件> <远端路径> → 打印 https://dl.raymor.top/f/<id>
+upload() {  # 覆盖式上传：先删同名（Cloudreve 不覆盖）再传
   local f="$1" path="$2"
-  curl -s -H "X-API-Key: $K" -F "file=@${f}" "${H}/upload?path=${path}&direct=1" \
-    | python3 -c 'import json,sys;d=json.load(sys.stdin);u=d.get("direct") or d.get("url") or "";print(u.replace("http://10.126.126.1:3005","https://dl.raymor.top") if "pan.axooo.cn" not in u else u)'
+  curl -s -X DELETE -H "X-API-Key: $K" "${H}/file?path=${path}" >/dev/null || true
+  curl -s --max-time 300 -H "X-API-Key: $K" -F "file=@${f}" "${H}/upload?path=${path}&direct=1" >/dev/null
+}
+dl_host() {  # path → https://dl.raymor.top/f/<id>（幂等，同 path 同 id）
+  curl -s -X POST -H "X-API-Key: $K" "${H}/host?path=$1" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin).get("data",{}); print("https://dl.raymor.top"+d.get("url","") if d.get("url") else "")'
 }
 
-echo "▸ 上传 latest.user.js"
-JS_URL=$(up "$LATEST_JS" "/apps/yuketangstudio/YuketangStudio-latest.user.js")
+REMOTE_JS="/apps/yuketangstudio/YuketangStudio-latest.user.js"
+echo "▸ 上传 $REMOTE_JS"
+upload "$LATEST_JS" "$REMOTE_JS"
+JS_URL=$(dl_host "$REMOTE_JS")
 echo "  $JS_URL"
 
 APK_URL=""
 if [ $# -ge 1 ] && [ -f "$1" ]; then
-  echo "▸ 上传 APK $1"
+  REMOTE_APK="/apps/yuketangstudio/YuketangStudio-${VER}.apk"
+  echo "▸ 上传 $REMOTE_APK"
   curl -s -X POST -H "X-API-Key: $K" "$H/mkdir?path=/apps/yuketangstudio" >/dev/null || true
-  APK_URL=$(up "$1" "/apps/yuketangstudio/YuketangStudio-${VER}.apk")
+  upload "$1" "$REMOTE_APK"
+  APK_URL=$(dl_host "$REMOTE_APK")
   echo "  $APK_URL"
 fi
 
@@ -43,3 +55,4 @@ print(json.dumps({"version":sys.argv[1],"userscript":sys.argv[2],"apk":sys.argv[
 PY
 scp /tmp/yt-latest.json SM:/root/app-configs/svc/data/yt-latest.json
 echo "✅ 已发布 v${VER}：latest.json → svc/data（https://api.raymor.top/yuketangstudio/latest）"
+echo "   官网下载按钮 https://api.raymor.top/yuketangstudio/dl/{userscript,apk} 已指向最新"
