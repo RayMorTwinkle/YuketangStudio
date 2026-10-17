@@ -1,10 +1,11 @@
 // src/core/devmode.js
-// 开发者模式：解锁内置的加密 LLM 配置
+// 开发者模式：解锁内置的加密 LLM 配置（多解锁码版）
 // 加密：AES-256-GCM，密钥由密码 PBKDF2 派生（与 scripts/gen-devmode.js 配套）
 // 校验：pwHash = SHA-256(PBKDF2 派生密钥原始字节) —— 校验也挂在慢哈希后，
 //       攻击者离线爆破每个候选密码都要跑完全部迭代
-// 解锁后配置缓存到 localStorage（同浏览器免重复输入）；换浏览器重新输密码即可
-import { DEV_BLOB } from './devmode-blob.js';
+// 解锁后所有已解配置缓存到 localStorage（devmode.configs），可共存多个；
+// getDevConfig() 返回最后解锁的那个（兼容旧调用方）。
+import { DEV_BLOBS } from './devmode-blob.js';
 import { storage } from './storage.js';
 
 const enc = new TextEncoder();
@@ -28,49 +29,68 @@ async function deriveBitsAndKey(password, saltBytes, iterations) {
 }
 
 /**
- * 用密码解锁内置配置。成功返回配置对象并缓存；失败抛错（不暴露原因细节）。
+ * 用解锁码解锁配置。遍历全部 blob 试解（hash 匹配 + GCM 解密双重验证）。
+ * 成功返回 { cfg, blobIndex } 并加入已解锁缓存；全部不匹配抛「解锁码错误」。
  * @param {string} password
- * @returns {Promise<Object>} 配置 { name, baseUrl, apiKey, model, visionModel, reasoningEffort }
+ * @returns {Promise<{cfg: Object, blobIndex: number}>}
  */
 export async function unlockDevMode(password) {
   const pw = String(password || '');
   if (!pw) throw new Error('请输入解锁码');
 
-  const { rawBits, key } = await deriveBitsAndKey(pw, b64ToU8(DEV_BLOB.saltB64), DEV_BLOB.iterations);
-  const hash = await sha256HexBytes(rawBits);
-  if (hash !== DEV_BLOB.pwHash) throw new Error('解锁码错误');
+  for (let i = 0; i < DEV_BLOBS.length; i++) {
+    const blob = DEV_BLOBS[i];
+    const { rawBits, key } = await deriveBitsAndKey(pw, b64ToU8(blob.saltB64), blob.iterations);
+    const hash = await sha256HexBytes(rawBits);
+    if (hash !== blob.pwHash) continue;   // 不是这个码，试下一个
 
-  let plain;
-  try {
-    plain = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: b64ToU8(DEV_BLOB.ivB64) },
-      key,
-      b64ToU8(DEV_BLOB.ctB64)
-    );
-  } catch {
-    throw new Error('解密失败（blob 与解锁码不匹配，请重新生成）');
+    let plain;
+    try {
+      plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: b64ToU8(blob.ivB64) },
+        key,
+        b64ToU8(blob.ctB64)
+      );
+    } catch {
+      continue;   // hash 撞了但解密失败（理论上不该发生），继续试
+    }
+
+    const cfg = JSON.parse(new TextDecoder().decode(plain));
+    addDevConfig(cfg, i);
+    return { cfg, blobIndex: i };
   }
-
-  const cfg = JSON.parse(new TextDecoder().decode(plain));
-  setDevUnlocked(cfg);
-  return cfg;
+  throw new Error('解锁码错误');
 }
 
-/** 解锁后的配置是否已缓存 */
-export function isDevUnlocked() {
-  return !!storage.get('devmode.config');
+/** 所有已解锁配置（数组，可为空） */
+export function getDevConfigs() {
+  const v = storage.get('devmode.configs');
+  return Array.isArray(v) ? v : [];
 }
 
-/** 获取解锁的配置（未解锁返回 null） */
+/** 最后解锁的配置（兼容旧调用方 agnes.js）；一个都没解返回 null */
 export function getDevConfig() {
-  return storage.get('devmode.config');
+  const all = getDevConfigs();
+  return all.length ? all[all.length - 1] : null;
 }
 
-function setDevUnlocked(cfg) {
-  storage.set('devmode.config', cfg);
+/** 解锁后的配置是否已缓存（至少一个） */
+export function isDevUnlocked() {
+  return getDevConfigs().length > 0;
 }
 
-/** 清除解锁状态（换配置/退出开发者模式用） */
+/** 追加一个已解锁配置（去重：同 baseUrl+apiKey 视为同一个） */
+function addDevConfig(cfg, blobIndex) {
+  const all = getDevConfigs();
+  const tag = `${cfg.baseUrl}|${cfg.apiKey}`;
+  const idx = all.findIndex(c => `${c.baseUrl}|${c.apiKey}` === tag);
+  const entry = { ...cfg, _blobIndex: blobIndex };
+  if (idx >= 0) all[idx] = entry; else all.push(entry);
+  storage.set('devmode.configs', all);
+}
+
+/** 清除全部解锁状态 */
 export function clearDevUnlock() {
-  storage.remove('devmode.config');
+  storage.remove('devmode.configs');
+  storage.remove('devmode.config');   // 旧版遗留 key 一并清
 }

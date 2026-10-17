@@ -321,6 +321,7 @@ export function getOverride() {
     apiKey: p.apiKey,
     model: p.visionModel || p.model,
     reasoningEffort: p.reasoningEffort,
+    thinking: p.thinking !== false,
   };
 }
 
@@ -412,12 +413,13 @@ async function sendCurrent({ auto = false, retryText = null } = {}) {
     };
 
     abortCtrl = new AbortController();
+    const ov = getOverride();
     const res = await agnesChat({
       messages: [{ role: "system", content: systemPrompt() }, ...history],
       stream: true,
-      thinking: true,
+      thinking: ov?.thinking !== false,   // 跟设置里的「启用思考」开关走
       signal: abortCtrl.signal,
-      override: getOverride() || undefined,
+      override: ov || undefined,
       onDelta: (d) => { acc.content += d; paint(); },
       onReasoning: (d) => { acc.reasoning += d; paint(); },
     });

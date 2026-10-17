@@ -379,13 +379,14 @@ async function sendCurrent({ retryText = null } = {}) {
     };
 
     abortCtrl = new AbortController();
+    const ov = getOverride();
     const res = await agnesChat({
       messages: [{ role: "system", content: systemPrompt() }, ...history],
       stream: true,
-      thinking: true,
+      thinking: ov?.thinking !== false,   // 跟设置里的「启用思考」开关走
       signal: abortCtrl.signal,
       // 与 AI 解答面板一致：走当前激活的 AI Profile，而不是只吃开发者模式配置
-      override: getOverride() || undefined,
+      override: ov || undefined,
       onDelta: (d) => { acc.content += d; paint(); },
       onReasoning: (d) => { acc.reasoning += d; paint(); },
     });

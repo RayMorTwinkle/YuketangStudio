@@ -21,21 +21,6 @@
           <button id="ykt-ai-profile-del" color="red">删除当前</button>
         </div>
 
-        <!-- 预设模板 -->
-        <div class="setting-item">
-          <label for="ykt-ai-preset-select">快速预设：</label>
-          <select id="ykt-ai-preset-select">
-            <option value="">-- 选择预设模板 --</option>
-            <option value="longcat-flash">LongCat Flash (通用对话)</option>
-            <option value="longcat-omni">LongCat Omni (多模态) [测试中]</option>
-            <option value="longcat-thinking">LongCat Thinking (深度思考)</option>
-            <option value="kimi">Kimi (Moonshot)</option>
-            <option value="openai">OpenAI GPT-4o</option>
-            <option value="deepseek">DeepSeek</option>
-          </select>
-          <small>选择预设后自动填充配置，仍需手动输入 API Key</small>
-        </div>
-
         <!-- 具体配置字段：针对当前 profile -->
         <div class="setting-item">
           <label for="ykt-ai-profile-name">名称:</label>
@@ -50,18 +35,36 @@
 
         <div class="setting-item">
           <label for="kimi-api-key">API Key:</label>
-          <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key">
+          <div class="apikey-row">
+            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">
+            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>
+            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>
+          </div>
+          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>
         </div>
 
         <div class="setting-item">
-          <label for="ykt-ai-model">文本模型 ID:</label>
+          <label for="ykt-ai-model">模型 ID:</label>
           <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">
         </div>
 
         <div class="setting-item">
-          <label for="ykt-ai-vision-model">图像模型 ID:</label>
-          <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-ai-thinking">
+            <span class="checkmark"></span>
+            启用思考（推理模型深度思考）
+          </label>
+          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>
         </div>
+
+        <details class="setting-advanced">
+          <summary>高级选项</summary>
+          <div class="setting-item">
+            <label for="ykt-ai-vision-model">图像模型 ID:</label>
+            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">
+            <small>仅当图像识别需用与文本不同的模型时填写（如 moonshot-v1-8k-vision-preview）。</small>
+          </div>
+        </details>
       </div>
 
       <div class="setting-group">
@@ -150,18 +153,20 @@
         <div class="setting-item">
           <button id="ykt-btn-test-notify">测试习题提醒</button>
         </div>
-        <div class="setting-item">
-          <label>自定义提示音（其一即可）</label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />
-            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>
-            <button id="ykt-btn-apply-audio-url">应用URL</button>
-            <button id="ykt-btn-preview-audio">预览</button>
-            <button id="ykt-btn-clear-audio">清除自定义音频</button>
+        <details class="setting-advanced">
+          <summary>自定义提示音</summary>
+          <div class="setting-item">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />
+              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>
+              <button id="ykt-btn-apply-audio-url">应用URL</button>
+              <button id="ykt-btn-preview-audio">预览</button>
+              <button id="ykt-btn-clear-audio">清除自定义音频</button>
+            </div>
+            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>
+            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>
           </div>
-          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>
-          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>
-        </div>
+        </details>
       </div>
 
       <div class="setting-group">

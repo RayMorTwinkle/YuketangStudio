@@ -4,53 +4,14 @@ import { log } from '../../core/log.js';
 import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
-import { unlockDevMode, getDevConfig } from '../../core/devmode.js';
+import { unlockDevMode, getDevConfigs } from '../../core/devmode.js';
+import { gm } from '../../core/env.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
 let mounted = false;
 let root;
 
 // ---- AI Profile helpers ----
-// 预设模板只填 baseUrl/model，API Key 一律留空由用户自己填。
-// （上游曾在此硬编码作者自己的 key，已清除——不要把任何真实 key 提交进仓库）
-const AI_PRESETS = {
-  'longcat-flash': {
-    name: 'LongCat Flash',
-    baseUrl: 'https://api.longcat.chat/openai',
-    model: 'LongCat-Flash-Chat',
-    visionModel: 'LongCat-Flash-Omni-2603',
-  },
-  'longcat-omni': {
-    name: 'LongCat Omni',
-    baseUrl: 'https://api.longcat.chat/openai',
-    model: 'LongCat-Flash-Omni-2603',
-    visionModel: 'LongCat-Flash-Omni-2603',
-  },
-  'longcat-thinking': {
-    name: 'LongCat Thinking',
-    baseUrl: 'https://api.longcat.chat/openai',
-    model: 'LongCat-Flash-Thinking-2601',
-    visionModel: 'LongCat-Flash-Thinking-2601',
-  },
-  'kimi': {
-    name: 'Kimi',
-    baseUrl: 'https://api.moonshot.cn',
-    model: 'moonshot-v1-8k',
-    visionModel: 'moonshot-v1-8k-vision-preview',
-  },
-  'openai': {
-    name: 'OpenAI GPT-4o',
-    baseUrl: 'https://api.openai.com',
-    model: 'gpt-4o-mini',
-    visionModel: 'gpt-4o',
-  },
-  'deepseek': {
-    name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-chat',
-    visionModel: 'deepseek-chat',
-  },
-};
 
 function ensureAIProfiles(configAI) {
   if (!configAI) return;
@@ -74,6 +35,11 @@ function ensureAIProfiles(configAI) {
   if (!configAI.activeProfileId) {
     configAI.activeProfileId = configAI.profiles[0].id;
   }
+
+  // 迁移：thinking 未定义的老配置默认开启（保持原有行为不变）
+  for (const p of configAI.profiles) {
+    if (typeof p.thinking !== 'boolean') p.thinking = true;
+  }
 }
 
 // ------------------------------
@@ -94,13 +60,16 @@ export function mountSettingsPanel() {
   const $profileSelect = root.querySelector('#ykt-ai-profile-select');
   const $profileAdd = root.querySelector('#ykt-ai-profile-add');
   const $profileDel = root.querySelector('#ykt-ai-profile-del');
-  const $presetSelect = root.querySelector('#ykt-ai-preset-select');
 
   const $profileName = root.querySelector('#ykt-ai-profile-name');
   const $baseUrl = root.querySelector('#ykt-ai-base-url');
   const $api = root.querySelector('#kimi-api-key');
   const $model = root.querySelector('#ykt-ai-model');
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
+  const $thinking = root.querySelector('#ykt-ai-thinking');
+  const $apiEye = root.querySelector('#ykt-apikey-eye');
+  const $apiTest = root.querySelector('#ykt-apikey-test');
+  const $apiTestResult = root.querySelector('#ykt-apikey-test-result');
 
   // === 其他 UI 原有字段 ===
   const $auto = root.querySelector('#ykt-input-auto-answer');
@@ -146,6 +115,7 @@ export function mountSettingsPanel() {
     $api.value = p.apiKey || '';
     $model.value = p.model || '';
     $visionModel.value = p.visionModel || '';
+    if ($thinking) $thinking.checked = p.thinking !== false;
   }
 
   // 初始化 Profile 下拉框
@@ -183,19 +153,18 @@ export function mountSettingsPanel() {
   // 初始填充（后续切 tab 由 syncFormFromConfig 统一刷新）
   fillPrompts();
 
-  // === 解锁入口（低调：仅一行，位于设置最底部） ===
-  const DEV_PROFILE_ID = 'agnes-dev';
+  // === 解锁入口（低调：仅一行，位于设置最底部；支持多解锁码，各自注入独立 profile） ===
   const $devPass = root.querySelector('#ykt-devmode-pass');
   const $devBtn = root.querySelector('#ykt-devmode-btn');
   const $devHint = root.querySelector('#ykt-devmode-hint');
 
   function refreshDevHint() {
-    const cfg = getDevConfig();
-    if (cfg) {
-      $devPass.placeholder = '已解锁';
-      $devHint.textContent = '';
-      $devBtn.textContent = '已解锁';
-      $devBtn.disabled = true;
+    const cfgs = getDevConfigs();
+    if (cfgs.length) {
+      $devPass.placeholder = '已解锁 ' + cfgs.length + ' 个';
+      $devHint.textContent = cfgs.map(c => c.name || '内置配置').join('、');
+      $devBtn.textContent = '再解锁';
+      $devBtn.disabled = false;
     } else {
       $devPass.placeholder = '解锁码';
       $devHint.textContent = '';
@@ -204,22 +173,24 @@ export function mountSettingsPanel() {
     }
   }
 
-  function applyDevProfile(devCfg) {
+  function applyDevProfile(devCfg, blobIndex) {
     const ai = ui.config.ai;
     ensureAIProfiles(ai);
-    let p = ai.profiles.find(x => x.id === DEV_PROFILE_ID);
-    if (!p) { p = { id: DEV_PROFILE_ID }; ai.profiles.push(p); }
+    const profileId = `dev_${blobIndex}`;
+    let p = ai.profiles.find(x => x.id === profileId);
+    if (!p) { p = { id: profileId }; ai.profiles.push(p); }
     Object.assign(p, {
-      name: devCfg.name || 'Agnes Dev',
+      name: devCfg.name || `内置配置 ${blobIndex}`,
       baseUrl: devCfg.baseUrl,
       apiKey: devCfg.apiKey,
       model: devCfg.model,
       visionModel: devCfg.visionModel || devCfg.model,
+      thinking: true,
     });
     if (devCfg.reasoningEffort) p.reasoningEffort = devCfg.reasoningEffort;
-    ai.activeProfileId = DEV_PROFILE_ID;
+    ai.activeProfileId = profileId;
     ui.saveConfig();
-    syncFormFromConfig();   // 解锁后表单立即显示新配置（此前要重开页面才刷新）
+    syncFormFromConfig();   // 解锁后表单立即显示新配置
   }
 
   $devBtn?.addEventListener('click', async () => {
@@ -227,18 +198,17 @@ export function mountSettingsPanel() {
     if (!pass) { ui.toast?.('请输入解锁码'); return; }
     $devBtn.disabled = true;
     const originalText = $devBtn.textContent;
-    $devBtn.textContent = '校验中…';   // 310k 迭代约 1~2 秒，给个反馈
+    $devBtn.textContent = '校验中…';
     try {
-      const devCfg = await unlockDevMode(pass);
-      applyDevProfile(devCfg);
+      const { cfg, blobIndex } = await unlockDevMode(pass);
+      applyDevProfile(cfg, blobIndex);
       $devPass.value = '';
-      refreshDevHint();
-      ui.toast?.(`解锁成功：${devCfg.name || '内置配置'} 已启用`);
+      ui.toast?.(`解锁成功：${cfg.name || '内置配置'} 已启用`);
     } catch (e) {
       ui.toast?.('解锁失败：' + (e?.message || e));
-      $devBtn.textContent = originalText;
     } finally {
       refreshDevHint();
+      $devBtn.textContent = originalText === '已解锁' ? '再解锁' : originalText;
     }
   });
 
@@ -253,27 +223,51 @@ export function mountSettingsPanel() {
     loadProfileToForm($profileSelect.value);
   });
 
-  // 预设选择
-  $presetSelect.addEventListener('change', () => {
-    const presetKey = $presetSelect.value;
-    if (!presetKey) return;
-    
-    const preset = AI_PRESETS[presetKey];
-    if (!preset) return;
+  // API Key 眼睛切换（密码⇄明文）
+  $apiEye?.addEventListener('click', () => {
+    const isPwd = $api.type === 'password';
+    $api.type = isPwd ? 'text' : 'password';
+    $apiEye.querySelector('i').className = isPwd ? 'fas fa-eye-slash' : 'fas fa-eye';
+  });
 
-    $profileName.value = preset.name;
-    $baseUrl.value = preset.baseUrl;
-    $model.value = preset.model;
-    $visionModel.value = preset.visionModel;
-
-    if (preset.apiKey) {
-      $api.value = preset.apiKey;
-      ui.toast(`已应用预设: ${preset.name}，API Key 已自动填充`, 3000);
-    } else {
-      ui.toast(`已应用预设: ${preset.name}，请填写 API Key`, 3000);
+  // 测试连接：先试 /models，不行退 /chat/completions 最小请求（走 GM_xhr 绕 CORS）
+  $apiTest?.addEventListener('click', async () => {
+    const baseUrl = $baseUrl.value.trim().replace(/\/+$/, '');
+    const apiKey = $api.value.trim();
+    if (!baseUrl) { $apiTestResult.textContent = '请先填 URL'; $apiTestResult.style.color = '#c0392b'; return; }
+    if (!apiKey) { $apiTestResult.textContent = '请先填 API Key'; $apiTestResult.style.color = '#c0392b'; return; }
+    $apiTest.disabled = true;
+    $apiTestResult.textContent = '测试中…';
+    $apiTestResult.style.color = '#607190';
+    const show = (msg, color) => { $apiTestResult.textContent = msg; $apiTestResult.style.color = color; };
+    const gmReq = (method, url, data) => new Promise((resolve, reject) => {
+      try {
+        gm.xhr({
+          method, url,
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          data: data ? JSON.stringify(data) : undefined,
+          onload: (r) => resolve(r),
+          onerror: (e) => reject(new Error(e?.error || '网络请求失败')),
+          ontimeout: () => reject(new Error('请求超时')),
+          timeout: 15000,
+        });
+      } catch (e) { reject(e); }
+    });
+    try {
+      const r = await gmReq('GET', `${baseUrl}/models`);
+      if (r.status >= 200 && r.status < 300) { show('✅ 连接成功', '#059669'); return; }
+      if (r.status === 401 || r.status === 403) { show(`❌ 认证失败 (HTTP ${r.status})`, '#c0392b'); return; }
+      // 其他码：降级 chat completions 最小请求
+      const r2 = await gmReq('POST', `${baseUrl}/chat/completions`,
+        { model: $model.value.trim() || 'test', messages: [{role:'user',content:'hi'}], max_tokens: 1 });
+      if (r2.status >= 200 && r2.status < 300) { show('✅ 连接成功', '#059669'); return; }
+      if (r2.status === 400) { show('✅ 端点可达（模型参数校验通过）', '#059669'); return; }
+      show(`❌ HTTP ${r2.status}`, '#c0392b');
+    } catch (e) {
+      show(`❌ 网络错误：${e?.message || e}`, '#c0392b');
+    } finally {
+      $apiTest.disabled = false;
     }
-    $presetSelect.value = '';
-    scheduleAutoSave();   // 预设也走自动保存
   });
 
   // 添加 profile
@@ -286,6 +280,7 @@ export function mountSettingsPanel() {
       apiKey: '',
       model: '',
       visionModel: '',
+      thinking: true,  // 默认开启思考
     };
     ui.config.ai.profiles.push(newP);
     ui.config.ai.activeProfileId = id;
@@ -326,6 +321,7 @@ export function mountSettingsPanel() {
       p.apiKey = $api.value.trim();
       p.model = $model.value.trim() || p.model;
       p.visionModel = $visionModel.value.trim() || p.visionModel;
+      if ($thinking) p.thinking = !!$thinking.checked;
       const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
       if (curOpt) curOpt.textContent = p.name || p.id;
     }

@@ -57,8 +57,10 @@ export async function agnesChat(opts) {
   if (!baseUrl || !apiKey) throw new Error('开发者模式未解锁：请到设置中解锁内置配置');
 
   const thinking = opts.thinking !== false;
-  // 只在显式配置时发 reasoning_effort——硬编码 'medium' 会让不支持该字段的端点报 400
-  const effort = ov.reasoningEffort || dev.reasoningEffort || null;
+  // 思考开启时默认 effort=high（用户开关只需开/关，不暴露强度概念）；
+  // 显式配置的 reasoningEffort 优先，'off' 表示关闭。关闭时不发该字段——
+  // 硬编码 effort 会让不支持该参数的端点报 400
+  const effort = thinking ? (ov.reasoningEffort || dev.reasoningEffort || 'high') : null;
 
   const body = { model, messages: opts.messages };
   if (thinking && effort && effort !== 'off') body.reasoning_effort = effort;
