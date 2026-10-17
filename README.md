@@ -367,7 +367,7 @@ YuketangStudio/
 
 **日志分级（`core/log.js`）。** 默认只输出 `warn` / `error`；在控制台执行 `localStorage.setItem('yksDebug','1')` 后刷新即可全量输出（`log.enable()/disable()` 亦可运行时切换）。
 
-**构建与质量门禁。** `npm run check` = ESLint（flat config）+ Rollup 构建 + 回归测试；版本号单一来源（`package.json` → `userscript.meta.js` 与产物文件名）。回归测试含 PDF 去重（`scripts/test-pdf-dedup.mjs`）与课堂列表翻页（`scripts/test-activities-paging.mjs`）；开发者模式端到端用例 `scripts/test-devmode.mjs` 因含解锁码未入库，全新克隆后 `npm test` 可能因缺该文件而失败（**待确认**，可单独运行其余用例）。构建前置检查会校验生成的 `src/core/devmode-blob.js` 是否存在，缺失时给出 `node scripts/gen-devmode.js` 指引。
+**构建与质量门禁。** `npm run check` = ESLint（flat config）+ Rollup 构建 + 回归测试；版本号单一来源（`package.json` → `userscript.meta.js` 与产物文件名）。回归测试含 PDF 去重（`scripts/test-pdf-dedup.mjs`）与课堂列表翻页（`scripts/test-activities-paging.mjs`）。开发者模式自 2026-10-17 起改为云端解锁码+LLM 代理（ServerX D031），本地加密 blob 机制及其配套生成器/测试脚本已全部移除。
 
 ---
 
