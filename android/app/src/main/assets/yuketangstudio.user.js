@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.5.7
+// @version      0.5.8
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
@@ -47,6 +47,8 @@
 // @connect      api.longcat.chat
 // @connect      api.agnes-ai.cn
 // @connect      developer.amd.com.cn
+// @connect      api.raymor.top
+// @connect      app.raymor.top
 // @connect      yuketang.cn
 // @connect      *.yuketang.cn
 // @connect      changjiang-private-qn.yuketang.cn
@@ -1735,7 +1737,7 @@
   /** marked 产物进 innerHTML 前的清洗：优先 DOMPurify（已预热则同步可用），否则 sanitizeHtml */  function sanitizeFinal(md) {
     const purify = (gm.uw || window).DOMPurify || window.DOMPurify;
     if (purify?.sanitize) return purify.sanitize(md, {
-      ADD_ATTR: [ "target", "data-raw" ]
+      ADD_ATTR: [ "target", "data-raw", "data-raw-b64" ]
     });
     return sanitizeHtml(md);
   }
@@ -1847,8 +1849,10 @@
       const b = blocks[Number(i)];
       if (!b) return "";
       const looksMermaid = b.lang === "mermaid" || !b.lang && MERMAID_START_RE.test(b.code);
-      if (looksMermaid) return `<div class="ykt-mermaid" data-raw="${escapeHtml(b.code).replace(/"/g, "&quot;")}"></div>`;
-      if (b.lang === "svg" || b.lang === "html") return `<div class="ykt-embed" data-raw="${escapeHtml(b.code).replace(/"/g, "&quot;")}"></div>`;
+      // data-raw 存 base64：mermaid 源码里的 --> 会被 HTML parser 当注释结束符吃掉属性，
+      // <svg>/<div> 里的 < > " 同理——b64 全程安全（不含这些字符）
+            if (looksMermaid) return `<div class="ykt-mermaid" data-raw-b64="${btoa(unescape(encodeURIComponent(b.code)))}"></div>`;
+      if (b.lang === "svg" || b.lang === "html") return `<div class="ykt-embed" data-raw-b64="${btoa(unescape(encodeURIComponent(b.code)))}"></div>`;
       return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ""}>${escapeHtml(restoreMath(b.code))}</code></pre>`;
     });
     // 还原公式占位符：KaTeX 可用则直接渲染成 HTML（流式即时出图），否则还原裸文本给流末 typeset
@@ -1884,7 +1888,7 @@
       if (MERMAID_LOOSE_RE.test(text) && text.split("\n").length >= 2) {
         const div = document.createElement("div");
         div.className = "ykt-mermaid";
-        div.setAttribute("data-raw", text);
+        div.setAttribute("data-raw-b64", btoa(unescape(encodeURIComponent(text))));
         p.replaceWith(div);
       }
     }
@@ -1902,19 +1906,26 @@
         if (![ "mermaid", "html", "svg" ].includes(lang)) continue;
         const div = document.createElement("div");
         div.className = lang === "mermaid" ? "ykt-mermaid" : "ykt-embed";
-        div.setAttribute("data-raw", codeEl.textContent || "");
+        div.setAttribute("data-raw-b64", btoa(unescape(encodeURIComponent(codeEl.textContent || ""))));
         codeEl.parentElement.replaceWith(div);
       }
       rescueLooseMermaid(el);
       // 1) mermaid → SVG：占位符先显示加载态，渲染完成/失败都有明确反馈（不再是空白等干等）
-            const mermaidEls = [ ...el.querySelectorAll(".ykt-mermaid[data-raw]") ];
+            const decodeRaw = node => {
+        const b64 = node.getAttribute("data-raw-b64");
+        if (b64) try {
+          return decodeURIComponent(escape(atob(b64)));
+        } catch {}
+        return node.getAttribute("data-raw") || "";
+      };
+      const mermaidEls = [ ...el.querySelectorAll(".ykt-mermaid[data-raw-b64], .ykt-mermaid[data-raw]") ];
       if (mermaidEls.length) {
         for (const node of mermaidEls) node.innerHTML = '<div class="ykt-mermaid-loading" style="padding:14px 10px;color:#94a3b8;font-size:12px;text-align:center;background:#f8fafc;border-radius:6px"><i class="fas fa-circle-notch fa-spin"></i> 正在渲染图表…</div>';
         try {
           const mermaid = await ensureMermaid();
           for (const node of mermaidEls) {
             // AI 偶尔在 mermaid 源码里混入 <p>/<br/> 等标签导致解析失败——渲染前剥掉
-            const src = stripHtmlWrappers(node.getAttribute("data-raw") || "");
+            const src = stripHtmlWrappers(decodeRaw(node));
             try {
               // 渲染超时兜底：卡住 15s 不再干等
               const {svg: svg} = await Promise.race([ mermaid.render(`ykmmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, src), new Promise((_, rej) => setTimeout(() => rej(new Error("渲染超时（15s）")), 15e3)) ]);
@@ -1943,15 +1954,15 @@
             pre.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:6px 8px;background:#fef2f2;border-radius:4px 4px 0 0">⚠️ Mermaid 库加载失败（CDN 不可达）</div>`;
             const code = document.createElement("div");
             code.style.cssText = "padding:8px;white-space:pre-wrap;font-size:12px;color:#475569;";
-            code.textContent = node.getAttribute("data-raw") || "";
+            code.textContent = decodeRaw(node);
             pre.appendChild(code);
             node.replaceWith(pre);
           });
         }
       }
       // 2) svg/html 嵌入 → DOMPurify 清洗后渲染
-            for (const node of [ ...el.querySelectorAll(".ykt-embed[data-raw]") ]) {
-        const rawHtml = node.getAttribute("data-raw") || "";
+            for (const node of [ ...el.querySelectorAll(".ykt-embed[data-raw-b64], .ykt-embed[data-raw]") ]) {
+        const rawHtml = decodeRaw(node);
         try {
           const purify = await ensureDOMPurify();
           node.innerHTML = purify.sanitize(rawHtml, {
@@ -1961,6 +1972,7 @@
           node.innerHTML = sanitizeHtml(rawHtml);
         }
         node.removeAttribute("data-raw");
+        node.removeAttribute("data-raw-b64");
       }
       // 3) 公式渲染：MathJax v3（@require）→ MathJax v2（页面自带）→ KaTeX（壳内 CDN 本地回源）
             if (ui?.config?.iftex) {
@@ -2070,15 +2082,17 @@
       if (!slot) return;
       if (this.sealed && this.slot === slot && this.sealed.isConnected) return;
       this.slot = slot;
-      if (!this.sealed?.isConnected) {
+      // 关键点：sealed 脱离 DOM（repaint 重建 slot）时 *移动* 而不是重建——
+      // 重建会丢掉已封板内容（用户看到“前面段落消失，只剩最后一段”）
+            if (!this.sealed) {
         this.sealed = document.createElement("div");
         this.sealed.className = "ykt-sr-sealed";
         this.live = document.createElement("div");
         this.live.className = "ykt-sr-live";
-        slot.textContent = "";
-        slot.append(this.sealed, this.live);
-        this.sealedSoFar = this.sealedSoFar || 0;
+        this.sealedSoFar = 0;
       }
+      slot.textContent = "";
+      slot.append(this.sealed, this.live);
     }
     /** @param {string} text 全量已累积文本 @param {string} emptyHint 空内容时 live 区的提示 */    update(text, emptyHint = "") {
       if (!this.slot) return;
@@ -5038,8 +5052,8 @@
   function mountTutorialPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // 注入构建版本号（"0.5.7" 由 rollup 从 package.json 替换，单一来源）
-        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.5.7"}<`);
+    // 注入构建版本号（"0.5.8" 由 rollup 从 package.json 替换，单一来源）
+        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.5.8"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-tutorial-panel");
     // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）

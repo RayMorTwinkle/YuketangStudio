@@ -863,15 +863,17 @@ export class StreamRenderer {
     if (!slot) return;
     if (this.sealed && this.slot === slot && this.sealed.isConnected) return;
     this.slot = slot;
-    if (!this.sealed?.isConnected) {
+    // 关键点：sealed 脱离 DOM（repaint 重建 slot）时 *移动* 而不是重建——
+    // 重建会丢掉已封板内容（用户看到“前面段落消失，只剩最后一段”）
+    if (!this.sealed) {
       this.sealed = document.createElement('div');
       this.sealed.className = 'ykt-sr-sealed';
       this.live = document.createElement('div');
       this.live.className = 'ykt-sr-live';
-      slot.textContent = '';
-      slot.append(this.sealed, this.live);
-      this.sealedSoFar = this.sealedSoFar || 0;
+      this.sealedSoFar = 0;
     }
+    slot.textContent = '';
+    slot.append(this.sealed, this.live);
   }
   /** @param {string} text 全量已累积文本 @param {string} emptyHint 空内容时 live 区的提示 */
   update(text, emptyHint = '') {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.5.7
+// @version      0.5.8
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
@@ -2082,15 +2082,17 @@
       if (!slot) return;
       if (this.sealed && this.slot === slot && this.sealed.isConnected) return;
       this.slot = slot;
-      if (!this.sealed?.isConnected) {
+      // 关键点：sealed 脱离 DOM（repaint 重建 slot）时 *移动* 而不是重建——
+      // 重建会丢掉已封板内容（用户看到“前面段落消失，只剩最后一段”）
+            if (!this.sealed) {
         this.sealed = document.createElement("div");
         this.sealed.className = "ykt-sr-sealed";
         this.live = document.createElement("div");
         this.live.className = "ykt-sr-live";
-        slot.textContent = "";
-        slot.append(this.sealed, this.live);
-        this.sealedSoFar = this.sealedSoFar || 0;
+        this.sealedSoFar = 0;
       }
+      slot.textContent = "";
+      slot.append(this.sealed, this.live);
     }
     /** @param {string} text 全量已累积文本 @param {string} emptyHint 空内容时 live 区的提示 */    update(text, emptyHint = "") {
       if (!this.slot) return;
@@ -5050,8 +5052,8 @@
   function mountTutorialPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // 注入构建版本号（"0.5.7" 由 rollup 从 package.json 替换，单一来源）
-        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.5.7"}<`);
+    // 注入构建版本号（"0.5.8" 由 rollup 从 package.json 替换，单一来源）
+        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.5.8"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-tutorial-panel");
     // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）

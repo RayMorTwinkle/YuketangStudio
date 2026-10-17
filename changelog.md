@@ -1,5 +1,10 @@
 # 更新日志
 
+0.5.8:
+
+- 🔧 **流式内容消失修复**：`StreamRenderer.attach()` 在 slot 重挂（每次 repaint 新建 slot）时把 `sealed`/`live` **重建为空 div**——之前所有已封板内容被清空，用户看到「前面段落消失、只剩最后一段」。改成 `isConnected=false` 时把**现有节点移动**到新 slot 而不是新建。ego 实测：封板文字量单调递增 `115→232→232→389`，4 点回答 + mermaid 完整保留
+- ego 实测：`12341234` 解锁 → 「分 4 点 + 公式 + mermaid」→ 7 处 KaTeX + mermaid SVG 全在，无丢段
+
 0.5.7:
 
 - 🚀 **流式增量渲染**：新增 `StreamRenderer`（封板区 + 活跃区），`findSafeBoundary` 在「不在围栏/公式内 + `\n\n`/围栏闭合/display math 闭合」处切板，已封板内容就地 `renderRich`——mermaid 图、公式、embed 在流式输出**过程中**就渲染，不再堆到流末
