@@ -62,7 +62,20 @@ function collectSlideUrls() {
     else if (n > prev.n) { prev.url = src; prev.n = n; }
   }
   if (filteredSlideLike) log.warn('[YKS-History] 有', filteredSlideLike, '个 /slide/ URL 因扩展名不匹配被过滤');
-  // 按 DOM 出现顺序排序（lightbox 顺序即页序）
+
+  // 新版大纲布局兜底：slide 图是 img[alt="ppt"]，URL 为
+  // yangtse-pri-ups.yuketang.cn/common_uploads/...（无 /slide/ 段、无扩展名），
+  // 上面的 /slide/ 过滤会全落空——此时按 DOM 顺序全收
+  if (!uniq.size) {
+    for (const img of document.querySelectorAll('.module_ppt img[alt="ppt"], img[alt="ppt"]')) {
+      const src = img.currentSrc || img.src || img.getAttribute('data-src') || '';
+      if (!/^https?:\/\//.test(src)) continue;
+      if (!uniq.has(src)) uniq.set(src, { n: 0, url: src, order: order++ });
+    }
+    if (uniq.size) log.dbg('[YKS-History] 走 img[alt="ppt"] 大纲布局兜底，收集到', uniq.size, '页');
+  }
+
+  // 按 DOM 出现顺序排序（lightbox/大纲顺序即页序）
   return [...uniq.values()].sort((a, b) => a.order - b.order).map(x => x.url);
 }
 
@@ -115,15 +128,22 @@ export async function runHistoryCapture() {
     title = title || (document.querySelector('.ppt_name')?.textContent || '历史课件').trim();
     statusEl(`已找到课件「${title}」，打开全页预览…`);
 
-    // 3. 点击缩略图打开全页预览；懒加载兜底：反复滚动容器+重扫，直到 img 计数稳定
-    const thumb = document.querySelector('.module_ppt .swiper_box img') || document.querySelector('.module_ppt img');
-    if (thumb) {
-      thumb.click();
+    // 3. 懒加载兜底：反复滚动容器+重扫，直到 img 计数稳定。
+    //    只有老版 lightbox 布局（.swiper_box 轮播缩略图）才点击打开全页预览——
+    //    新版大纲布局（img[alt="ppt"] 平铺）点击会弹出 lightbox 替换 DOM，反而丢图。
+    const lightboxThumb = document.querySelector('.module_ppt .swiper_box img');
+    const hasAnyPptImg = !!document.querySelector('.module_ppt img');
+    if (lightboxThumb) {
+      try { lightboxThumb.click(); } catch {}
+    } else if (hasAnyPptImg) {
+      log.dbg('[YKS-History] 新版大纲布局，跳过缩略图点击，直接滚动懒加载');
+    }
+    if (lightboxThumb || hasAnyPptImg) {
       let lastCount = -1, stable = 0;
       for (let i = 0; i < 45; i++) {
         await sleep(1000);
         // 触发懒加载：把所有可疑滚动容器拉到底
-        for (const sc of document.querySelectorAll('.swiper_box, [class*="lightbox"], [class*="preview"], [class*="viewer"]')) {
+        for (const sc of document.querySelectorAll('.swiper_box, [class*="lightbox"], [class*="preview"], [class*="viewer"], .module_ppt')) {
           try { sc.scrollTop = sc.scrollHeight; } catch {}
         }
         try { window.scrollTo(0, document.body?.scrollHeight || 0); } catch {}
@@ -133,7 +153,7 @@ export async function runHistoryCapture() {
         else { stable = 0; lastCount = n; }
       }
     } else {
-      log.warn('[YKS-History] 未找到缩略图入口，直接收集现有 DOM');
+      log.warn('[YKS-History] 未找到任何课件缩略图，直接收集现有 DOM');
     }
 
     // 4. 收集全部 slide 图 URL（去重：按文件名主体，保留清晰度最高的版本）

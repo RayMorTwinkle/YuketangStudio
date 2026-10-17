@@ -451,4 +451,38 @@
 /* MathJax tex 排版：作用在 AI 气泡上 */
 :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled svg { vertical-align: middle; }
 :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled .MathJax { line-height: 1; }
+
+/* ===== UI 调试模式（?ykt-debug-outline=1 或控制台 window.__yktDebugOutline(true)）===== */
+/* 给本脚本所有 UI 元素描红框+序号标签，用于排查 iframe 嵌套双挂载 */
+body.ykt-debug-outline :is(
+  #ykt-helper-toolbar,
+  .ykt-panel,
+  .ykt-shell,
+  .ykt-problem-notify,
+  #ykt-presentation-panel,
+  #ykt-ai-panel,
+  #ykt-chat-panel,
+  #ykt-shell-panel,
+  [id^="ykt-"],
+  [class*="ykt-shell"]
+) {
+  outline: 3px solid #e11d48 !important;
+  outline-offset: 2px !important;
+  position: relative !important;
+}
+/* 顶层 vs iframe 用不同颜色区分：顶层红、嵌套 iframe 橙（嵌套脚本会给 html 加 ykt-in-iframe） */
+html.ykt-in-iframe body.ykt-debug-outline :is(
+  #ykt-helper-toolbar, .ykt-panel, .ykt-shell, .ykt-problem-notify,
+  [id^="ykt-"], [class*="ykt-shell"]
+) { outline-color: #f97316 !important; }
+body.ykt-debug-outline #ykt-helper-toolbar::after,
+body.ykt-debug-outline .ykt-panel::after {
+  content: "YKS·" attr(id) " @" attr(data-ykt-frame);
+  position: absolute; top: -18px; left: 0;
+  font: 10px/14px monospace; color: #fff; background: #e11d48;
+  padding: 0 4px; border-radius: 3px; z-index: 99999999; pointer-events: none;
+  white-space: nowrap;
+}
+html.ykt-in-iframe body.ykt-debug-outline #ykt-helper-toolbar::after,
+html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f97316; }
 :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) .mjx-svg { color: currentColor; }

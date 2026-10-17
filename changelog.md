@@ -1,5 +1,12 @@
 # 更新日志
 
+0.5.1:
+
+- 🔧 **历史课件 ch2 布局修复**：新版大纲页 slide 图是 `img[alt="ppt"]`（`yangtse-pri-ups/common_uploads`，无 `/slide/` 段），旧收集器只认 `/slide/` URL → 「未收集到任何 slide 图片」。`collectSlideUrls` 加 `img[alt="ppt"]` 兜底（按 DOM 顺序），`expectedPageCount` 已兼容 `（77页）` 计数；跳过新版大纲页的缩略图点击（点击会弹 lightbox 丢图）
+- 🔧 **双工具条修复**：`student-lesson-report` 等 `/v2/web/*` 页内嵌 `/m/v2/lesson/student` iframe，两层各挂一套工具条。`index.js` 加 `window.self !== window.top` 判断——iframe 里跳过 `ui._mountAll()` + `installToolbar()`（数据抓取仍跑），只留外层一套 UI
+- 🧪 **UI 调试模式**：`?ykt-debug=1` / `localStorage ykt-debug-outline=1` / 控制台 `__yktDebugOutline()` 开启，所有 `ykt-*` 元素描红框（iframe 内橙框）+ `data-ykt-frame` 标记，用于排查嵌套挂载
+- 📦 Android：CDN assets 不变；脚本 dist 0.5.0→0.5.1 同步进壳
+
 0.5.0:
 
 **脚本**

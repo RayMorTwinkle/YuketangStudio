@@ -103,6 +103,37 @@ function startPeriodicReload(opts = {}) {
   } catch {}
 }
 
+/** UI 调试模式：给所有 ykt-* 元素描红框（iframe 内橙框）+ 标 frame 来源。
+ *  开启方式：URL ?ykt-debug=1、localStorage ykt-debug-outline=1、
+ *  控制台 __yktDebugOutline(true)。 */
+function installDebugOutline() {
+  try {
+    const tag = (window.self === window.top) ? 'top' : 'iframe';
+    const stamp = () => {
+      if (!document.body) return;
+      for (const el of document.querySelectorAll('#ykt-helper-toolbar, .ykt-panel, .ykt-shell')) {
+        if (!el.hasAttribute('data-ykt-frame')) el.setAttribute('data-ykt-frame', tag);
+      }
+    };
+    window.__yktDebugOutline = (on = true) => {
+      try { localStorage.setItem('ykt-debug-outline', on ? '1' : '0'); } catch {}
+      document.body?.classList.toggle('ykt-debug-outline', !!on);
+      if (on) { stamp(); }
+    };
+    const want = /[?&]ykt-debug=1/.test(location.search)
+      || (() => { try { return localStorage.getItem('ykt-debug-outline') === '1'; } catch { return false; } })();
+    if (want) {
+      const t = setInterval(() => {
+        if (document.body) {
+          document.body.classList.add('ykt-debug-outline');
+          stamp();
+        }
+      }, 500);
+      setTimeout(() => clearInterval(t), 20000);
+    }
+  } catch {}
+}
+
 /** document.body 尚未出现时延迟挂载（document-start 注入/移动版 SPA 时序） */
 function whenBodyReady(fn) {
   if (document.body) { fn(); return; }
@@ -119,11 +150,22 @@ function whenBodyReady(fn) {
   startPeriodicReload({ intervalMs: 3 * 60 * 1000, onlyWhenHidden: true, skipLessonPages: true });
   // 样式/图标
   injectStyles();
+  installDebugOutline();
 
-  // 挂 UI（单步失败不拖垮其余步骤）
+  // iframe 里不挂 UI（toolbar/面板）——雨课堂 /v2/web/* 页会嵌套同源 iframe
+  // （如 student-lesson-report 内嵌 /m/v2/lesson/student），双层各挂一套工具条
+  // 会视觉重叠且外层无法读到 iframe 里的课件数据。数据抓取（拦截器/收集器）仍照常跑。
+  const inIframe = window.self !== window.top;
+  try { if (inIframe) document.documentElement.classList.add('ykt-in-iframe'); } catch {}
+
+  // 挂 UI（单步失败不拖垮其余步骤）；iframe 内跳过 UI 挂载
   whenBodyReady(() => {
-    try { ui._mountAll?.(); } catch (e) { log.err('[mount] panels failed', e); }
-    try { installToolbar(); } catch (e) { log.err('[mount] toolbar failed', e); }
+    if (!inIframe) {
+      try { ui._mountAll?.(); } catch (e) { log.err('[mount] panels failed', e); }
+      try { installToolbar(); } catch (e) { log.err('[mount] toolbar failed', e); }
+    } else {
+      log.dbg('[mount] iframe 内跳过 UI 挂载:', window.location.pathname);
+    }
   });
 
   // 再装网络拦截
