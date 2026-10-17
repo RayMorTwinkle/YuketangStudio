@@ -1,5 +1,12 @@
 # 更新日志
 
+0.5.6:
+
+- 🔧 **@connect 全放开**：`GM_xmlhttpRequest` 域名白名单漏了 `developer.amd.com.cn`（AMD Qwen 解锁码被拒连）。加 `developer.amd.com.cn` + `@connect *`（AI 端点用户自定义，逐一枚举追不上）
+- 🔧 **桌面端 FA 图标修复**：页面 CSP **静默拦** inline `<style>` 的 `@font-face`（不抛异常，单 try/catch 回退探测不到）。`ensureFontAwesome()` 改 `GM_addStyle`（扩展通道绕 CSP）+ DOM `<style>` + CDN `<link>` 三通道并发；KaTeX css 同理（`GM_addStyle` + `<link>` 回源）
+- 🔧 **公式渲染修复**：marked 把 `(`/`[` 当 ASCII 标点转义吃掉 `\(x_0\)` 的反斜杠（`parse('\\(x_0\\)')` → `(x_0)`），定界符到 typeset 时已消失。`mdToHtml` 在 marked parse 前把 `\(...\)`/`\[...\]` 整段抽成 `\uE000M{n}\uE001` 占位符，parse 完统一还原——ego 实测 `\(x_0\)` 渲染为 `<mjx-container><svg>`
+- 💬 **prompt 强化**：「所有数学符号与公式必须用 `\(...\)`/`\(...\)` 包裹——含简单记号（写 `\(x_0\)` 不写 `(x_0)`）」
+
 0.5.5:
 
 - 📦 **桌面端全离线**：`src/vendor/` 把 jsdelivr/cdnjs/hertzen 依赖（katex/katex-auto/marked/dompurify/mermaid/jspdf/html2canvas + KaTeX/FA 字体 data-URI css）以 `?raw` 字符串打进 dist（约 6.2MB）。`ensureLib()` 先内联 `<script>` 注入（不走网络），页面 CSP 拦时退回原 CDN 兜底——双端都不再依赖外网 CDN

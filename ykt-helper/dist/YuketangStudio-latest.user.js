@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.5.5
+// @version      0.5.6
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
@@ -46,10 +46,13 @@
 // @connect      generativelanguage.googleapis.com
 // @connect      api.longcat.chat
 // @connect      api.agnes-ai.cn
+// @connect      developer.amd.com.cn
 // @connect      yuketang.cn
 // @connect      *.yuketang.cn
 // @connect      changjiang-private-qn.yuketang.cn
 // @connect      thu-private-qn.yuketang.cn
+// 不设域名白名单：AI 供应商是用户自定义端点，逐一枚举永远追不上（GM_xhr 要求 @connect）
+// @connect      *
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
 // @require      https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js
@@ -206,14 +209,18 @@
   /** KaTeX 按需加载（MathJax 不可用的公式渲染兜底；字体已 data-URI 进 css） */  async function ensureKaTeX() {
     const w = gm.uw || window;
     if (w.katex?.renderToString) return w.katex;
-    // css 内联注入（字体 data-URI，不走网络）
+    // css：GM_addStyle 走扩展通道（可绕页面 CSP），字体已 data-URI 内嵌；
+    // 同时补 CDN <link>（壳内会本地回源）——内联 style 被 CSP 静默拦时仍可用
         try {
-      if (!document.querySelector("style[data-ykt-katex]")) {
-        const st = document.createElement("style");
-        st.dataset.yktKatex = "1";
-        st.textContent = CSS_KATEX;
- // 字体已 data-URI 内嵌
-                (document.head || document.documentElement).appendChild(st);
+      gm.addStyle(CSS_KATEX);
+    } catch {}
+    try {
+      if (!document.querySelector("link[data-ykt-katex]")) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.dataset.yktKatex = "1";
+        link.href = "https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css";
+        (document.head || document.documentElement).appendChild(link);
       }
     } catch {}
     await ensureLib("katex", x => !!x.katex?.renderToString, SRC_KATEX, "https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js");
@@ -236,20 +243,21 @@
   function randInt(l, r) {
     return l + Math.floor(Math.random() * (r - l + 1));
   }
-  /** Font Awesome：内嵌 css（字体 data-URI）优先，CSP 拦 inline <style> 时退回 CDN <link> */  function ensureFontAwesome() {
-    if (document.querySelector("style[data-ykt-fa]") || [ ...document.styleSheets ].some(s => s.href?.includes("font-awesome"))) return;
+  let faDone = false;
+  /** Font Awesome：GM_addStyle（走扩展通道可绕页面 CSP）+ DOM <style> + CDN <link> 三通道并发。
+   *  桌面端教训：页面 CSP 拦 inline <style> 时静默不抛异常，单一 try/catch 回退不可探测——
+   *  只能把各通道都打上，谁活下来谁生效（css 等效，重复无副作用）。 */  function ensureFontAwesome() {
+    if (faDone) return;
+    faDone = true;
+    if ([ ...document.styleSheets ].some(s => s.href?.includes("font-awesome"))) return;
     try {
-      const st = document.createElement("style");
-      st.dataset.yktFa = "1";
-      st.textContent = CSS_FA;
- // 4 个 woff2 已 data-URI 内嵌
-            (document.head || document.documentElement).appendChild(st);
-      return;
+      gm.addStyle(CSS_FA);
     } catch {}
-    // CSP 拦 → 退回 CDN link
+ // GM_addStyle or DOM <style> fallback
         const href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css";
     const link = document.createElement("link");
     link.rel = "stylesheet";
+    link.dataset.yktFa = "1";
     link.href = href;
     const target = document.head || document.documentElement;
     if (target) try {
@@ -330,8 +338,8 @@
     4: "填空题",
     5: "主观题"
   };
-  /** 内置默认提示词（设置里可覆盖；空 = 使用默认） */  const DEFAULT_SYSTEM_PROMPT_CHAT = [ "你是「YuketangStudio」雨课堂学习助手，通过对话帮助学生理解课件与解决问题。", "要求：", "1) 用户消息可能附带课件截图与题目文本，优先依据文本、结合图片回答；", "2) 回答使用简体中文，生动形象、条理清晰，善用类比和例子；", "3) 鼓励使用多种可视化形式帮助理解，在适合的场景主动使用：mermaid 流程图/思维导图（```mermaid 代码块）、表格、SVG 示意图（```svg）、HTML 片段（```html）；", "4) 数学公式用 \\(...\\)（行内）与 \\[...\\]（独立成行）——不要用 $...$ / $$...$$ 定界符；", "5) 解题类问题给出思路与关键步骤，不要只给结论；", "6) 无法识别图片或文本时直接说明，不要编造。" ].join("\n");
-  const DEFAULT_SYSTEM_PROMPT_AI = [ "你是「YuketangStudio」雨课堂学习助手，专注快速、准确地解答课堂题目。", "要求：", "1) 用户消息附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；", "2) 优先确保答案快速且准确：选择题先给答案再给理由（格式：答案: [字母] / 解释: [理由]）；填空/主观题直接给完整答案与必要思路；", "3) 回答简洁直接，避免冗长铺垫；", "4) 数学公式用 \\(...\\)（行内）与 \\[...\\]（独立成行）——不要用 $...$ / $$...$$ 定界符；无法识别时直接说明，不要编造。" ].join("\n");
+  /** 内置默认提示词（设置里可覆盖；空 = 使用默认） */  const DEFAULT_SYSTEM_PROMPT_CHAT = [ "你是「YuketangStudio」雨课堂学习助手，通过对话帮助学生理解课件与解决问题。", "要求：", "1) 用户消息可能附带课件截图与题目文本，优先依据文本、结合图片回答；", "2) 回答使用简体中文，生动形象、条理清晰，善用类比和例子；", "3) 鼓励使用多种可视化形式帮助理解，在适合的场景主动使用：mermaid 流程图/思维导图（```mermaid 代码块）、表格、SVG 示意图（```svg）、HTML 片段（```html）；", "4) 所有数学符号与公式必须用 \\(...\\)（行内）与 \\[...\\]（独立成行）包裹——含简单记号（例：写 \\(x_0\\) 不写 (x_0)，写 \\(f(x)\\) 不写 (f(x))）；不要用 $...$ / $$...$$ 定界符；", "5) 解题类问题给出思路与关键步骤，不要只给结论；", "6) 无法识别图片或文本时直接说明，不要编造。" ].join("\n");
+  const DEFAULT_SYSTEM_PROMPT_AI = [ "你是「YuketangStudio」雨课堂学习助手，专注快速、准确地解答课堂题目。", "要求：", "1) 用户消息附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；", "2) 优先确保答案快速且准确：选择题先给答案再给理由（格式：答案: [字母] / 解释: [理由]）；填空/主观题直接给完整答案与必要思路；", "3) 回答简洁直接，避免冗长铺垫；", "4) 所有数学符号与公式必须用 \\(...\\)（行内）与 \\[...\\]（独立成行）包裹——含简单记号（例：写 \\(x_0\\) 不写 (x_0)）；不要用 $...$ / $$...$$ 定界符；无法识别时直接说明，不要编造。" ].join("\n");
   const DEFAULT_CONFIG = {
     notifyProblems: true,
     autoAnswer: false,
@@ -1730,10 +1738,19 @@
    * 富媒体占位：mermaid/svg/html 代码块转占位 div，真正渲染在 renderRich。
    * marked 未就绪时回退内置简化解析。
    */  function mdToHtml(mdRaw = "") {
-    const raw = preprocessRaw(String(mdRaw ?? ""));
+    let raw = preprocessRaw(String(mdRaw ?? ""));
     const blocks = [];
  // 代码块暂存（占位符 → 原文），每次调用独立——模块级共享会串号
-        let md;
+    // marked 把 \(、\[ 当标点转义吃掉反斜杠（验证：parse('\\(x_0\\)') → '(x_0)'），
+    // 公式定界符到 typeset 时已经没了——parse 前把 \(...\)/\[...\] 整段抽成私用区占位符，
+    // parse 完统一还原（代码块里的占位符留在 b.code 原样展示，还原发生在下方 B 回调）
+        const mathSpans = [];
+    raw = raw.replace(/\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g, m => {
+      mathSpans.push(m);
+      return `M${mathSpans.length - 1}`;
+    });
+    const restoreMath = s => String(s).replace(/\uE000M(\d+)\uE001/g, (_, i) => mathSpans[Number(i)] ?? "");
+    let md;
     const marked = getMarked();
     if (marked?.parse) try {
       // marked v9：options.renderer 传普通对象会整体替换默认 Renderer（缺方法即崩）——
@@ -1787,8 +1804,10 @@
       const looksMermaid = b.lang === "mermaid" || !b.lang && MERMAID_START_RE.test(b.code);
       if (looksMermaid) return `<div class="ykt-mermaid" data-raw="${escapeHtml(b.code).replace(/"/g, "&quot;")}"></div>`;
       if (b.lang === "svg" || b.lang === "html") return `<div class="ykt-embed" data-raw="${escapeHtml(b.code).replace(/"/g, "&quot;")}"></div>`;
-      return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ""}>${escapeHtml(b.code)}</code></pre>`;
+      return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ""}>${escapeHtml(restoreMath(b.code))}</code></pre>`;
     });
+    // 还原公式占位符 → 原始 \(...\)/\[...\] 文本节点，交给 typesetWithKaTeX/MathJax
+        md = restoreMath(md);
     // marked 透传 markdown 里的原始 HTML——模型输出可能含危险标签，innerHTML 前必须清洗
         if (marked?.parse) return sanitizeFinal(md);
     // 回退路径的段落包裹
@@ -4849,8 +4868,8 @@
   function mountTutorialPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // 注入构建版本号（"0.5.5" 由 rollup 从 package.json 替换，单一来源）
-        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.5.5"}<`);
+    // 注入构建版本号（"0.5.6" 由 rollup 从 package.json 替换，单一来源）
+        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.5.6"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-tutorial-panel");
     // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）

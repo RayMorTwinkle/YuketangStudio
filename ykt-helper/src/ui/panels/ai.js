@@ -595,8 +595,18 @@ function preprocessRaw(raw) {
  * marked 未就绪时回退内置简化解析。
  */
 export function mdToHtml(mdRaw = '') {
-  const raw = preprocessRaw(String(mdRaw ?? ''));
+  let raw = preprocessRaw(String(mdRaw ?? ''));
   const blocks = [];   // 代码块暂存（占位符 → 原文），每次调用独立——模块级共享会串号
+
+  // marked 把 \(、\[ 当标点转义吃掉反斜杠（验证：parse('\\(x_0\\)') → '(x_0)'），
+  // 公式定界符到 typeset 时已经没了——parse 前把 \(...\)/\[...\] 整段抽成私用区占位符，
+  // parse 完统一还原（代码块里的占位符留在 b.code 原样展示，还原发生在下方 B 回调）
+  const mathSpans = [];
+  raw = raw.replace(/\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g, (m) => {
+    mathSpans.push(m);
+    return `\uE000M${mathSpans.length - 1}\uE001`;
+  });
+  const restoreMath = (s) => String(s).replace(/\uE000M(\d+)\uE001/g, (_, i) => mathSpans[Number(i)] ?? '');
   let md;
 
   const marked = getMarked();
@@ -645,8 +655,11 @@ export function mdToHtml(mdRaw = '') {
     if (b.lang === 'svg' || b.lang === 'html') {
       return `<div class="ykt-embed" data-raw="${escapeHtml(b.code).replace(/"/g, '&quot;')}"></div>`;
     }
-    return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ''}>${escapeHtml(b.code)}</code></pre>`;
+    return `<pre class="ykt-md-code"><code${b.lang ? ` data-lang="${b.lang}"` : ''}>${escapeHtml(restoreMath(b.code))}</code></pre>`;
   });
+
+  // 还原公式占位符 → 原始 \(...\)/\[...\] 文本节点，交给 typesetWithKaTeX/MathJax
+  md = restoreMath(md);
 
   // marked 透传 markdown 里的原始 HTML——模型输出可能含危险标签，innerHTML 前必须清洗
   if (marked?.parse) return sanitizeFinal(md);

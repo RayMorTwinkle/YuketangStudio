@@ -137,13 +137,15 @@ export async function ensureMermaid() {
 export async function ensureKaTeX() {
   const w = gm.uw || window;
   if (w.katex?.renderToString) return w.katex;
-  // css 内联注入（字体 data-URI，不走网络）
+  // css：GM_addStyle 走扩展通道（可绕页面 CSP），字体已 data-URI 内嵌；
+  // 同时补 CDN <link>（壳内会本地回源）——内联 style 被 CSP 静默拦时仍可用
+  try { gm.addStyle(CSS_KATEX); } catch {}
   try {
-    if (!document.querySelector('style[data-ykt-katex]')) {
-      const st = document.createElement('style');
-      st.dataset.yktKatex = '1';
-      st.textContent = CSS_KATEX;   // 字体已 data-URI 内嵌
-      (document.head || document.documentElement).appendChild(st);
+    if (!document.querySelector('link[data-ykt-katex]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet'; link.dataset.yktKatex = '1';
+      link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css';
+      (document.head || document.documentElement).appendChild(link);
     }
   } catch {}
   await ensureLib('katex', x => !!x.katex?.renderToString, SRC_KATEX, 'https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js');
@@ -172,21 +174,18 @@ export function randInt(l, r) {
   return l + Math.floor(Math.random() * (r - l + 1));
 }
 
-/** Font Awesome：内嵌 css（字体 data-URI）优先，CSP 拦 inline <style> 时退回 CDN <link> */
+let faDone = false;
+/** Font Awesome：GM_addStyle（走扩展通道可绕页面 CSP）+ DOM <style> + CDN <link> 三通道并发。
+ *  桌面端教训：页面 CSP 拦 inline <style> 时静默不抛异常，单一 try/catch 回退不可探测——
+ *  只能把各通道都打上，谁活下来谁生效（css 等效，重复无副作用）。 */
 export function ensureFontAwesome() {
-  if (document.querySelector('style[data-ykt-fa]') ||
-      [...document.styleSheets].some(s => s.href?.includes('font-awesome'))) return;
-  try {
-    const st = document.createElement('style');
-    st.dataset.yktFa = '1';
-    st.textContent = CSS_FA;   // 4 个 woff2 已 data-URI 内嵌
-    (document.head || document.documentElement).appendChild(st);
-    return;
-  } catch {}
-  // CSP 拦 → 退回 CDN link
+  if (faDone) return;
+  faDone = true;
+  if ([...document.styleSheets].some(s => s.href?.includes('font-awesome'))) return;
+  try { gm.addStyle(CSS_FA); } catch {}                          // GM_addStyle or DOM <style> fallback
   const href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
   const link = document.createElement('link');
-  link.rel = 'stylesheet'; link.href = href;
+  link.rel = 'stylesheet'; link.dataset.yktFa = '1'; link.href = href;
   const target = document.head || document.documentElement;
   if (target) try { target.appendChild(link); } catch {}
 }
