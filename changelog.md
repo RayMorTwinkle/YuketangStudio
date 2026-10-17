@@ -3,6 +3,9 @@
 0.5.8:
 
 - 🔧 **流式内容消失修复**：`StreamRenderer.attach()` 在 slot 重挂（每次 repaint 新建 slot）时把 `sealed`/`live` **重建为空 div**——之前所有已封板内容被清空，用户看到「前面段落消失、只剩最后一段」。改成 `isConnected=false` 时把**现有节点移动**到新 slot 而不是新建。ego 实测：封板文字量单调递增 `115→232→232→389`，4 点回答 + mermaid 完整保留
+- 🔧 **壳内云端解锁修复**：`gm-shim.js` 的 `GM_xmlhttpRequest` 用 `credentials:'include'`——跨域 `api.raymor.top` 时 CORS 规范禁止 `*` + credentials 导致预检拦截；改 `same-origin`（雨课堂同源照带 cookie，跨域不带就能用 `*`）。同时修 `fetchBinary` 兜底的 `responseText` 恒为空（验码解析空 JSON 当失败）
+- 🔧 **APK 瘦身 ~13MB**：删 `assets/cdn/`（user.js 已内嵌全部 vendor，本地回源是冗余兜底）、`ndk.abiFilters` 裁 `x86`/`x86_64`（barhopper_v3.so 单 ABI 省 ~6MB）
+- 真机实测（T508N）：`12341234` → `云端·agnes` 解锁成功；17 处 KaTeX + mermaid SVG 流中渲染，无丢段
 - ego 实测：`12341234` 解锁 → 「分 4 点 + 公式 + mermaid」→ 7 处 KaTeX + mermaid SVG 全在，无丢段
 
 0.5.7:

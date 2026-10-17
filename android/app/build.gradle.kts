@@ -22,6 +22,9 @@ android {
         targetSdk = 34
         versionCode = 13
         versionName = "0.5.8"
+        // 只留 ARM 真机：x86/x86_64/armeabi-v7a 的 barhopper_v3.so 各占 3-6MB，
+        // 砍掉后 APK 减 ~12MB（模拟器不在目标场景内）
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     // 签名：凭据存 local.properties（不入库），keystore 文件也不入库

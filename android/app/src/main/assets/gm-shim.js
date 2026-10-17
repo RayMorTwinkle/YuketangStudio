@@ -100,7 +100,9 @@
     return fetch(url, {
       method: method,
       headers: headers,
-      credentials: 'include',
+      // same-origin：雨课堂 API 走同源带 cookie；跨域（如 api.raymor.top 验码）
+      // 不带 cookie——'include' + ACAO:* 会触发 CORS 预检拦截，2026-10-17 实测
+      credentials: 'same-origin',
       body: opt.data,
       signal: ctrl ? ctrl.signal : undefined,
     }).then(function (res) {
@@ -133,7 +135,8 @@
             var bytes = new Uint8Array(bin.length);
             for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
             var body = opt.responseType === 'arraybuffer' ? bytes.buffer : new Blob([bytes]);
-            opt.onload && opt.onload({ status: status, statusText: '', response: body, responseText: '', responseHeaders: {}, readyState: 4 });
+            // responseText 之前恒为 ''——tryCloudUnlock 解析空 JSON 当失败
+            opt.onload && opt.onload({ status: status, statusText: '', response: body, responseText: bin, responseHeaders: {}, readyState: 4 });
           } catch (e) {
             opt.onerror && opt.onerror({ status: 0, error: String(e) });
           }
