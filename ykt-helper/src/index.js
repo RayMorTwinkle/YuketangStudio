@@ -1,4 +1,4 @@
-﻿// src/index.js
+// src/index.js
 import { installWSInterceptor } from './net/ws-interceptor.js';
 import { installXHRInterceptor } from './net/xhr-interceptor.js';
 import  './net/fetch-interceptor.js';
@@ -9,6 +9,7 @@ import { ui } from './ui/ui-api.js';
 import { isStudentV3Page, runHistoryCapture } from './core/history-capture.js'; 
 import { log } from './core/log.js';
 import { ensureFontAwesome } from './core/env.js';
+import { checkForUpdate } from './core/update-check.js';
 
 // Font Awesome：内嵌 css（字体 data-URI）优先；CSP 拦时 env.js 里退回 CDN
 ensureFontAwesome();
@@ -156,6 +157,9 @@ function whenBodyReady(fn) {
       log.dbg('[mount] iframe 内跳过 UI 挂载:', window.location.pathname);
     }
   });
+
+  // 每次使用自动检查更新（15min 节流，失败静默）
+  try { checkForUpdate(); } catch {}
 
   // 再装网络拦截
   installWSInterceptor();

@@ -811,7 +811,50 @@
         blobIndex: i
       };
     }
+    // 本地加密 blob 未命中 → 云端解锁码（ServerX svc 验码；上游 key 永不下发，
+    // LLM 调用经 api.raymor.top/yuketangstudio/v1/* 代理，见 D031）
+        const cloud = await tryCloudUnlock(pw);
+    if (cloud) {
+      addDevConfig(cloud.cfg, -1);
+      return {
+        cfg: cloud.cfg,
+        blobIndex: -1
+      };
+    }
     throw new Error("解锁码错误");
+  }
+  /**
+   * 云端解锁码：svc /unlock/verify 验码通过后注入「云端 profile」——
+   * baseUrl 指 svc 的 OpenAI 兼容代理，apiKey 就是解锁码本身（svc 侧映射上游凭据）。
+   * 与本地 blob 解出的 profile 在 devmode.configs 里共存、同构。
+   */  async function tryCloudUnlock(code) {
+    try {
+      const r = await fetch("https://api.raymor.top/yuketangstudio/unlock/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          code: code
+        })
+      });
+      if (!r.ok) return null;
+      const d = await r.json();
+      if (!d?.ok) return null;
+      return {
+        cfg: {
+          name: `云端·${d.profile || "agnes"}`,
+          baseUrl: "https://api.raymor.top/yuketangstudio",
+          apiKey: code,
+          model: "",
+          // 空 → svc 用该码对应 profile 的默认模型
+          _cloud: true
+        }
+      };
+    } catch {
+      return null;
+ // 网络失败当作「码不存在」走错误分支，不误导
+        }
   }
   /** 所有已解锁配置（数组，可为空） */  function getDevConfigs() {
     const v = storage.get("devmode.configs");
@@ -7290,6 +7333,65 @@
     function injectStyles() {
     gm.addStyle(css);
   }
+  // src/core/update-check.js
+  // 每次使用自动检查更新：GET api.raymor.top/yuketangstudio/latest
+  // （svc 国内渠道元数据，见 ServerX svc/README_DEPLOY.md）
+  // 响应 {version, userscript, apk, notes}；有新版 → GM 通知（可点击打开官网下载页）。
+  // 15min 节流防止频繁弹窗；失败静默（不打扰正常使用）。
+    const LATEST_URL = "https://api.raymor.top/yuketangstudio/latest";
+  const SITE_URL = "https://app.raymor.top/yuketangstudio/";
+  const THROTTLE_MS = 15 * 60 * 1e3;
+  /** 语义化版本比较：a>b → 1；a<b → -1；等 → 0（容忍非数字段） */  function cmpVer(a, b) {
+    const pa = String(a).split(".").map(n => parseInt(n, 10) || 0);
+    const pb = String(b).split(".").map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const d = (pa[i] || 0) - (pb[i] || 0);
+      if (d) return d > 0 ? 1 : -1;
+    }
+    return 0;
+  }
+  function curVersion() {
+    try {
+      if (typeof window.GM_info !== "undefined" && window.GM_info.script?.version) return window.GM_info.script.version;
+    } catch {}
+    return "0.0.0";
+  }
+  /** 自动更新检查。force=true 跳过节流（设置页手动触发用） */  function checkForUpdate({force: force = false} = {}) {
+    const now = Date.now();
+    if (!force && now - (storage.get("update.lastCheck") || 0) < THROTTLE_MS) return;
+    storage.set("update.lastCheck", now);
+    gm.xhr({
+      method: "GET",
+      url: LATEST_URL,
+      timeout: 8e3,
+      onload(r) {
+        try {
+          const d = JSON.parse(r.responseText || "{}");
+          const cur = curVersion();
+          if (d?.version && cmpVer(d.version, cur) > 0) {
+            log.dbg(`[update] 发现新版本 v${d.version}（当前 v${cur}）`);
+            const text = `雨课堂助手新版本 v${d.version}（当前 v${cur}）${d.notes ? "：" + String(d.notes).slice(0, 40) : ""}`;
+            gm.notify({
+              title: "YuketangStudio 更新",
+              text: text,
+              image: "",
+              onclick: () => gm.uw.open(SITE_URL, "_blank")
+            });
+            // GM_notification 不支持的环境降级：至少 console 留痕
+                        if (typeof window.GM_notification !== "function") log.dbg("[update]", SITE_URL);
+          }
+        } catch (e) {
+          log.dbg("[update] 解析 latest 失败", e);
+        }
+      },
+      onerror() {
+        log.dbg("[update] latest 拉取失败（静默）");
+      },
+      ontimeout() {
+        log.dbg("[update] latest 超时（静默）");
+      }
+    });
+  }
   // src/index.js
   // Font Awesome：内嵌 css（字体 data-URI）优先；CSP 拦时 env.js 里退回 CDN
     ensureFontAwesome();
@@ -7445,6 +7547,10 @@
         }
       } else log.dbg("[mount] iframe 内跳过 UI 挂载:", window.location.pathname);
     });
+    // 每次使用自动检查更新（15min 节流，失败静默）
+        try {
+      checkForUpdate();
+    } catch {}
     // 再装网络拦截
         installWSInterceptor();
     installXHRInterceptor();

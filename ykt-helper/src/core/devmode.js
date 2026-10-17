@@ -59,7 +59,43 @@ export async function unlockDevMode(password) {
     addDevConfig(cfg, i);
     return { cfg, blobIndex: i };
   }
+  // 本地加密 blob 未命中 → 云端解锁码（ServerX svc 验码；上游 key 永不下发，
+  // LLM 调用经 api.raymor.top/yuketangstudio/v1/* 代理，见 D031）
+  const cloud = await tryCloudUnlock(pw);
+  if (cloud) {
+    addDevConfig(cloud.cfg, -1);
+    return { cfg: cloud.cfg, blobIndex: -1 };
+  }
   throw new Error('解锁码错误');
+}
+
+/**
+ * 云端解锁码：svc /unlock/verify 验码通过后注入「云端 profile」——
+ * baseUrl 指 svc 的 OpenAI 兼容代理，apiKey 就是解锁码本身（svc 侧映射上游凭据）。
+ * 与本地 blob 解出的 profile 在 devmode.configs 里共存、同构。
+ */
+async function tryCloudUnlock(code) {
+  try {
+    const r = await fetch('https://api.raymor.top/yuketangstudio/unlock/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d?.ok) return null;
+    return {
+      cfg: {
+        name: `云端·${d.profile || 'agnes'}`,
+        baseUrl: 'https://api.raymor.top/yuketangstudio',
+        apiKey: code,
+        model: '',            // 空 → svc 用该码对应 profile 的默认模型
+        _cloud: true,
+      },
+    };
+  } catch {
+    return null;            // 网络失败当作「码不存在」走错误分支，不误导
+  }
 }
 
 /** 所有已解锁配置（数组，可为空） */
