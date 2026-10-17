@@ -1,5 +1,11 @@
 # 更新日志
 
+0.5.5:
+
+- 📦 **桌面端全离线**：`src/vendor/` 把 jsdelivr/cdnjs/hertzen 依赖（katex/katex-auto/marked/dompurify/mermaid/jspdf/html2canvas + KaTeX/FA 字体 data-URI css）以 `?raw` 字符串打进 dist（约 6.2MB）。`ensureLib()` 先内联 `<script>` 注入（不走网络），页面 CSP 拦时退回原 CDN 兜底——双端都不再依赖外网 CDN
+- Font Awesome 改 `ensureFontAwesome()`：内嵌 css 优先（`style[data-ykt-fa]`），CSP 拦时退回 `<link>`；KaTeX 字体同理内嵌 css
+- `@require` 的 jspdf/mathjax 保留（Tampermonkey 会缓存，无害）
+
 0.5.3 / 0.5.4:
 
 - 🔧 **解锁码换 AMD Qwen**（0.5.3）：`12345678` → `https://developer.amd.com.cn/radeon/api/v1`（`Qwen3.8-27B`，vision+reasoning），删原 `RMwin10.1` 码；`agnes.js` 兼容 AMD 端点的 `reasoning` 字段（除 `reasoning_content` 外）

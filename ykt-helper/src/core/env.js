@@ -1,4 +1,14 @@
 // src/core/env.js
+// 离线内嵌依赖（?raw 打进 dist）：jsdelivr/cdnjs 断连时脚本仍能工作
+import SRC_KATEX from '../vendor/katex.min.js.txt';
+import SRC_KATEX_AUTO from '../vendor/katex-auto-render.min.js.txt';
+import SRC_MARKED from '../vendor/marked.min.js.txt';
+import SRC_PURIFY from '../vendor/purify.min.js.txt';
+import SRC_MERMAID from '../vendor/mermaid.min.js.txt';
+import SRC_JSPDF from '../vendor/jspdf.umd.min.js.txt';
+import SRC_H2C from '../vendor/html2canvas.min.js.txt';
+import CSS_KATEX from '../vendor/katex.inline.css.txt';
+import CSS_FA from '../vendor/fontawesome.inline.css.txt';
 export const gm = {
   notify(opt) {
     if (typeof window.GM_notification === 'function') window.GM_notification(opt);
@@ -31,6 +41,33 @@ export function loadScriptOnce(src, timeoutMs = 30000) {
     s.onerror = () => { clearTimeout(timer); reject(new Error(`Failed to load: ${src}`)); };
     document.head.appendChild(s);
   });
+}
+
+/** 内联注入 <script>（src 打进 dist 的源码字符串）。页面 CSP 可能拦——返回布尔 */
+function injectInlineScript(src, globalCheck) {
+  const w = gm.uw || window;
+  if (globalCheck && globalCheck(w)) return true;
+  try {
+    const s = document.createElement('script');
+    s.textContent = src;
+    (document.head || document.documentElement).appendChild(s);
+    s.remove();
+    return !globalCheck || !!globalCheck(w);
+  } catch { return false; }
+}
+
+/** 离线优先加载：先试内联注入（不走网络），CSP 拦时退回 CDN script src */
+async function ensureLib(globalName, check, inlineSrc, cdnUrl) {
+  const w = gm.uw || window;
+  if (check(w)) return w[globalName];
+  // 内联：U街库同步执行，成则立即返回
+  if (inlineSrc && injectInlineScript(inlineSrc, check)) {
+    return w[globalName];
+  }
+  // CSP 拦内联 → 退回 CDN
+  await loadScriptOnce(cdnUrl);
+  if (!check(w)) throw new Error(`${globalName} 未正确加载`);
+  return w[globalName];
 }
 
 /** GM_xhr 下载任意图片转 dataURL（绕开 CORS；OSS 无跨域头也能拿） */
@@ -74,61 +111,52 @@ function hostOf(url) {
 }
 
 export async function ensureHtml2Canvas() {
-  const w = gm.uw || window;                         
-  if (typeof w.html2canvas === 'function') return w.html2canvas;
-  await loadScriptOnce('https://html2canvas.hertzen.com/dist/html2canvas.min.js');
-  const h2c = w.html2canvas?.default || w.html2canvas;
-  if (typeof h2c === 'function') return h2c;
-  throw new Error('html2canvas 未正确加载');
+  const h = await ensureLib('html2canvas', w => typeof w.html2canvas === 'function' || typeof w.html2canvas?.default === 'function', SRC_H2C, 'https://html2canvas.hertzen.com/dist/html2canvas.min.js');
+  return h?.default || h;
 }
 
 export async function ensureJsPDF() {
-  // jsPDF 由 @require 预置 → 落在沙箱 window；script 注入降级 → 落在主世界 gm.uw。两处都查
+  // jsPDF 由 @require 预置 → 落在沙箱 window；script/inline 注入 → 落在主世界 gm.uw。两处都查
   const pick = () => (window.jspdf?.jsPDF ? window.jspdf : (gm.uw?.jspdf?.jsPDF ? gm.uw.jspdf : null));
   const ready = pick();
   if (ready) return ready;
-  await loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+  await ensureLib('jspdf', w => !!w.jspdf?.jsPDF, SRC_JSPDF, 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
   const after = pick();
   if (!after) throw new Error('jsPDF 未加载成功');
   return after;
 }
 
-/** mermaid 按需加载（AI 回复里出现 ```mermaid 块时才拉取 CDN） */
+/** mermaid 按需加载（AI 回复里出现 ```mermaid 块时才拉取） */
 export async function ensureMermaid() {
-  const w = gm.uw || window;   // 脚本标签注入主世界，属性也挂在主世界
-  if (w.mermaid?.render) return w.mermaid;
-  await loadScriptOnce('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js');
-  const m = w.mermaid;
-  if (!m?.render) throw new Error('mermaid 未正确加载');
-  m.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' });
+  const m = await ensureLib('mermaid', w => !!w.mermaid?.render, SRC_MERMAID, 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js');
+  try { m.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' }); } catch {}
   return m;
 }
 
-/** KaTeX 按需加载（自含单文件，MathJax v3 拉不动时的公式渲染兜底） */
+/** KaTeX 按需加载（MathJax 不可用的公式渲染兜底；字体已 data-URI 进 css） */
 export async function ensureKaTeX() {
   const w = gm.uw || window;
   if (w.katex?.renderToString) return w.katex;
-  await Promise.all([
-    loadScriptOnce('https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js'),
-    (() => {
-      if (w.document.querySelector('link[data-ykt-katex]')) return;
-      const link = w.document.createElement('link');
-      link.rel = 'stylesheet'; link.dataset.yktKatex = '1';
-      link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css';
-      (w.document.head || w.document.documentElement).appendChild(link);
-    })(),
-  ]);
+  // css 内联注入（字体 data-URI，不走网络）
+  try {
+    if (!document.querySelector('style[data-ykt-katex]')) {
+      const st = document.createElement('style');
+      st.dataset.yktKatex = '1';
+      st.textContent = CSS_KATEX;   // 字体已 data-URI 内嵌
+      (document.head || document.documentElement).appendChild(st);
+    }
+  } catch {}
+  await ensureLib('katex', x => !!x.katex?.renderToString, SRC_KATEX, 'https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js');
   const k = w.katex;
   if (!k?.renderToString) throw new Error('KaTeX 未正确加载');
   return k;
 }
 
-/** marked（专业 Markdown 解析）按需加载（v9：renderer.code(code, lang) 旧签名稳定） */
+/** marked（专业 Markdown 解析）按需加载 */
 export async function ensureMarked() {
   const w = gm.uw || window;
   if (w.marked?.parse) return w.marked;
-  await loadScriptOnce('https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js');
-  if (!w.marked?.parse) throw new Error('marked 未正确加载');
+  await ensureLib('marked', x => !!x.marked?.parse, SRC_MARKED, 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js');
   return w.marked;
 }
 
@@ -136,8 +164,7 @@ export async function ensureMarked() {
 export async function ensureDOMPurify() {
   const w = gm.uw || window;
   if (w.DOMPurify?.sanitize) return w.DOMPurify;
-  await loadScriptOnce('https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js');
-  if (!w.DOMPurify?.sanitize) throw new Error('DOMPurify 未正确加载');
+  await ensureLib('DOMPurify', x => !!x.DOMPurify?.sanitize, SRC_PURIFY, 'https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js');
   return w.DOMPurify;
 }
 
@@ -145,12 +172,21 @@ export function randInt(l, r) {
   return l + Math.floor(Math.random() * (r - l + 1));
 }
 
-export async function ensureFontAwesome() {
+/** Font Awesome：内嵌 css（字体 data-URI）优先，CSP 拦 inline <style> 时退回 CDN <link> */
+export function ensureFontAwesome() {
+  if (document.querySelector('style[data-ykt-fa]') ||
+      [...document.styleSheets].some(s => s.href?.includes('font-awesome'))) return;
+  try {
+    const st = document.createElement('style');
+    st.dataset.yktFa = '1';
+    st.textContent = CSS_FA;   // 4 个 woff2 已 data-URI 内嵌
+    (document.head || document.documentElement).appendChild(st);
+    return;
+  } catch {}
+  // CSP 拦 → 退回 CDN link
   const href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
-  if ([...document.styleSheets].some(s => s.href === href)) return;
   const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = href;
+  link.rel = 'stylesheet'; link.href = href;
   const target = document.head || document.documentElement;
   if (target) try { target.appendChild(link); } catch {}
 }

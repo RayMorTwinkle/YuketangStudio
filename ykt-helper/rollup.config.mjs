@@ -43,7 +43,9 @@ export default {
   },
   plugins: [
     // 允许 import 模板与样式为字符串（与现有用法一致）
-    string({ include: ['**/*.html', '**/*.css'] }),
+    // + src/vendor/*.txt：离线内嵌的第三方库源码（katex/marked/mermaid/...），
+    //   以字符串形式打进 dist，运行时内联 <script>/<style> 注入（不走网络）
+    string({ include: ['**/*.html', '**/*.css', '**/vendor/**/*.txt'] }),
 
     // 解析依赖 / CJS 转 ESM
     resolve({

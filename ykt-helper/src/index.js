@@ -8,21 +8,10 @@ import { actions } from './state/actions.js';
 import { ui } from './ui/ui-api.js';
 import { isStudentV3Page, runHistoryCapture } from './core/history-capture.js'; 
 import { log } from './core/log.js';
+import { ensureFontAwesome } from './core/env.js';
 
-(function loadFA() {
-  // document-start 极早期 document.head 可能尚未解析出来（手动 CDP 注入/异常时序），需兜底
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
-  const target = document.head || document.documentElement;
-  if (target) { try { target.appendChild(link); return; } catch {} }
-  // head/documentElement 都还没出现（极早期注入）——等 DOM 出来再挂
-  const t = setInterval(() => {
-    const el = document.head || document.documentElement;
-    if (el) { clearInterval(t); try { el.appendChild(link); } catch {} }
-  }, 50);
-  setTimeout(() => clearInterval(t), 15000);
-})();
+// Font Awesome：内嵌 css（字体 data-URI）优先；CSP 拦时 env.js 里退回 CDN
+ensureFontAwesome();
 
 /** 用户正在页面里输入时，不要刷新打断 */
 function userIsTyping() {
