@@ -3,10 +3,10 @@
 // 重新生成：修改 scripts/gen-devmode.js 中的 DEV_ENTRIES 后运行 node scripts/gen-devmode.js
 export const DEV_BLOBS = [
   {
-    saltB64: "cShk/0c5NW3ui3fr9oK3fQ==",
-    ivB64: "ZSeLehlQH2Uv9Nn+",
-    ctB64: "yG2YJgAqs9tUfZZSpbQzkvILzSvbzxG5JLmb9v1SPGhe4e4hXb2JhzZxc3SM/1ZTECGZQtJhqqYxeMhgVkiz+k/SyGRC6eXoru3fQFqE+pYV/IiMv/4SEc2EqwPnstwAfIzYsEHBKtje0pBB+Zw1DUb0aEWalyDT9do3ZM1zI5tBvv4tF5Ij0ArTHr78kmzaKE5QmcZSwzjm5Vstaafdilo8SlaSOUmxe6zQSvnQ/OleeBkyZRb95Cl8wml+gvi5yf7Jo8mcNco4O3kmFKAVYpqRgCEs00t6UTJQGVhqBQ==",
-    pwHash: "edb984a4e1770a50eddfc4d5c2128e05642b317b68d2e4cf7d9aa4840d1a6db0",
+    saltB64: "MPuIlAYVu6XCR+aETcsXfQ==",
+    ivB64: "DBvMoM6zAX6vW0BI",
+    ctB64: "VSWWpOmFNpIpNqlfPgMl3G3RAk+x/uSKhO0DdFz6lFahmT7bUbMDpAu2W5HAPa0imWzN1Fe8hJgzwrpnIr3HdSft3wwwo1+8U6pHAPoD9tXUhcskUqJHfhEzPtPAfqHpCsoPAOXGq2Qge96UMv0G2ficj/thWNeJRumwC9zpmOzejH9IGglAwtQXI+bGpnAf+ibyFFq/yRAfbjV8VfijmjIk+dix++WX4OfcDRxcgVFAASJMWDgQ7nuowOBoAz2ugzSMtwkAA7B4JtfKBToiD1tohsBbVBUIj7KYGQLAnPZpZwlo",
+    pwHash: "7f247fe46097a988bc4ff738c31ff029cfce6348794e1529f1fc052f12862af8",
     iterations: 310000,
   }
 ];

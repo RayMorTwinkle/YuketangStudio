@@ -138,8 +138,7 @@ export function mountAIPanel() {
   document.body.appendChild(host.firstElementChild);
   root = document.getElementById('ykt-ai-answer-panel');
 
-  // 面板嵌在 shell 里——关闭=通知 shell 收起（并触发 __yksOnHide 中止流式）
-  $sel('#ykt-ai-close').addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
+  // 面板嵌在 shell 里——关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
   $sel('#ykt-ai-clear').addEventListener('click', () => {
     abortStreaming('清空会话');
     history = [];

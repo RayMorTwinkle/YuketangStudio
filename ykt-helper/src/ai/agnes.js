@@ -101,7 +101,9 @@ export async function agnesChat(opts) {
 
 function pickDelta(obj, opts, acc) {
   const d = obj?.choices?.[0]?.delta || {};
-  if (d.reasoning_content) { acc.reasoning += d.reasoning_content; opts.onReasoning?.(d.reasoning_content); }
+  // 兼容：OpenAI 标准 reasoning_content / AMD radeon 端点 reasoning
+  const rd = d.reasoning_content || d.reasoning;
+  if (rd) { acc.reasoning += rd; opts.onReasoning?.(rd); }
   if (d.content) { acc.content += d.content; opts.onDelta?.(d.content); }
   const tc = d.tool_calls;
   if (tc) {
@@ -137,7 +139,7 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
     if (!body.stream) {
       const data = await res.json();
       const m = data?.choices?.[0]?.message || {};
-      return { content: m.content || '', reasoning: m.reasoning_content || '', toolCalls: m.tool_calls, usage: data.usage };
+      return { content: m.content || '', reasoning: m.reasoning_content || m.reasoning || '', toolCalls: m.tool_calls, usage: data.usage };
     }
     const reader = res.body.getReader();
     const dec = new TextDecoder();
@@ -209,7 +211,7 @@ function gmXhrOnce(url, apiKey, body, timeoutMs) {
         try {
           const data = JSON.parse(res.responseText);
           const m = data?.choices?.[0]?.message || {};
-          resolve({ content: m.content || '', reasoning: m.reasoning_content || '', toolCalls: m.tool_calls, usage: data.usage });
+          resolve({ content: m.content || '', reasoning: m.reasoning_content || m.reasoning || '', toolCalls: m.tool_calls, usage: data.usage });
         } catch (e) { reject(new Error('响应解析失败: ' + e.message)); }
       },
       onerror: () => reject(new Error('网络错误')),

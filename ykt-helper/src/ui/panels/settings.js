@@ -475,9 +475,7 @@ export function mountSettingsPanel() {
     });
   }
 
-  // 关闭按钮：面板嵌在 shell 里，关闭=收起整个 shell
-  root.querySelector('#ykt-settings-close')
-      .addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
+  // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
 
   mounted = true;
   return root;

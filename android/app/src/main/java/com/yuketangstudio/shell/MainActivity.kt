@@ -334,28 +334,36 @@ class MainActivity : AppCompatActivity() {
                 return handleNavigation(url ?: return false)
             }
 
-            // 设备网络常连不上 jsdelivr：CDN 依赖打进 assets/cdn/ 本地回源
+            // 设备网络常连不上 jsdelivr/cdnjs：CDN 依赖打进 assets/cdn/ 本地回源
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 val url = request.url
-                if (url.host == "cdn.jsdelivr.net") {
-                    val path = url.path?.removePrefix("/") ?: return null
-                    // KaTeX 前缀映射：css 里的 fonts/*.woff2 相对路径也要回源
-                    val asset = when {
+                val path = url.path?.removePrefix("/") ?: return null
+                val mimeFor = { a: String -> when {
+                    a.endsWith(".woff2") || a.endsWith(".woff") -> "font/woff2"
+                    a.endsWith(".ttf") -> "font/ttf"
+                    a.endsWith(".css") -> "text/css"
+                    else -> "application/javascript"
+                } }
+                val asset = when (url.host) {
+                    "cdn.jsdelivr.net" -> when {
                         path.startsWith("npm/katex@0.16.21/dist/") ->
                             "katex/" + path.removePrefix("npm/katex@0.16.21/dist/")
                         else -> CDN_ASSETS[path]
                     }
-                    if (asset != null) {
-                        val mime = when {
-                            asset.endsWith(".woff2") -> "font/woff2"
-                            asset.endsWith(".css") -> "text/css"
-                            else -> "application/javascript"
-                        }
-                        return try {
-                            WebResourceResponse(mime, "utf-8", assets.open("cdn/$asset"))
-                        } catch (e: Exception) {
-                            Log.w(TAG, "CDN 本地回源失败: $asset", e); null
-                        }
+                    "cdnjs.cloudflare.com" -> when {
+                        path.startsWith("ajax/libs/font-awesome/6.4.0/") ->
+                            "fontawesome/" + path.removePrefix("ajax/libs/font-awesome/6.4.0/")
+                        else -> null
+                    }
+                    "html2canvas.hertzen.com" ->
+                        if (path == "dist/html2canvas.min.js") "html2canvas.min.js" else null
+                    else -> null
+                }
+                if (asset != null) {
+                    return try {
+                        WebResourceResponse(mimeFor(asset), "utf-8", assets.open("cdn/$asset"))
+                    } catch (e: Exception) {
+                        Log.w(TAG, "CDN 本地回源失败: $asset", e); null
                     }
                 }
                 return super.shouldInterceptRequest(view, request)

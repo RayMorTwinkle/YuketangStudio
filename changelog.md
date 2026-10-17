@@ -1,5 +1,11 @@
 # 更新日志
 
+0.5.3 / 0.5.4:
+
+- 🔧 **解锁码换 AMD Qwen**（0.5.3）：`12345678` → `https://developer.amd.com.cn/radeon/api/v1`（`Qwen3.8-27B`，vision+reasoning），删原 `RMwin10.1` 码；`agnes.js` 兼容 AMD 端点的 `reasoning` 字段（除 `reasoning_content` 外）
+- 🔧 **重复 X 清理**（0.5.4）：面板嵌进 shell tab 后各面板自带 `close-btn`（fa-times）与 shell 全局 ✕ 并存——删 ai/chat/presentation/settings/tutorial/problem-list 6 个面板的内置 X，统一走 shell 右上角 ✕
+- 📦 **全 CDN 离线化**：Font Awesome css+woff2、html2canvas、KaTeX 全进 `assets/cdn/`（katex 前缀 + fontawesome/hertzen 映射），jsdelivr/cdnjs/hertzen 断网也能跑
+
 0.5.2:
 
 - 🔧 **公式渲染三级兜底**：`ensureMathJax` 只认 v3 `typesetPromise`，但有的页面自带 MathJax v2（`Hub.Typeset`，`/m/v2`）或干脆没有 MathJax（`student-lesson-report`），公式一直是生文本。

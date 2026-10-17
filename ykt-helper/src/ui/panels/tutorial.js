@@ -14,8 +14,7 @@ export function mountTutorialPanel() {
   document.body.appendChild(host.firstElementChild);
   root = document.getElementById('ykt-tutorial-panel');
 
-  // 面板嵌在 shell 里——关闭=通知 shell 收起
-  $('#ykt-tutorial-close')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
+  // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
   mounted = true;
   return root;
 }

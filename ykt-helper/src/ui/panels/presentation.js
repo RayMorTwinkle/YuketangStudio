@@ -197,8 +197,7 @@ export function mountPresentationPanel() {
   document.body.appendChild(wrapper.firstElementChild);
   host = document.getElementById('ykt-presentation-panel');
 
-  // 面板嵌在 shell 里——关闭=通知 shell 收起
-  $('#ykt-presentation-close')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
+  // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
 
   // 题目页筛选开关（原「题目列表」功能的替代：点一下只看题目页，再点恢复全部）
   const filterBtn = $('#ykt-filter-problems');

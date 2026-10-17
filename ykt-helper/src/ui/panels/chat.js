@@ -30,8 +30,7 @@ export function mountChatPanel() {
   document.body.appendChild(wrapper.firstElementChild);
   root = document.getElementById('ykt-chat-panel');
 
-  // 面板嵌在 shell 里——关闭=通知 shell 收起（__yksOnHide 会中止流式）
-  $sel('#ykt-chat-close').addEventListener('click', () => window.dispatchEvent(new CustomEvent('ykt:close-shell')));
+  // 面板嵌在 shell 里——关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
   $sel('#ykt-chat-clear').addEventListener('click', () => {
     abortStreaming('清空会话');
     history = [];
