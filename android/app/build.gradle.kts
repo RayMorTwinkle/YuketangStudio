@@ -20,8 +20,8 @@ android {
         applicationId = "com.yuketangstudio.shell"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
     }
 
     // 签名：凭据存 local.properties（不入库），keystore 文件也不入库
@@ -43,6 +43,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     compileOptions {

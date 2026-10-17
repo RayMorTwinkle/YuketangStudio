@@ -1,5 +1,20 @@
 # 更新日志
 
+0.5.0:
+
+**脚本**
+
+- 🧠 **AI 思考开关**：每个 AI profile 独立开关，默认开启 → 发送 `reasoning_effort:"high"`，关闭则不携带该字段（`ai.js`/`chat.js` 调用点读取覆盖）
+- ⚙️ **设置界面重构**：合并模型字段（visionModel 收进高级折叠）、删预设下拉、API Key 眼睛切换+测试连接（GM_xhr 真测延迟）、多解锁码共存（`DEV_BLOBS`/`dev_<index>` profile）、自动分析挪组、提示音折叠、password 输入框样式统一
+
+**Android 套壳**
+
+- 📱 **移动端大改版**：Material3 卡片菜单、BottomSheet、chip tab、`/m/v2` 默认首页、缩放 50–100%、备份 v2（含 localStorage）、多账号 AccountStore
+- 📸 **扫一扫**：`ScanActivity`（CameraX + ML Kit）扫码 → `POST /api/v3/app/scan` 分发，支持网页登录码（`app-web-qr`）自动确认；微信变体 `weixin.qq.com/q/` 提示不支持
+- 📰 **动态 feed**：`POST /api/v3/activities/received/` 拉取最近动态，BottomSheet 列表，点击跳详情
+- 🔧 **历史课件修复**：收集页强制桌面 UA（绕过前端按 UA 重定向回 `/m/v2`）；CDN 依赖（jsPDF/marked/DOMPurify/mermaid）打进 `assets/cdn/` 本地回源，jsdelivr 不可达也能跑；`gm-shim` 下载桥补 `dispatchEvent` 路径 + `downloadStart` 同步开流，PDF 不再损坏
+- 🛠 **调试后门（仅 debug 包）**：`am broadcast NAV/EVAL/EVALC` 远程导航 / 主页面 eval / 收集页 eval
+
 0.4.0:
 
 - ✅ **题目面板（新 tab）**：课堂全部题目列表，已答/未答筛选、分题型简化作答

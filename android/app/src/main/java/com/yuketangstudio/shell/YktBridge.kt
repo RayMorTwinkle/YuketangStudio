@@ -89,17 +89,17 @@ class YktBridge(private val activity: MainActivity) {
     }
 
     // ---------- 分块下载 ----------
+    // downloadStart 必须同步开流：JS 侧紧接着就发 downloadChunk，@JavascriptInterface
+    // 在 JS 线程上按序执行，同步 open 才能保证首 chunk 不会因「流还没建好」被静默丢弃
     @JavascriptInterface
     fun downloadStart(job: String, filename: String) {
-        io.execute {
-            try {
-                val safe = filename.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-                val file = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "$job.part")
-                downloads[job] = FileOutputStream(file)
-                fileJobNames[job] = safe
-            } catch (e: Exception) {
-                activity.log("downloadStart 失败: ${e.message}")
-            }
+        try {
+            val safe = filename.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            val file = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "$job.part")
+            downloads[job] = FileOutputStream(file)
+            fileJobNames[job] = safe
+        } catch (e: Exception) {
+            activity.log("downloadStart 失败: ${e.message}")
         }
     }
 

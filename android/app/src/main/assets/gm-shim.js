@@ -192,38 +192,65 @@
     (document.head || document.documentElement).appendChild(s);
   };
 
-  // ---------- 下载桥：拦截 a[download] 的 blob/data URL 点击（jsPDF save 走这条路） ----------
+  // ---------- 下载桥：拦截 a[download] 的 blob/data URL 点击 ----------
+  // jsPDF save → FileSaver.saveAs → a.dispatchEvent(clickEvt)（不走 .click()），
+  // 所以同时挂 .click() override + document capture 监听两条路，dispatchEvent 也会触发监听。
+  function forwardBlobDownload(anchor, done) {
+    var href = anchor.href || '';
+    var name = anchor.download || 'download';
+    fetch(href).then(function (r) { return r.blob(); }).then(function (blob) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var dataUrl = fr.result || '';
+        var b64 = String(dataUrl).slice(String(dataUrl).indexOf(',') + 1);
+        var job = String(Date.now()) + Math.random().toString(36).slice(2, 7);
+        try {
+          bridge().downloadStart(job, name);
+          var CHUNK = 512 * 1024;
+          for (var i = 0; i < b64.length; i += CHUNK) {
+            bridge().downloadChunk(job, b64.slice(i, i + CHUNK));
+          }
+          bridge().downloadEnd(job);
+        } catch (e) {
+          console.warn('[YKT-bridge] 下载转发失败:', e);
+        }
+        if (done) done();
+      };
+      fr.readAsDataURL(blob);
+    }).catch(function (e) { console.warn('[YKT-bridge] blob 读取失败:', e); if (done) done(); });
+  }
+
+  function isDownloadAnchor(a) {
+    return a && a.hasAttribute && a.hasAttribute('download') &&
+      (/^blob:/i.test(a.href || '') || /^data:/i.test(a.href || '')) &&
+      bridge() && bridge().downloadStart;
+  }
+
   var origClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function () {
-    var href = this.href || '';
-    var name = this.download || 'download';
-    if (this.hasAttribute && this.hasAttribute('download') &&
-        (/^blob:/i.test(href) || /^data:/i.test(href)) &&
-        bridge() && bridge().downloadStart) {
-      var self = this;
-      fetch(href).then(function (r) { return r.blob(); }).then(function (blob) {
-        var fr = new FileReader();
-        fr.onload = function () {
-          var dataUrl = fr.result || '';
-          var b64 = String(dataUrl).slice(String(dataUrl).indexOf(',') + 1);
-          var job = String(Date.now()) + Math.random().toString(36).slice(2, 7);
-          try {
-            bridge().downloadStart(job, name);
-            var CHUNK = 512 * 1024;
-            for (var i = 0; i < b64.length; i += CHUNK) {
-              bridge().downloadChunk(job, b64.slice(i, i + CHUNK));
-            }
-            bridge().downloadEnd(job);
-          } catch (e) {
-            console.warn('[YKT-bridge] 下载转发失败:', e);
-          }
-        };
-        fr.readAsDataURL(blob);
-      }).catch(function (e) { console.warn('[YKT-bridge] blob 读取失败:', e); });
-      return;
-    }
+    if (isDownloadAnchor(this)) { forwardBlobDownload(this); return; }
     return origClick.apply(this, arguments);
   };
+
+  // dispatchEvent 路径：FileSaver.saveAs 等直接 dispatchEvent(click)，不走 .click()
+  var origDispatch = EventTarget.prototype.dispatchEvent;
+  EventTarget.prototype.dispatchEvent = function (e) {
+    if (e && e.type === 'click' && this instanceof HTMLAnchorElement && isDownloadAnchor(this)) {
+      forwardBlobDownload(this);
+      return true;
+    }
+    return origDispatch.call(this, e);
+  };
+
+  // 真实点击兜底：文档内 <a download> 被真戳/程序化触发且冒泡到 document
+  document.addEventListener('click', function (e) {
+    var a = e.target && (e.target.closest ? e.target.closest('a[download]') : null);
+    if (isDownloadAnchor(a)) {
+      e.preventDefault();
+      e.stopPropagation();
+      forwardBlobDownload(a);
+    }
+  }, true);
 
   console.log('[YKT-bridge] GM shim 已安装');
 })();

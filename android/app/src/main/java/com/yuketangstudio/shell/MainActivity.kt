@@ -23,6 +23,7 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.AdapterView
@@ -110,6 +111,14 @@ class MainActivity : AppCompatActivity() {
         private const val TEXT_SEC = 0xFF66718A.toInt()
         private const val TXT = 0xFF1A2233.toInt()
         private const val DIVIDER = 0xFFE5E9F0.toInt()
+
+        // jsdelivr 路径 → assets/cdn/ 本地副本（MathJax 不在列：tex-svg 会递归拉组件，需单独方案）
+        private val CDN_ASSETS = mapOf(
+            "npm/jspdf@2.5.1/dist/jspdf.umd.min.js" to "jspdf.umd.min.js",
+            "npm/marked@9.1.6/marked.min.js" to "marked.min.js",
+            "npm/dompurify@3.1.6/dist/purify.min.js" to "purify.min.js",
+            "npm/mermaid@10.9.1/dist/mermaid.min.js" to "mermaid.min.js",
+        )
     }
 
     // ============================================================
@@ -133,6 +142,39 @@ class MainActivity : AppCompatActivity() {
         askNotificationPermission()
         newTab(homeUrl())
         status(if (desktopMode) "桌面端" else "移动端")
+
+        // 调试广播（仅 debug）：NAV 导航 + EVAL 注入 JS
+        // am broadcast -a com.yuketangstudio.shell.NAV --es url 'https://...'
+        // am broadcast -a com.yuketangstudio.shell.EVAL --es js 'document.title'
+        if (BuildConfig.DEBUG) {
+            registerReceiver(object : android.content.BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    val u = intent?.getStringExtra("url") ?: return
+                    Log.i(TAG, "调试导航: $u")
+                    runOnUiThread { activeWebView?.loadUrl(u) }
+                }
+            }, android.content.IntentFilter("com.yuketangstudio.shell.NAV"), Context.RECEIVER_EXPORTED)
+            registerReceiver(object : android.content.BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    val js = intent?.getStringExtra("js") ?: return
+                    runOnUiThread {
+                        activeWebView?.evaluateJavascript(js) { r ->
+                            Log.i(TAG, "EVAL 结果: $r")
+                        }
+                    }
+                }
+            }, android.content.IntentFilter("com.yuketangstudio.shell.EVAL"), Context.RECEIVER_EXPORTED)
+            registerReceiver(object : android.content.BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    val js = intent?.getStringExtra("js") ?: return
+                    runOnUiThread {
+                        collectView?.evaluateJavascript(js) { r ->
+                            Log.i(TAG, "EVALC 结果: $r")
+                        } ?: Log.i(TAG, "EVALC: collectView 不存在")
+                    }
+                }
+            }, android.content.IntentFilter("com.yuketangstudio.shell.EVALC"), Context.RECEIVER_EXPORTED)
+        }
     }
 
     override fun onPause() { super.onPause(); CookieManager.getInstance().flush() }
@@ -290,6 +332,25 @@ class MainActivity : AppCompatActivity() {
             @Deprecated("deprecated")
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                 return handleNavigation(url ?: return false)
+            }
+
+            // 设备网络常连不上 jsdelivr：CDN 依赖打进 assets/cdn/ 本地回源
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                val url = request.url
+                if (url.host == "cdn.jsdelivr.net") {
+                    val asset = CDN_ASSETS[url.path?.removePrefix("/")]
+                    if (asset != null) {
+                        return try {
+                            WebResourceResponse(
+                                "application/javascript", "utf-8",
+                                assets.open("cdn/$asset"),
+                            )
+                        } catch (e: Exception) {
+                            Log.w(TAG, "CDN 本地回源失败: $asset", e); null
+                        }
+                    }
+                }
+                return super.shouldInterceptRequest(view, request)
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -1356,6 +1417,9 @@ class MainActivity : AppCompatActivity() {
             if (collectView == null) {
                 val wv = WebView(this)
                 configureWebView(wv, Tab(wv, "收集页"))
+                // 收集页是隐藏后台窗口：强制桌面 UA —— 雨课堂前端会按 UA 把
+                // /v2/web/* 页面 JS 重定向回 /m/v2，移动端 UA 下收集器永远跑不起来
+                wv.settings.userAgentString = DESKTOP_UA
                 wv.layoutParams = FrameLayout.LayoutParams(1, 1)
                 binding.collectContainer.addView(wv)
                 binding.collectContainer.visibility = View.VISIBLE
