@@ -211,6 +211,8 @@ export async function runHistoryCapture() {
  * @returns {Promise<{ok, title, pages}>}
  */
 export async function importHistoryLesson(classId, activity, opts = {}) {
+  const abortErr = () => Object.assign(new Error('已取消'), { name: 'AbortError' });
+  if (opts.signal?.aborted) throw abortErr();
   const lessonId = String(activity.courseware_id);
   const activityId = String(activity.id);
   const resultKey = RESULT_KEY_PREFIX + lessonId;
@@ -285,6 +287,8 @@ export async function importHistoryLesson(classId, activity, opts = {}) {
   try {
     while (!done) {
       await sleep(1000);
+      // 用户取消整批下载：立刻抛出，finally 会关掉收集页（收集器随之停止）
+      if (opts.signal?.aborted) throw abortErr();
       if (typeof GM_getValue === 'function') {
         handleProgress(GM_getValue(progressKey));
         handleResult(GM_getValue(resultKey));

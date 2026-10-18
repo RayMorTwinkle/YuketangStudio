@@ -76,8 +76,9 @@ class YktBridge(private val activity: MainActivity) {
             activity, 0, Intent(activity, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        // 同标题覆盖（原先用时间戳，同类通知会无限堆叠）
         mgr.notify(
-            (System.currentTimeMillis() and 0x7fffffff).toInt(),
+            ("n:" + title).hashCode() and 0x7fffffff,
             NotificationCompat.Builder(activity, "ykt")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title)
@@ -131,12 +132,18 @@ class YktBridge(private val activity: MainActivity) {
                     if (uri != null) {
                         activity.contentResolver.openOutputStream(uri)?.use { out -> part.inputStream().use { it.copyTo(out) } }
                         part.delete()
-                        activity.runOnUiThread { Toast.makeText(activity, "已保存到 下载/YuketangStudio/$name", Toast.LENGTH_LONG).show() }
+                        activity.runOnUiThread {
+                            Toast.makeText(activity, "已保存到 下载/YuketangStudio/$name", Toast.LENGTH_LONG).show()
+                            notifyDownloadDone(name, uri)
+                        }
                     } else {
                         // MediaStore 失败 → 留在应用私有目录，至少文件不丢
                         val dest = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), name)
                         part.renameTo(dest)
-                        activity.runOnUiThread { Toast.makeText(activity, "已保存到应用目录/$name", Toast.LENGTH_LONG).show() }
+                        activity.runOnUiThread {
+                            Toast.makeText(activity, "已保存到应用目录/$name", Toast.LENGTH_LONG).show()
+                            notifyDownloadDone(name, null)
+                        }
                     }
                 } else {
                     @Suppress("DEPRECATION")
@@ -144,11 +151,60 @@ class YktBridge(private val activity: MainActivity) {
                     dir.mkdirs()
                     val dest = File(dir, name)
                     part.renameTo(dest)
-                    activity.runOnUiThread { Toast.makeText(activity, "已保存到 $dest", Toast.LENGTH_LONG).show() }
+                    activity.runOnUiThread {
+                        Toast.makeText(activity, "已保存到 $dest", Toast.LENGTH_LONG).show()
+                        notifyDownloadDone(name, null)
+                    }
                 }
             } catch (e: Exception) {
                 activity.log("downloadEnd 失败: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * 下载完成通知：Toast 只在当前界面可见，用户切走或锁屏就完全无感。
+     * 这里补一条系统通知，点击直接打开刚保存的文件。
+     */
+    private fun notifyDownloadDone(name: String, uri: android.net.Uri?) {
+        try {
+            val mgr = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) {
+                mgr.createNotificationChannel(
+                    NotificationChannel("ykt_download", "下载完成", NotificationManager.IMPORTANCE_DEFAULT)
+                )
+            }
+            if (Build.VERSION.SDK_INT >= 33 &&
+                activity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                return   // 没授权就只留 Toast（前面已经弹过）
+            }
+            val open = if (uri != null) {
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, guessMime(name))
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            } else {
+                Intent(activity, MainActivity::class.java)
+            }
+            val pi = PendingIntent.getActivity(
+                activity, name.hashCode(), open,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            // 用文件名哈希作 id：同名文件覆盖通知，不同文件各自保留
+            // （原先用时间戳，每下载一次就多一条，通知栏很快堆满）
+            mgr.notify(
+                ("dl:" + name).hashCode() and 0x7fffffff,
+                NotificationCompat.Builder(activity, "ykt_download")
+                    .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentTitle("下载完成")
+                    .setContentText(name)
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .build(),
+            )
+        } catch (e: Exception) {
+            activity.log("下载通知失败: ${e.message}")
         }
     }
 

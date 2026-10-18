@@ -662,14 +662,19 @@ async function openHistoryImporter() {
     const list = [...chosen];
     if (!list.length) return ui.toast('请先勾选要下载的课堂', 2000);
     mask.remove();
-    const bar = showImportProgressBar(`批量 ${list.length} 个课堂`);
+    // 取消信号：✕ → 二次确认 → abort，正在跑的收集页会被立刻关掉
+    const ctrl = new AbortController();
+    const bar = showImportProgressBar(`批量 ${list.length} 个课堂`, () => ctrl.abort());
     const okList = [], failList = [];
+    let cancelled = false;
+    let processed = 0;
     for (let i = 0; i < list.length; i++) {
-      if (bar.cancelled) { failList.push('（用户取消，剩余未导入）'); break; }
+      if (bar.cancelled) { cancelled = true; break; }
       const a = list[i];
       bar.update(Math.round((i / list.length) * 100), `(${i + 1}/${list.length}) ${a.title || '未命名课堂'} · 打开收集页…`);
       try {
         const r = await importHistoryLesson(classId, a, {
+          signal: ctrl.signal,
           onProgress: (p) => {
             if (p.phase === 'error') { bar.update(Math.round(((i + 0.9) / list.length) * 100), `(${i + 1}/${list.length}) ${p.text || '失败'}`); return; }
             // 混合进度：前 i 个已完成 + 当前课件的 pct
@@ -680,6 +685,7 @@ async function openHistoryImporter() {
             bar.update(overall, `(${i + 1}/${list.length}) ${p.text || ''}${bits.length ? ` · ${bits.join('，')}` : ''}`);
           },
         });
+        processed = i + 1;
         if (r?.ok) {
           okList.push(r.title || a.title || '未命名');
           markDone(a.courseware_id);
@@ -689,8 +695,16 @@ async function openHistoryImporter() {
           failList.push(`${a.title || '未命名'}：${r?.error || '未知错误'}`);
         }
       } catch (e) {
+        // 用户主动取消：不计入失败，直接收尾
+        if (e?.name === 'AbortError') { cancelled = true; break; }
         failList.push(`${a.title || '未命名'}：${e?.message || e}`);
       }
+    }
+    if (cancelled) {
+      bar.fail(`已取消整批下载：完成 ${okList.length} 个，未下载 ${list.length - processed} 个（已完成的文件保留）`);
+      ui.toast(`已取消：完成 ${okList.length} 个，剩余 ${list.length - processed} 个未下载`, 4000);
+      notifyDone('已取消批量下载', `完成 ${okList.length} 个，剩余 ${list.length - processed} 个未下载`);
+      return;
     }
     // 汇总（失败明细必须可见——否则部分失败被静默吞掉）
     const summary = [`完成 ${okList.length} 个，失败 ${failList.length} 个`];
@@ -704,6 +718,7 @@ async function openHistoryImporter() {
       bar.done(`✅ 批量导入完成：${summary[0]}`);
     }
     ui.toast(summary[0], 4000);
+    notifyDone('批量下载结束', summary[0]);
   });
   box.appendChild(downloadBtn);
   const closeBtn = document.createElement('div');
@@ -715,16 +730,53 @@ async function openHistoryImporter() {
   document.body.appendChild(mask);
 }
 
-/** 全局导入进度条（固定左下角工具栏上方，独立于面板生命周期） */
-function showImportProgressBar(title) {
+/** 长任务结束的系统通知（用户可能已切走；不支持则静默，toast 已覆盖当前界面） */
+function notifyDone(title, text) {
+  try {
+    if (typeof GM_notification === 'function') {
+      GM_notification({ title, text, timeout: 8000 });
+    }
+  } catch { /* 忽略 */ }
+}
+
+/** 通用二次确认（脚本内自绘，不依赖 window.confirm——WebView 里它默认返回 false） */
+function confirmDialog(title, text, okLabel = '确认取消') {
+  return new Promise((resolve) => {
+    const mask = document.createElement('div');
+    mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:100000002;display:flex;align-items:center;justify-content:center;padding:20px;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:12px;padding:18px 18px 12px;max-width:340px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);font-size:14px;color:#1a2233;';
+    box.innerHTML = `<div style="font-weight:600;font-size:15px;margin-bottom:8px">${title}</div>
+      <div style="color:#607190;font-size:13px;line-height:1.6">${text}</div>`;
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:16px;';
+    const no = document.createElement('button');
+    no.textContent = '继续下载';
+    no.style.cssText = 'padding:9px 16px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;font-size:14px;color:#44506b;';
+    const ok = document.createElement('button');
+    ok.textContent = okLabel;
+    ok.style.cssText = 'padding:9px 16px;border:none;background:#d64545;color:#fff;border-radius:8px;font-size:14px;font-weight:600;';
+    const done = (v) => { mask.remove(); resolve(v); };
+    no.addEventListener('click', () => done(false));
+    ok.addEventListener('click', () => done(true));
+    mask.addEventListener('click', (e) => { if (e.target === mask) done(false); });
+    bar.appendChild(no); bar.appendChild(ok);
+    box.appendChild(bar); mask.appendChild(box);
+    document.body.appendChild(mask);
+  });
+}
+
+/** 全局导入进度条（固定左下角工具栏上方，独立于面板生命周期）
+ *  onCancel：用户点 ✕ 并二次确认后调用（用于中止正在跑的收集页） */
+function showImportProgressBar(title, onCancel) {
   document.getElementById('ykt-import-progress')?.remove();
   const bar = document.createElement('div');
   bar.id = 'ykt-import-progress';
-  bar.style.cssText = 'position:fixed;left:15px;bottom:60px;z-index:99999998;background:#fff;border:1px solid #c7d2fe;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:10px 14px;width:340px;font-size:13px;';
+  bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:56px;z-index:99999998;background:#fff;border:1px solid #c7d2fe;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:10px 12px;font-size:13px;max-width:420px;margin:0 auto;';
   bar.innerHTML = `
-    <div style="font-weight:600;margin-bottom:6px;color:#1d63df;display:flex;justify-content:space-between;align-items:center">
-      <span>📥 正在导入「${title}」</span>
-      <span class="ip-close" title="取消" style="cursor:pointer;color:#c0392b;font-size:14px;padding:0 2px">✕</span>
+    <div style="font-weight:600;margin-bottom:6px;color:#1d63df;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📥 正在导入「${title}」</span>
+      <button class="ip-close" title="取消整批下载" style="flex:0 0 auto;width:34px;height:34px;border:none;background:#fdecec;color:#c0392b;border-radius:8px;font-size:16px;line-height:1;cursor:pointer">✕</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <div style="flex:1;height:8px;background:#dbeafe;border-radius:4px;overflow:hidden">
@@ -744,17 +796,28 @@ function showImportProgressBar(title) {
     done(text) {
       const f = bar.querySelector('.ip-fill'); if (f) f.style.width = '100%';
       const t = bar.querySelector('.ip-text'); if (t) { t.textContent = text; t.style.color = '#059669'; }
+      bar.querySelector('.ip-close')?.remove();
       setTimeout(() => bar.remove(), 30000);
     },
     fail(text) {
-      // 失败结果保留 30s——用户切回来还能看到失败痕迹与原因
       const t = bar.querySelector('.ip-text'); if (t) { t.textContent = '❌ ' + text; t.style.color = '#c0392b'; }
+      bar.querySelector('.ip-close')?.remove();
       setTimeout(() => bar.remove(), 30000);
     },
   };
-  bar.querySelector('.ip-close')?.addEventListener('click', () => {
+  bar.querySelector('.ip-close')?.addEventListener('click', async () => {
+    if (api.cancelled) return;
+    const ok = await confirmDialog(
+      '取消整批下载？',
+      '已下载完成的课堂会保留；正在下载的这个课堂会立即中止（收集页会关闭）。',
+    );
+    if (!ok) return;
     api.cancelled = true;
-    api.update(0, '正在取消…（当前课堂会跑完本次等待）');
+    api.update(0, '已取消整批下载');
+    const t = bar.querySelector('.ip-text');
+    if (t) t.style.color = '#c0392b';
+    bar.querySelector('.ip-close')?.remove();
+    try { onCancel?.(); } catch {}
   });
   return api;
 }
