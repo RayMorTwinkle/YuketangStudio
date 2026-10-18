@@ -1,5 +1,11 @@
 # 更新日志
 
+0.5.11:
+
+- 🔧 **脚本自动更新失效修复**：`userscript.meta.js` 缺 `@updateURL`/`@downloadURL`——Tampermonkey 根本不知道去哪检查更新（之前只有脚本内 `checkForUpdate` 弹通知，不会安装）。现指向 `api.raymor.top/yuketangstudio/dl/userscript`（稳定 302 → 最新文件，国内可达）
+- ✨ **教程页 → 关于页**：tab 改名「关于」，只保留项目信息（介绍/仓库/致谢/反馈/注意事项），并新增「版本与更新」块——显示当前版本、**检查更新**按钮、发现新版时出现「前往下载」。状态分色（已是最新绿/有新版本黄/失败红）
+- 📱 **手机端检查更新移到外壳**：menu 新增「检查更新」（显示当前 vX.Y.Z）。原生拉 `/latest` 比对版本，有新版弹窗提供「下载并安装」（DownloadManager 下载完自动询问安装）或「浏览器打开」
+
 0.5.10:
 
 - 🐛 **「匿名统计使用情况」开关不可见**：该开关用了裸 `<input type="checkbox">`，而面板 CSS 把原生 checkbox 设为 `opacity:0; height:0; width:0`，靠 `.checkbox-label + .checkmark` 画可见方框——所以真实勾选框完全看不到。改为与面板其他开关一致的结构

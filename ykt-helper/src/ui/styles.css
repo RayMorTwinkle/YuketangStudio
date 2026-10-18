@@ -236,12 +236,26 @@
 }
 #ykt-active-problems .ap-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }
 
-/* ===== 教程面板 (#ykt-tutorial-panel) ===== */
-#ykt-tutorial-panel .tutorial-content h4{ margin: 8px 0 6px; }
-#ykt-tutorial-panel .tutorial-content p,
-#ykt-tutorial-panel .tutorial-content li{ line-height: 1.5; }
-#ykt-tutorial-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }
-#ykt-tutorial-panel .tutorial-content a:hover{ text-decoration: underline; }
+/* ===== 关于面板 (#ykt-about-panel) ===== */
+#ykt-about-panel .tutorial-content h4{ margin: 8px 0 6px; }
+#ykt-about-panel .tutorial-content p,
+#ykt-about-panel .tutorial-content li{ line-height: 1.5; }
+#ykt-about-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }
+#ykt-about-panel .tutorial-content a:hover{ text-decoration: underline; }
+
+/* 版本与更新块 */
+#ykt-about-panel .ykt-about-version{
+  border: 1px solid var(--ykt-border); border-radius: 6px;
+  padding: 10px; margin: 4px 0 10px; background: #fafbfc;
+}
+#ykt-about-panel .ykt-about-ver-row{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#ykt-about-panel .ykt-about-cur{ font-size: 13px; font-weight: 600; }
+#ykt-about-panel .ykt-about-status{ font-size: 12px; margin-top: 6px; line-height: 1.5; min-height: 16px; }
+#ykt-about-panel .ykt-about-status[data-kind="muted"]{ color: var(--ykt-muted); }
+#ykt-about-panel .ykt-about-status[data-kind="ok"]{ color: #1a7f37; }
+#ykt-about-panel .ykt-about-status[data-kind="update"]{ color: #9a6700; }
+#ykt-about-panel .ykt-about-status[data-kind="error"]{ color: #cf222e; }
+#ykt-about-panel .ykt-about-actions{ display: flex; gap: 8px; margin-top: 8px; }
 
 /* ===== 小屏适配 ===== */
 @media (max-width: 1200px){

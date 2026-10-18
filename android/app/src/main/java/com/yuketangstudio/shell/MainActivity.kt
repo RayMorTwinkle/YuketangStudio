@@ -69,6 +69,11 @@ class MainActivity : AppCompatActivity() {
     private val historyPrefs get() = getSharedPreferences("nav_history", Context.MODE_PRIVATE)
     private val prefs get() = getSharedPreferences("settings", Context.MODE_PRIVATE)
 
+    // ---------- 更新检查 ----------
+    private var pendingApkId: Long = -1
+    private var pendingApkVersion: String = ""
+    private var updateReceiver: android.content.BroadcastReceiver? = null
+
     private var desktopMode
         get() = prefs.getBoolean("desktopMode", false)
         set(v) { prefs.edit().putBoolean("desktopMode", v).apply() }
@@ -112,6 +117,10 @@ class MainActivity : AppCompatActivity() {
         private const val TXT = 0xFF1A2233.toInt()
         private const val DIVIDER = 0xFFE5E9F0.toInt()
 
+        // 更新检查：与脚本共用同一份 svc 元数据（版本号/下载链接唯一来源）
+        private const val LATEST_URL = "https://api.raymor.top/yuketangstudio/latest"
+        private const val SITE_URL = "https://app.raymor.top/yuketangstudio/"
+
         // jsdelivr 路径 → assets/cdn/ 本地副本（MathJax 不在列：tex-svg 会递归拉组件，需单独方案）
         private val CDN_ASSETS = mapOf(
             "npm/jspdf@2.5.1/dist/jspdf.umd.min.js" to "jspdf.umd.min.js",
@@ -138,6 +147,7 @@ class MainActivity : AppCompatActivity() {
         Log.i(TAG, "document-start 注入支持: $docStartSupported")
 
         configureToolbar()
+        registerUpdateReceiver()
         configureZoomBar()
         askNotificationPermission()
         newTab(homeUrl())
@@ -180,6 +190,8 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() { super.onPause(); CookieManager.getInstance().flush() }
 
     override fun onDestroy() {
+        updateReceiver?.let { runCatching { unregisterReceiver(it) } }
+        updateReceiver = null
         closeCollectPage()
         tabs.forEach { it.webView.apply { stopLoading(); clearHistory(); removeAllViews(); destroy() } }
         tabs.clear()
@@ -575,6 +587,8 @@ class MainActivity : AppCompatActivity() {
         row("💾", "备份设置", "登录态+全部配置+账号+历史") { pickBackupTarget() }
         row("♻️", "还原设置") { pickRestoreSource() }
         divider()
+        row("🔄", "检查更新", "当前 v${BuildConfig.VERSION_NAME}") { checkAppUpdate() }
+        divider()
         row("🗑", "清空当前标签页数据") {
             activeWebView?.let {
                 it.clearCache(true); it.clearHistory()
@@ -584,6 +598,161 @@ class MainActivity : AppCompatActivity() {
         }
         sheet.setContentView(ScrollView(this).apply { addView(layout) })
         sheet.show()
+    }
+
+    // ============================================================
+    // 检查更新（外壳侧，不依赖脚本运行）
+    // ============================================================
+
+    /**
+     * 拉 svc /latest 元数据，和 BuildConfig.VERSION_NAME 比对。
+     * 与脚本的 update-check.js 共用同一份元数据，版本号单一来源。
+     * 有新版 → 对话框提供「下载并安装」（DownloadManager + 安装器）或「用浏览器打开」。
+     */
+    private fun checkAppUpdate() {
+        val cur = BuildConfig.VERSION_NAME
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("检查更新")
+            .setMessage("当前版本 v$cur\n\n正在连接更新服务器…")
+            .setNegativeButton("关闭", null)
+            .create()
+        dlg.show()
+
+        Thread {
+            var message = ""
+            var apkUrl: String? = null
+            var latest: String? = null
+            try {
+                val conn = (java.net.URL(LATEST_URL).openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 10000
+                    readTimeout = 10000
+                    instanceFollowRedirects = true
+                }
+                val code = conn.responseCode
+                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()?.use { it.readText() } ?: ""
+                conn.disconnect()
+                if (code !in 200..299) {
+                    message = "服务器返回 $code"
+                } else {
+                    val obj = org.json.JSONObject(body)
+                    latest = obj.optString("version").ifBlank { null }
+                    apkUrl = obj.optString("apk").ifBlank { null }
+                    val notes = obj.optString("notes")
+                    message = when {
+                        latest == null -> "响应缺少版本号"
+                        isNewer(latest, cur) ->
+                            "发现新版本 v$latest（当前 v$cur）" + if (notes.isNotBlank()) "\n\n$notes" else ""
+                        else -> "已是最新版本（服务器 v$latest）"
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "检查更新失败", e)
+                message = "检查失败：${e.message ?: e.javaClass.simpleName}"
+            }
+
+            val hasUpdate = latest != null && isNewer(latest, cur) && !apkUrl.isNullOrBlank()
+            runOnUiThread {
+                if (dlg.isShowing) dlg.dismiss()
+                AlertDialog.Builder(this)
+                    .setTitle("检查更新")
+                    .setMessage(message)
+                    .apply {
+                        if (hasUpdate) {
+                            setPositiveButton("下载并安装") { _, _ -> downloadAndInstall(apkUrl!!, latest!!) }
+                            setNeutralButton("浏览器打开") { _, _ ->
+                                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl))) }
+                                    .onFailure { toast("没有可用的浏览器") }
+                            }
+                        }
+                        setNegativeButton("关闭", null)
+                    }
+                    .show()
+            }
+        }.start()
+    }
+
+    /** 语义化版本比较：a 比 b 新 → true（与前缀非数字段容错，与脚本 cmpVer 一致） */
+    private fun isNewer(a: String, b: String): Boolean {
+        val pa = a.split(".").map { it.toIntOrNull() ?: 0 }
+        val pb = b.split(".").map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(pa.size, pb.size)) {
+            val d = (pa.getOrNull(i) ?: 0) - (pb.getOrNull(i) ?: 0)
+            if (d != 0) return d > 0
+        }
+        return false
+    }
+
+    /**
+     * 注册 APK 下载完成广播：下载成功后弹窗询问是否立即安装。
+     * Android 13+ 注册带包名的 receiver 需要 RECEIVER_NOT_EXPORTED（系统广播仍可收到）。
+     */
+    private fun registerUpdateReceiver() {
+        if (updateReceiver != null) return
+        val rx = object : android.content.BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent?.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+                val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                if (id <= 0 || id != pendingApkId) return
+                Log.i(TAG, "APK 下载完成 id=$id version=$pendingApkVersion")
+                // 校验确实下载成功（失败时 getUriForDownloadedFile 会返回 null）
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("下载完成")
+                    .setMessage("新版本 v$pendingApkVersion 已下载完成，是否立即安装？")
+                    .setPositiveButton("安装") { _, _ -> installApk(id) }
+                    .setNegativeButton("稍后") { _, _ -> toast("安装包在「下载/YuketangStudio」") }
+                    .show()
+            }
+        }
+        updateReceiver = rx
+        val filter = android.content.IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(rx, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(rx, filter)
+        }
+    }
+
+    /** DownloadManager 入队下载 APK，并在完成后由 registerUpdateReceiver 拉起安装器 */
+    private fun downloadAndInstall(apkUrl: String, version: String) {
+        try {
+            val name = "YuketangStudio-$version.apk"
+            val req = DownloadManager.Request(Uri.parse(apkUrl)).apply {
+                setTitle(name)
+                setDescription("正在下载新版本 v$version")
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "YuketangStudio/$name")
+                setMimeType("application/vnd.android.package-archive")
+            }
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            pendingApkId = dm.enqueue(req)
+            pendingApkVersion = version
+            toast("开始下载 v$version，完成后自动提示安装")
+            Log.i(TAG, "APK 下载中: $name <- $apkUrl")
+        } catch (e: Exception) {
+            Log.e(TAG, "APK 下载失败", e)
+            toast("下载失败：${e.message}")
+        }
+    }
+
+    /** 下载完成 → 拉起系统安装器（package installer） */
+    private fun installApk(downloadId: Long) {
+        try {
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            val uri = dm.getUriForDownloadedFile(downloadId) ?: run {
+                toast("没找到已下载的安装包")
+                return
+            }
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            Log.i(TAG, "拉起安装器 id=$downloadId")
+        } catch (e: Exception) {
+            Log.e(TAG, "拉起安装器失败", e)
+            toast("无法打开安装器：${e.message}")
+        }
     }
 
     // ============================================================

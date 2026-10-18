@@ -126,8 +126,8 @@ export const ui = {
     Shell.toggleTab('settings');
   },
 
-  toggleTutorialPanel() {
-    Shell.toggleTab('tutorial');
+  toggleAboutPanel() {
+    Shell.toggleTab('about');
   },
 
   // 在 index.js 初始化时挂载一次
