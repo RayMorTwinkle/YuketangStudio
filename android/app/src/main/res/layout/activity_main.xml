@@ -5,81 +5,78 @@
     android:orientation="vertical"
     android:fitsSystemWindows="true">
 
-    <!-- 工具栏 -->
+    <!-- 工具栏：← → ⟳  |  账号 动态 更多（环境切换已移入菜单） -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="40dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="2dp"
-        android:paddingEnd="2dp"
-        android:paddingTop="2dp"
-        android:paddingBottom="2dp"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
         android:background="@color/toolbar_bg">
 
         <ImageButton
             android:id="@+id/btnBack"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_media_rew"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_arrow_back"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="后退" />
 
         <ImageButton
             android:id="@+id/btnForward"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_media_ff"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_arrow_forward"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="前进" />
 
         <ImageButton
             android:id="@+id/btnReload"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_popup_sync"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_refresh"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="刷新" />
 
-        <TextView
-            android:id="@+id/btnEnv"
+        <View
             android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="40dp"
-            android:gravity="center"
-            android:text="长江雨课堂 ▾"
-            android:textSize="13sp"
-            android:textColor="@color/text_primary"
-            android:background="?attr/selectableItemBackground"
-            android:maxLines="1"
-            android:ellipsize="end" />
-
-        <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textSize="10sp"
-            android:textColor="@color/text_secondary"
-            android:paddingStart="2dp"
-            android:paddingEnd="4dp"
-            android:maxWidth="72dp"
-            android:maxLines="2"
-            android:ellipsize="end"
-            android:text="YKT" />
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <ImageButton
-            android:id="@+id/btnDesktop"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_view"
+            android:id="@+id/btnAccount"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_person"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="桌面端切换" />
+            android:contentDescription="账号" />
+
+        <ImageButton
+            android:id="@+id/btnFeed"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_feed"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="动态" />
 
         <ImageButton
             android:id="@+id/btnMenu"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_more"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_more_vert"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="菜单" />
     </LinearLayout>
@@ -131,6 +128,25 @@
             android:id="@+id/collectContainer"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <!-- 状态提示：底部浮动小胶囊，自动消失（不再占 header 空间） -->
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/bg_status_chip"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:maxWidth="300dp"
+            android:maxLines="2"
+            android:ellipsize="end"
             android:visibility="gone" />
 
         <!-- 缩放控制条 -->

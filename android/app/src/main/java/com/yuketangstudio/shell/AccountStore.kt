@@ -77,6 +77,17 @@ object AccountStore {
 
     /** 从 localStorage JSON 提取登录凭证指纹（Authorization/token 系） */
     fun fingerprint(ls: JSONObject): String {
+        // ① 雨课堂把登录态放 Cookie（HttpOnly），localStorage 里只有 user_profile
+        //    之前只扫 authorization/token 键，导致永远判定「未登录」——账号功能实际不可用
+        val rawProfile = ls.optString("user_profile")
+        if (rawProfile.startsWith("{")) {
+            runCatching {
+                val o = JSONObject(rawProfile)
+                val uid = o.optString("user_id")
+                if (uid.isNotBlank() && uid != "0") return "uid:$uid"
+            }
+        }
+        // ② 通用 token 扫描（兼容其它站点/旧版本）
         for (k in ls.keys()) {
             val kl = k.lowercase()
             if (kl.contains("authorization") || kl.contains("token")) {
@@ -89,6 +100,15 @@ object AccountStore {
 
     /** 从 localStorage JSON 猜显示名 */
     fun guessName(ls: JSONObject, fallback: String): String {
+        // 雨课堂：user_profile.name（如「陈益博」）
+        val rawProfile = ls.optString("user_profile")
+        if (rawProfile.startsWith("{")) {
+            runCatching {
+                val o = JSONObject(rawProfile)
+                val n = o.optString("name").ifBlank { o.optString("nickname") }
+                if (n.isNotBlank() && !n.startsWith("{")) return n
+            }
+        }
         for (k in ls.keys()) {
             val kl = k.lowercase()
             if (kl.contains("realname") || kl.contains("username") ||

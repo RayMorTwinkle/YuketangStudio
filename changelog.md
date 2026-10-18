@@ -1,5 +1,16 @@
 # 更新日志
 
+0.5.13:
+
+- 🐛 **账号存储彻底修复**：`fingerprint()` 只扫 localStorage 的 `authorization`/`token`，但雨课堂把登录态放在 **Cookie**（localStorage 里只有 `user_profile`）——所以永远判定「未登录」，保存/识别账号全失效。改用 `user_profile.user_id` 作指纹、`user_profile.name` 作显示名
+- 🐛 **账号状态不再丢**：`currentAccountId` 之前只是内存变量，重启后菜单显示「未登录」且无法把 session 存回正确账号；改为持久化
+- 🐛 **不再反复弹保存提示**：点过「暂不」的账号记住指纹，同一账号不再骚扰
+- 🐛 **切账号不再串号**：切换前先清空所有环境的 Cookie，避免两个账号的凭证混在一起
+- ✨ 账号面板新增「更新当前账号快照」，登录态变化后可手动刷新
+- 🐛 **面板只能下滑不能上滑**：`BottomSheetDialog` 默认手势把竖向滑动当成「拖拽收起」，还会把事件穿透到下层（实测滑一下就打开了扫一扫）。统一面板基座改为 `isDraggable=false` + ScrollView 接管，菜单/动态/账号面板均可双向滚动且不会误关
+- 🎨 **Header 重做**：系统自带图标（`ic_media_rew` 等 Android 2.x 风格）换成 Material 矢量图标（← → ⟳ / 账号 / 动态 / ⋮），按钮 40dp→36dp、高度与多标签条齐平；环境切换移入菜单，「移动端」文字改为底部浮动状态提示（2.2s 自动消失）
+- 🧹 移除已废弃的 `assets/cdn/` 本地回源拦截器（vendor 早已内联进脚本，这段每次 CDN 请求都抛 FileNotFoundException 刷日志）
+
 0.5.12:
 
 - 💬 **mermaid 提示词补强**：节点文本含空格/括号/斜杠/中文标点时要求 LLM 用双引号包裹（`A["真实函数 f(x)"]`），否则整张图渲染失败

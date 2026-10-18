@@ -15,6 +15,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -30,6 +32,7 @@ import android.widget.AdapterView
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -106,7 +109,19 @@ class MainActivity : AppCompatActivity() {
     private val REQ_SAVE_BACKUP_FILE = 42
 
     // ---------- 账号 ----------
-    private var currentAccountId: String? = null
+    // 持久化：之前只是内存变量，重启后「账号」显示未登录、也无法把当前 session
+    // 存回正确的 profile
+    private var currentAccountId: String?
+        get() = prefs.getString("account.currentId", null)
+        set(v) { prefs.edit().putString("account.currentId", v).apply() }
+
+    /** 用户点过「暂不」的账号指纹：同一账号不再反复弹窗 */
+    private fun ignoredFps(): MutableSet<String> =
+        prefs.getStringSet("account.ignoredFps", mutableSetOf())!!.toMutableSet()
+
+    private fun ignoreFp(fp: String) {
+        prefs.edit().putStringSet("account.ignoredFps", ignoredFps().apply { add(fp) }).apply()
+    }
 
     companion object {
         private const val TAG = "YktShell"
@@ -121,13 +136,6 @@ class MainActivity : AppCompatActivity() {
         private const val LATEST_URL = "https://api.raymor.top/yuketangstudio/latest"
         private const val SITE_URL = "https://app.raymor.top/yuketangstudio/"
 
-        // jsdelivr 路径 → assets/cdn/ 本地副本（MathJax 不在列：tex-svg 会递归拉组件，需单独方案）
-        private val CDN_ASSETS = mapOf(
-            "npm/jspdf@2.5.1/dist/jspdf.umd.min.js" to "jspdf.umd.min.js",
-            "npm/marked@9.1.6/marked.min.js" to "marked.min.js",
-            "npm/dompurify@3.1.6/dist/purify.min.js" to "purify.min.js",
-            "npm/mermaid@10.9.1/dist/mermaid.min.js" to "mermaid.min.js",
-        )
     }
 
     // ============================================================
@@ -346,41 +354,6 @@ class MainActivity : AppCompatActivity() {
                 return handleNavigation(url ?: return false)
             }
 
-            // 设备网络常连不上 jsdelivr/cdnjs：CDN 依赖打进 assets/cdn/ 本地回源
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                val url = request.url
-                val path = url.path?.removePrefix("/") ?: return null
-                val mimeFor = { a: String -> when {
-                    a.endsWith(".woff2") || a.endsWith(".woff") -> "font/woff2"
-                    a.endsWith(".ttf") -> "font/ttf"
-                    a.endsWith(".css") -> "text/css"
-                    else -> "application/javascript"
-                } }
-                val asset = when (url.host) {
-                    "cdn.jsdelivr.net" -> when {
-                        path.startsWith("npm/katex@0.16.21/dist/") ->
-                            "katex/" + path.removePrefix("npm/katex@0.16.21/dist/")
-                        else -> CDN_ASSETS[path]
-                    }
-                    "cdnjs.cloudflare.com" -> when {
-                        path.startsWith("ajax/libs/font-awesome/6.4.0/") ->
-                            "fontawesome/" + path.removePrefix("ajax/libs/font-awesome/6.4.0/")
-                        else -> null
-                    }
-                    "html2canvas.hertzen.com" ->
-                        if (path == "dist/html2canvas.min.js") "html2canvas.min.js" else null
-                    else -> null
-                }
-                if (asset != null) {
-                    return try {
-                        WebResourceResponse(mimeFor(asset), "utf-8", assets.open("cdn/$asset"))
-                    } catch (e: Exception) {
-                        Log.w(TAG, "CDN 本地回源失败: $asset", e); null
-                    }
-                }
-                return super.shouldInterceptRequest(view, request)
-            }
-
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 if (!docStartSupported && url != null && isYuketang(url) && !tab.fallbackInjected) {
                     tab.fallbackInjected = true
@@ -490,12 +463,11 @@ class MainActivity : AppCompatActivity() {
     // ============================================================
 
     private fun configureToolbar() {
-        binding.btnEnv.text = "${env.label} ▾"
-        binding.btnEnv.setOnClickListener { pickEnv() }
         binding.btnBack.setOnClickListener { activeWebView?.let { if (it.canGoBack()) it.goBack() } }
         binding.btnForward.setOnClickListener { activeWebView?.let { if (it.canGoForward()) it.goForward() } }
         binding.btnReload.setOnClickListener { activeWebView?.reload() }
-        binding.btnDesktop.setOnClickListener { toggleDesktopMode() }
+        binding.btnAccount.setOnClickListener { showAccountSheet() }
+        binding.btnFeed.setOnClickListener { showFeed() }
         binding.btnMenu.setOnClickListener { showMenu() }
     }
 
@@ -508,7 +480,7 @@ class MainActivity : AppCompatActivity() {
                 if (next == env) return@setItems
                 env = next
                 envIndex = i
-                binding.btnEnv.text = "${env.label} ▾"
+                status("已切换到 ${env.label}")
                 closeCollectPage()
                 activeWebView?.loadUrl(homeUrl())
                 Log.i(TAG, "切换环境 → ${env.label}")
@@ -531,73 +503,139 @@ class MainActivity : AppCompatActivity() {
         Log.i(TAG, "切换模式 → ${if (desktopMode) "桌面端" else "移动端"} scale=$scale")
     }
 
-    /** BottomSheet 菜单 */
+    /**
+     * 统一底部面板基座：标题 + 关闭 + 可滚动内容。
+     *
+     * 关键：isDraggable=false —— 之前用 BottomSheetDialog 默认手势，竖向滑动会被
+     * 面板当成「拖拽收起」，结果只能下滑不能上滑，还会把事件穿透到下层
+     * （实测滑一下就打开了扫一扫）。禁用拖拽后所有竖向手势交给 ScrollView。
+     */
+    private fun showSheet(title: String, build: (LinearLayout) -> Unit) {
+        val sheet = BottomSheetDialog(this)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = androidx.core.content.ContextCompat.getDrawable(this@MainActivity, R.drawable.bg_sheet)
+        }
+        // 顶部拖拽指示条（纯装饰，不响应手势）
+        root.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(8)
+                bottomMargin = dp(2)
+            }
+            background = GradientDrawable().apply {
+                setColor(0xFFD8DEE9.toInt()); cornerRadius = dp(2).toFloat()
+            }
+        })
+        // 标题 + 关闭
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(2), dp(6), dp(6))
+        }
+        header.addView(TextView(this).apply {
+            text = title; textSize = 17f
+            setTypeface(typeface, Typeface.BOLD); setTextColor(TXT)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        header.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_close)
+            background = ripple()
+            val pad = dp(8)
+            setPadding(pad, pad, pad, pad)
+            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
+            contentDescription = "关闭"
+            setOnClickListener { sheet.dismiss() }
+        })
+        root.addView(header)
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), 0, dp(8), dp(24))
+        }
+        root.addView(ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        build(content)
+        sheet.setContentView(root)
+        sheet.setOnDismissListener { if (activeSheet === sheet) activeSheet = null }
+        activeSheet = sheet
+
+        sheet.behavior.isDraggable = false
+        sheet.behavior.skipCollapsed = true
+        sheet.behavior.peekHeight = (resources.displayMetrics.heightPixels * 0.88f).toInt()
+        sheet.show()
+        sheet.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+    }
+
+    /** 面板里的一行（图标 + 标题 + 副标题） */
+    private fun sheetRow(
+        parent: LinearLayout, icon: String, label: String, sub: String? = null,
+        onClick: () -> Unit
+    ) {
+        val item = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            background = ripple()
+            setOnClickListener { dismissSheet(); onClick() }
+        }
+        item.addView(TextView(this).apply { text = icon; textSize = 19f })
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, 0, 0)
+        }
+        col.addView(TextView(this).apply { text = label; textSize = 15f; setTextColor(TXT) })
+        if (sub != null) col.addView(TextView(this).apply {
+            text = sub; textSize = 11f; setTextColor(TEXT_SEC); setPadding(0, dp(2), 0, 0)
+        })
+        item.addView(col)
+        parent.addView(item)
+    }
+
+    private fun sheetDivider(parent: LinearLayout) {
+        parent.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                setMargins(dp(16), dp(4), dp(16), dp(4))
+            }
+            setBackgroundColor(DIVIDER)
+        })
+    }
+
+    /** 菜单 */
     private fun showMenu() {
         Log.i(TAG, "showMenu")
-        val sheet = BottomSheetDialog(this)
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(24))
-        }
-        fun row(icon: String, label: String, sub: String? = null, onClick: () -> Unit) {
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(14), dp(16), dp(14))
-                background = ripple()
-                setOnClickListener { sheet.dismiss(); onClick() }
-            }
-            item.addView(TextView(this).apply { text = icon; textSize = 20f })
-            val col = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(16), 0, 0, 0)
-            }
-            col.addView(TextView(this).apply {
-                text = label; textSize = 15f; setTextColor(TXT)
-            })
-            if (sub != null) col.addView(TextView(this).apply {
-                text = sub; textSize = 11f; setTextColor(TEXT_SEC); setPadding(0, dp(2), 0, 0)
-            })
-            item.addView(col)
-            layout.addView(item)
-        }
-        fun divider() {
-            layout.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
-                    setMargins(dp(16), dp(4), dp(16), dp(4))
+        showSheet("菜单") { layout ->
+            sheetRow(layout, "🌐", "切换环境", "当前：${env.label}") { pickEnv() }
+            sheetRow(layout, "👤", "账号", currentAccountId?.let { id ->
+                AccountStore.all(this).find { it.id == id }?.name ?: "已登录"
+            } ?: "未登录") { showAccountSheet() }
+            sheetDivider(layout)
+            sheetRow(layout, if (desktopMode) "🖥️" else "📱", "切换${if (desktopMode) "移动" else "桌面"}端",
+                "桌面端自动 70% 缩放") { toggleDesktopMode() }
+            sheetRow(layout, "🔍", "页面缩放", "当前 ${currentScale}%（50–100%）") { toggleZoomBar() }
+            sheetDivider(layout)
+            sheetRow(layout, "📜", "历史记录") { showHistory() }
+            sheetRow(layout, "📥", "下载管理") { showDownloads() }
+            sheetRow(layout, "📷", "扫一扫", "扫码进课堂/签到") { startScan() }
+            sheetRow(layout, "📰", "动态", "查看课件/测验/公告推送") { showFeed() }
+            sheetDivider(layout)
+            sheetRow(layout, "💾", "备份设置", "登录态+全部配置+账号+历史") { pickBackupTarget() }
+            sheetRow(layout, "♻️", "还原设置") { pickRestoreSource() }
+            sheetDivider(layout)
+            sheetRow(layout, "🔄", "检查更新", "当前 v${BuildConfig.VERSION_NAME}") { checkAppUpdate() }
+            sheetDivider(layout)
+            sheetRow(layout, "🗑", "清空当前标签页数据") {
+                activeWebView?.let {
+                    it.clearCache(true); it.clearHistory()
+                    CookieManager.getInstance().flush()
+                    toast("已清空当前标签页缓存/历史")
                 }
-                setBackgroundColor(DIVIDER)
-            })
-        }
-
-        row("👤", "账号", currentAccountId?.let { id ->
-            AccountStore.all(this).find { it.id == id }?.name ?: "已登录"
-        } ?: "未登录") { showAccountSheet() }
-        divider()
-        row(if (desktopMode) "🖥️" else "📱", "切换${if (desktopMode) "移动" else "桌面"}端",
-            "桌面端自动 70% 缩放") { toggleDesktopMode() }
-        row("🔍", "页面缩放", "当前 ${currentScale}%（50–100%）") { toggleZoomBar() }
-        divider()
-        row("📜", "历史记录") { showHistory() }
-        row("📥", "下载管理") { showDownloads() }
-        row("📷", "扫一扫", "扫码进课堂/签到") { startScan() }
-        row("📰", "动态", "查看课件/测验/公告推送") { showFeed() }
-        divider()
-        row("💾", "备份设置", "登录态+全部配置+账号+历史") { pickBackupTarget() }
-        row("♻️", "还原设置") { pickRestoreSource() }
-        divider()
-        row("🔄", "检查更新", "当前 v${BuildConfig.VERSION_NAME}") { checkAppUpdate() }
-        divider()
-        row("🗑", "清空当前标签页数据") {
-            activeWebView?.let {
-                it.clearCache(true); it.clearHistory()
-                CookieManager.getInstance().flush()
-                toast("已清空当前标签页缓存/历史")
             }
         }
-        sheet.setContentView(ScrollView(this).apply { addView(layout) })
-        sheet.show()
     }
 
     // ============================================================
@@ -851,29 +889,29 @@ class MainActivity : AppCompatActivity() {
 
     /** 动态 feed：拉 /api/v3/activities/received/ 展示推送的课件/测验/公告 */
     private fun showFeed() {
-        val ctx = this
-        val sheet = BottomSheetDialog(this)
-        val list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(24))
-        }
-        sheet.setContentView(ScrollView(this).apply { addView(list) })
-        sheet.show()
-        status("加载动态…")
-        Thread {
-            val items = fetchFeed()
-            runOnUiThread {
-                status("动态")
-                if (items.isEmpty()) {
-                    list.addView(TextView(ctx).apply {
-                        text = "暂无动态"; textSize = 15f; setPadding(dp(8), dp(24), 0, dp(24))
-                        gravity = Gravity.CENTER
-                    })
-                } else {
-                    items.forEach { list.addView(feedRow(it) { sheet.dismiss() }) }
-                }
+        showSheet("动态") { layout ->
+            val loading = TextView(this).apply {
+                text = "加载中…"; textSize = 14f; setTextColor(TEXT_SEC)
+                gravity = Gravity.CENTER; setPadding(0, dp(28), 0, dp(28))
             }
-        }.start()
+            layout.addView(loading)
+            Thread {
+                val items = fetchFeed()
+                runOnUiThread {
+                    layout.removeView(loading)
+                    if (items.isEmpty()) {
+                        layout.addView(TextView(this).apply {
+                            text = "暂无动态"; textSize = 15f
+                            gravity = Gravity.CENTER
+                            setTextColor(TEXT_SEC)
+                            setPadding(0, dp(28), 0, dp(28))
+                        })
+                    } else {
+                        items.forEach { layout.addView(feedRow(it) { dismissSheet() }) }
+                    }
+                }
+            }.start()
+        }
     }
 
     private data class FeedItem(
@@ -974,6 +1012,7 @@ class MainActivity : AppCompatActivity() {
             }.getOrNull() ?: return@evaluateJavascript
             val fp = AccountStore.fingerprint(ls)
             if (fp.isEmpty()) return@evaluateJavascript  // 未登录
+            if (fp in ignoredFps()) return@evaluateJavascript  // 用户明确说过「暂不」
 
             val profiles = AccountStore.all(this)
             val matched = profiles.find { it.authFingerprint() == fp }
@@ -1004,7 +1043,7 @@ class MainActivity : AppCompatActivity() {
                     status(guess.take(8))
                     toast("账号「$guess」已保存")
                 }
-                .setNegativeButton("暂不", null)
+                .setNegativeButton("暂不") { _, _ -> ignoreFp(fp) }
                 .show()
         }
     }
@@ -1026,83 +1065,96 @@ class MainActivity : AppCompatActivity() {
         return out
     }
 
-    /** 账号 BottomSheet：列表 + 保存当前 + 退出登录 */
+    /** 账号面板：列表 + 保存/更新当前快照 + 退出登录 */
     private fun showAccountSheet() {
-        val sheet = BottomSheetDialog(this)
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(16), dp(8), dp(24))
-        }
-        layout.addView(TextView(this).apply {
-            text = "账号管理"; textSize = 17f; setTypeface(typeface, Typeface.BOLD)
-            setTextColor(TXT); setPadding(dp(16), 0, 0, dp(12))
-        })
-
         val profiles = AccountStore.all(this)
-        if (profiles.isEmpty()) {
-            layout.addView(TextView(this).apply {
-                text = "暂无已保存账号\n登录后会自动提示保存"
-                textSize = 13f; setTextColor(TEXT_SEC)
-                setPadding(dp(16), 0, dp(16), dp(16))
-            })
+        showSheet("账号管理") { layout ->
+            if (profiles.isEmpty()) {
+                layout.addView(TextView(this).apply {
+                    text = "暂无已保存账号\n登录雨课堂后会自动提示保存，也可点下方「保存当前登录账号」"
+                    textSize = 13f; setTextColor(TEXT_SEC)
+                    setPadding(dp(16), dp(8), dp(16), dp(16))
+                })
+            }
+            profiles.forEach { p ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(16), dp(12), dp(8), dp(12))
+                    background = ripple()
+                }
+                val col = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                col.addView(TextView(this).apply {
+                    text = (if (p.id == currentAccountId) "● " else "") + p.name
+                    textSize = 15f
+                    setTextColor(if (p.id == currentAccountId) BRAND else TXT)
+                })
+                col.addView(TextView(this).apply {
+                    val e = Env.entries.find { it.name == p.env }?.label ?: p.env
+                    val d = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(p.savedAt))
+                    text = "$e · $d"
+                    textSize = 11f; setTextColor(TEXT_SEC); setPadding(0, dp(2), 0, 0)
+                })
+                row.addView(col)
+                row.addView(TextView(this).apply {
+                    text = "改名"; textSize = 12f; setTextColor(TEXT_SEC)
+                    setPadding(dp(10), dp(6), dp(8), dp(6))
+                    setOnClickListener { dismissSheet(); renameAccount(p) }
+                })
+                row.addView(TextView(this).apply {
+                    text = "删除"; textSize = 12f; setTextColor(0xFFD64545.toInt())
+                    setPadding(dp(6), dp(6), dp(8), dp(6))
+                    setOnClickListener { dismissSheet(); deleteAccount(p) }
+                })
+                row.setOnClickListener {
+                    dismissSheet()
+                    if (p.id == currentAccountId) toast("已是当前账号")
+                    else switchAccount(p)
+                }
+                layout.addView(row)
+            }
+            sheetDivider(layout)
+            sheetRow(layout, "💾", "保存当前登录账号", "把当前 Cookie + 本地数据存为账号快照") {
+                dismissSheet(); saveCurrentAccountManual()
+            }
+            if (currentAccountId != null) {
+                sheetRow(layout, "🔄", "更新当前账号快照", "登录态变化后手动刷新") {
+                    dismissSheet(); refreshCurrentAccountSnapshot()
+                }
+            }
+            sheetRow(layout, "🚪", "退出登录") {
+                dismissSheet(); confirmLogout()
+            }
         }
-        profiles.forEach { p ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(12), dp(12), dp(12))
-                background = ripple()
-            }
-            val col = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            col.addView(TextView(this).apply {
-                text = (if (p.id == currentAccountId) "● " else "") + p.name
-                textSize = 15f
-                setTextColor(if (p.id == currentAccountId) BRAND else TXT)
-            })
-            col.addView(TextView(this).apply {
-                val e = Env.entries.find { it.name == p.env }?.label ?: p.env
-                val d = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(p.savedAt))
-                text = "$e · $d"
-                textSize = 11f; setTextColor(TEXT_SEC); setPadding(0, dp(2), 0, 0)
-            })
-            row.addView(col)
-            // 编辑 + 删除
-            row.addView(TextView(this).apply {
-                text = "改名"; textSize = 12f; setTextColor(TEXT_SEC); setPadding(dp(10), 0, dp(6), 0)
-                setOnClickListener { sheet.dismiss(); renameAccount(p) }
-            })
-            row.addView(TextView(this).apply {
-                text = "删除"; textSize = 12f; setTextColor(0xFFD64545.toInt()); setPadding(dp(6), 0, dp(4), 0)
-                setOnClickListener { sheet.dismiss(); deleteAccount(p) }
-            })
-            row.setOnClickListener {
-                sheet.dismiss()
-                if (p.id == currentAccountId) toast("已是当前账号")
-                else switchAccount(p)
-            }
-            layout.addView(row)
+    }
+
+    /** 当前打开的面板（供行点击后关闭用） */
+    private var activeSheet: BottomSheetDialog? = null
+
+    private fun dismissSheet() {
+        activeSheet?.dismiss()
+        activeSheet = null
+    }
+
+    /** 手动刷新当前账号快照（登录态/token 变化后） */
+    private fun refreshCurrentAccountSnapshot() {
+        val wv = activeWebView ?: return
+        val id = currentAccountId ?: run { toast("当前没有识别到账号"); return }
+        wv.evaluateJavascript(
+            "try{btoa(unescape(encodeURIComponent(JSON.stringify(localStorage))))}catch(e){''}"
+        ) { raw ->
+            val b64 = raw?.removeSurrounding("\"") ?: ""
+            val ls = runCatching {
+                JSONObject(String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT)))
+            }.getOrNull() ?: run { toast("读取本地数据失败"); return@evaluateJavascript }
+            val p = AccountStore.all(this).find { it.id == id }
+            if (p == null) { toast("账号不存在"); return@evaluateJavascript }
+            refreshProfileSession(p, ls)
+            toast("已更新「${p.name}」快照")
         }
-        // 底部动作
-        layout.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) }
-            setBackgroundColor(DIVIDER)
-        })
-        layout.addView(TextView(this).apply {
-            text = "💾 保存当前登录账号"; textSize = 15f; setTextColor(BRAND)
-            setPadding(dp(16), dp(12), dp(16), dp(12)); background = ripple()
-            setOnClickListener { sheet.dismiss(); saveCurrentAccountManual() }
-        })
-        layout.addView(TextView(this).apply {
-            text = "🚪 退出登录"; textSize = 15f; setTextColor(0xFFD64545.toInt())
-            setPadding(dp(16), dp(12), dp(16), dp(12)); background = ripple()
-            setOnClickListener { sheet.dismiss(); confirmLogout() }
-        })
-        sheet.setContentView(ScrollView(this).apply { addView(layout) })
-        sheet.show()
     }
 
     private fun renameAccount(p: AccountStore.Profile) {
@@ -1162,6 +1214,9 @@ class MainActivity : AppCompatActivity() {
         val wv = activeWebView ?: return
         fun apply() {
             val cm = CookieManager.getInstance()
+            // 先清空所有环境的 cookie：否则目标账号的 cookie 和当前账号的混在一起，
+            // 雨课堂可能仍按旧 cookie 识别身份（表现为「切了但没切」）
+            for (e in Env.entries) cm.setCookie(e.origin, "")
             for (origin in target.cookies.keys()) {
                 target.cookies.optString(origin).split("; ").forEach { pair ->
                     if (pair.contains('=')) cm.setCookie(origin, pair)
@@ -1176,7 +1231,6 @@ class MainActivity : AppCompatActivity() {
             val targetEnv = Env.entries.find { it.name == target.env }
             if (targetEnv != null && targetEnv != env) {
                 env = targetEnv; envIndex = Env.entries.indexOf(targetEnv)
-                binding.btnEnv.text = "${env.label} ▾"
             }
             currentAccountId = target.id
             status(target.name.take(8))
@@ -1489,7 +1543,6 @@ class MainActivity : AppCompatActivity() {
             }
             // env 同步 UI
             env = Env.entries[envIndex.coerceIn(0, Env.entries.size - 1)]
-            binding.btnEnv.text = "${env.label} ▾"
         }
         // cookies + localStorage
         doRestore(doc.optJSONObject("cookies") ?: JSONObject(),
@@ -1641,8 +1694,18 @@ class MainActivity : AppCompatActivity() {
     // 状态 / 工具
     // ============================================================
 
+    private val statusHandler = Handler(Looper.getMainLooper())
+    private var statusHideTask: Runnable? = null
+
+    /** 底部浮动提示：显示 2.2s 自动消失（不再占用 header 空间） */
     fun status(msg: String) = runOnUiThread {
-        binding.tvStatus.text = msg.take(12)
+        val v = binding.tvStatus
+        v.text = msg.take(40)
+        v.visibility = View.VISIBLE
+        statusHideTask?.let { statusHandler.removeCallbacks(it) }
+        val task = Runnable { v.visibility = View.GONE }
+        statusHideTask = task
+        statusHandler.postDelayed(task, 2200)
     }
 
     fun log(msg: String) {

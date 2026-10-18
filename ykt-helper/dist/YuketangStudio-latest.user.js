@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.5.12
+// @version      0.5.13
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -5426,7 +5426,7 @@
       if (typeof GM_info !== "undefined" && GM_info.script?.version) return GM_info.script.version;
     } catch {}
     try {
-      return "0.5.12";
+      return "0.5.13";
     } catch {}
     return "0.0.0";
   }
@@ -5539,8 +5539,8 @@
   function mountAboutPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // "0.5.12" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.5.12"}<`);
+    // "0.5.13" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.5.13"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-about-panel");
     const $btn = root$1.querySelector("#ykt-about-check");
