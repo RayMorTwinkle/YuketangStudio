@@ -4,6 +4,7 @@
 import { gm } from '../core/env.js';
 import { log } from '../core/log.js';
 import { getDevConfig } from '../core/devmode.js';
+import * as telemetry from '../core/telemetry.js';
 
 /** 本模块日志前缀 */
 const dlog = (...args) => log.dbg('[Agnes]', ...args);
@@ -48,6 +49,36 @@ function sseParser(onEvent) {
  * @param {number} [opts.timeoutMs]
  * @returns {Promise<{content:string, reasoning:string, toolCalls?:Array, usage?:Object}>}
  */
+// ============================================================
+// 流式平滑：上游 chunk 常是「攒一大坨→停→再一坨」，直接渲染会一卡一卡。
+// 把 delta 先进队列，24ms 心跳按比例吐出；backlog 大时自动加速追平。
+// 只在 stream 调用生效；reasoning/content 各一条队列互不影响。
+// ============================================================
+function makeSmoother(opts) {
+  const queue = { reasoning: '', content: '' };
+  const tick = () => {
+    for (const k of ['reasoning', 'content']) {
+      const q = queue[k];
+      if (!q) continue;
+      const n = Math.max(4, Math.ceil(q.length / 8));
+      const part = q.slice(0, n);
+      queue[k] = q.slice(n);
+      if (k === 'reasoning') opts.onReasoning?.(part); else opts.onDelta?.(part);
+    }
+  };
+  const timer = setInterval(tick, 24);
+  return {
+    feed(kind, s) { queue[kind] += s; },
+    /** 流结束：把残余队列一次性吐完（调用方在 resolve 前调） */
+    end() {
+      clearInterval(timer);
+      if (queue.reasoning) { opts.onReasoning?.(queue.reasoning); queue.reasoning = ''; }
+      if (queue.content) { opts.onDelta?.(queue.content); queue.content = ''; }
+    },
+    abort() { clearInterval(timer); queue.reasoning = queue.content = ''; },
+  };
+}
+
 export async function agnesChat(opts) {
   const dev = getDevConfig() || {};
   const ov = opts.override || {};
@@ -56,11 +87,17 @@ export async function agnesChat(opts) {
   const model = ov.model || dev.model;
   if (!baseUrl || !apiKey) throw new Error('开发者模式未解锁：请到设置中解锁内置配置');
 
+  const isCloud = telemetry.isCloudProfile(baseUrl);
+  // 「开遥测才能用解锁码」的第二层：解锁后关掉遥测 → 云端调用直接拦
+  if (isCloud && !telemetry.enabled()) {
+    throw new Error('请先在设置底部开启「匿名统计使用情况」');
+  }
+
   const thinking = opts.thinking !== false;
-  // 思考开启时默认 effort=high（用户开关只需开/关，不暴露强度概念）；
+  // 思考开启时默认 effort=medium（设置里可调 低/中/高/超高max）；
   // 显式配置的 reasoningEffort 优先，'off' 表示关闭。关闭时不发该字段——
   // 硬编码 effort 会让不支持该参数的端点报 400
-  const effort = thinking ? (ov.reasoningEffort || dev.reasoningEffort || 'high') : null;
+  const effort = thinking ? (ov.reasoningEffort || dev.reasoningEffort || 'medium') : null;
 
   const body = { model, messages: opts.messages };
   if (thinking && effort && effort !== 'off') body.reasoning_effort = effort;
@@ -69,8 +106,26 @@ export async function agnesChat(opts) {
   if (stream) body.stream = true;
 
   const url = makeChatUrl(baseUrl);
-  const timeoutMs = opts.timeoutMs || 120000;
+  // 流式默认 300s 总预算；非流式 120s。流式真正的「掐」在 fetchStream 的
+  // 空闲超时（读 chunk 会重置），长思考流不会再被总超时误杀
+  const timeoutMs = opts.timeoutMs || (stream ? 300000 : 120000);
   dlog('request', { url, model, stream, thinking });
+
+  // 遥测计时：t0 请求发出，tFirst 首字节（reasoning 或 content），tEnd 流结束
+  const t0 = Date.now();
+  let tFirst = 0;
+  const smooth = stream ? makeSmoother(opts) : null;
+  // 包一层 opts：delta 先进平滑队列；首个 delta 记 TTFB
+  const o2 = Object.assign({}, opts, {
+    onDelta: (s) => { if (!tFirst) tFirst = Date.now(); smooth ? smooth.feed('content', s) : opts.onDelta?.(s); },
+    onReasoning: (s) => { if (!tFirst) tFirst = Date.now(); smooth ? smooth.feed('reasoning', s) : opts.onReasoning?.(s); },
+  });
+  const recordTele = () => {
+    if (isCloud) telemetry.recordCall({
+      ttft: tFirst ? tFirst - t0 : 0,
+      dur: Date.now() - t0,
+    });
+  };
 
   // 只有「网络层失败」（CORS/连接错误）才值得降级 GM_xhr；
   // 中止与明确的 HTTP 错误都意味着请求已到达服务端——重发会造成重复计费/双份回答
@@ -82,20 +137,30 @@ export async function agnesChat(opts) {
   if (stream) {
     // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
     try {
-      return await fetchStream(url, apiKey, body, opts, timeoutMs);
+      const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
+      smooth.end(); recordTele();
+      return r;
     } catch (e) {
-      if (!shouldFallback(e)) throw e;
+      if (!shouldFallback(e)) { smooth.abort(); throw e; }
       dlog('fetch stream failed, fallback to GM_xhr:', e?.message || e);
-      return await gmXhrStream(url, apiKey, body, opts, timeoutMs);
+      try {
+        const r = await gmXhrStream(url, apiKey, body, o2, timeoutMs);
+        smooth.end(); recordTele();
+        return r;
+      } catch (e2) { smooth.abort(); throw e2; }
     }
   }
   // 非流式同样 fetch 优先，GM_xhr 兜底
   try {
-    return await fetchStream(url, apiKey, body, opts, timeoutMs);
+    const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
+    recordTele();
+    return r;
   } catch (e) {
     if (!shouldFallback(e)) throw e;
     dlog('fetch failed, fallback to GM_xhr:', e?.message || e);
-    return gmXhrOnce(url, apiKey, body, timeoutMs);
+    const r = await gmXhrOnce(url, apiKey, body, timeoutMs);
+    recordTele();
+    return r;
   }
 }
 
@@ -122,7 +187,17 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
   // abort 的 reason 必须带 AbortError 名——否则外层 catch 识别不出中止，
   // 会掉进 GM_xhr 兜底再发一次请求
   const mkAbort = (msg) => Object.assign(new Error(msg), { name: 'AbortError' });
-  const timer = setTimeout(() => ctrl.abort(mkAbort('请求超时')), timeoutMs);
+  // 流式用「空闲超时」：每读到一个 chunk 重置计时——思考型模型跑几分钟也
+  // 不会被总超时误杀（之前 120s 总超时是「请求超时」报错的主因）。
+  // 非流式仍走总超时。
+  const IDLE_MS = 60000;
+  let timer;
+  if (body.stream) {
+    timer = setTimeout(() => ctrl.abort(mkAbort('响应中断（60s 无数据）')), IDLE_MS);
+    var resetIdle = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(mkAbort('响应中断（60s 无数据）')), IDLE_MS); };
+  } else {
+    timer = setTimeout(() => ctrl.abort(mkAbort('请求超时')), timeoutMs);
+  }
   const onAbort = () => ctrl.abort(mkAbort('aborted'));
   if (opts.signal) {
     if (opts.signal.aborted) { clearTimeout(timer); throw mkAbort('aborted'); }
@@ -148,6 +223,7 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      resetIdle?.();
       buf += dec.decode(value, { stream: true });
       let idx;
       while ((idx = buf.indexOf('\n')) >= 0) {

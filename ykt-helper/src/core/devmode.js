@@ -8,6 +8,7 @@
 // getDevConfig() 返回最后解锁的那个（兼容旧调用方）。
 import { storage } from './storage.js';
 import { gm } from './env.js';
+import * as telemetry from './telemetry.js';
 
 const UNLOCK_URL = 'https://api.raymor.top/yuketangstudio/unlock/verify';
 const CLOUD_BASE = 'https://api.raymor.top/yuketangstudio';
@@ -20,6 +21,7 @@ const CLOUD_BASE = 'https://api.raymor.top/yuketangstudio';
 export async function unlockDevMode(password) {
   const code = password.trim();
   if (!code) throw new Error('解锁码错误');
+  if (!telemetry.enabled()) throw new Error('请先开启「匿名统计使用情况」');
   const cloud = await tryCloudUnlock(code);
   if (!cloud) throw new Error('解锁码错误或网络不可用');
   addDevConfig(cloud.cfg, -1);

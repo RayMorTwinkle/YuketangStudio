@@ -1,5 +1,14 @@
 # 更新日志
 
+0.5.9:
+
+- 📊 **匿名使用统计**：设置最底部新增「匿名统计使用情况」开关（默认关）。开启后上报安装ID/平台/版本/是否用码/当日调用次数/首字时间/总时长聚合。**开启遥测才能使用解锁码**（解锁时校验 + 云端调用时二次校验）
+- ⚡ **流式卡顿修复**：svc `io.Copy` 改逐次 Write+Flush（之前 SSE chunk 攒在服务端缓冲凑批发，视觉上「一卡一卡」）；nginx `proxy_buffering off` + `X-Accel-Buffering:no` 双保险
+- ⚡ **「请求超时」修复**：svc `Client.Timeout:120s` 是总超时——思考型流超 120s 被服务端掐断；改 `ResponseHeaderTimeout` 只管首字节。客户端 `fetchStream` 同步改 60s 空闲超时（每读 chunk 重置），流式总预算放宽到 300s
+- ⚡ **打字机平滑**：客户端新增 StreamSmoother——上游攒批发来的 delta 进队列按 24ms 心跳吐出，backlog 大自动加速追平，视觉连续流畅
+- 🖥️ **遥测后台**：`https://api.raymor.top/yuketangstudio/admin`（Basic Auth）按日期×设备展示 IP/属地/平台/次数/首字ms/总时长ms；属地 CF-IPCountry + ip-api.com 批查回填
+- 🎚️ **思考强度可调**：AI 设置新增「思考强度」下拉——低/中/高/超高(max)，默认**中**（此前硬编码 high）。强度越高推理越充分，但首字更慢、流式间隔更大
+
 0.5.8:
 
 - 🔧 **流式内容消失修复**：`StreamRenderer.attach()` 在 slot 重挂（每次 repaint 新建 slot）时把 `sealed`/`live` **重建为空 div**——之前所有已封板内容被清空，用户看到「前面段落消失、只剩最后一段」。改成 `isConnected=false` 时把**现有节点移动**到新 slot 而不是新建。ego 实测：封板文字量单调递增 `115→232→232→389`，4 点回答 + mermaid 完整保留

@@ -57,6 +57,17 @@
           <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>
         </div>
 
+        <div class="setting-item">
+          <label for="ykt-ai-effort">思考强度:</label>
+          <select id="ykt-ai-effort">
+            <option value="low">低</option>
+            <option value="medium" selected>中</option>
+            <option value="high">高</option>
+            <option value="max">超高（max）</option>
+          </select>
+          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>
+        </div>
+
         <details class="setting-advanced">
           <summary>高级选项</summary>
           <div class="setting-item">
@@ -189,6 +200,13 @@
           <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">
           <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>
           <small id="ykt-devmode-hint" style="opacity:.55"></small>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-item" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="ykt-telemetry" />
+          <label for="ykt-telemetry" style="opacity:.85">匿名统计使用情况</label>
         </div>
       </div>
     </div>

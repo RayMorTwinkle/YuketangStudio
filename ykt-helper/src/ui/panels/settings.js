@@ -5,6 +5,7 @@ import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
 import { unlockDevMode, getDevConfigs } from '../../core/devmode.js';
+import * as telemetry from '../../core/telemetry.js';
 import { gm } from '../../core/env.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
@@ -67,6 +68,7 @@ export function mountSettingsPanel() {
   const $model = root.querySelector('#ykt-ai-model');
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
   const $thinking = root.querySelector('#ykt-ai-thinking');
+  const $effort = root.querySelector('#ykt-ai-effort');
   const $apiEye = root.querySelector('#ykt-apikey-eye');
   const $apiTest = root.querySelector('#ykt-apikey-test');
   const $apiTestResult = root.querySelector('#ykt-apikey-test-result');
@@ -116,6 +118,7 @@ export function mountSettingsPanel() {
     $model.value = p.model || '';
     $visionModel.value = p.visionModel || '';
     if ($thinking) $thinking.checked = p.thinking !== false;
+    if ($effort) $effort.value = p.reasoningEffort || 'medium';
   }
 
   // 初始化 Profile 下拉框
@@ -186,6 +189,7 @@ export function mountSettingsPanel() {
       model: devCfg.model,
       visionModel: devCfg.visionModel || devCfg.model,
       thinking: true,
+      reasoningEffort: devCfg.reasoningEffort || 'medium',
     });
     if (devCfg.reasoningEffort) p.reasoningEffort = devCfg.reasoningEffort;
     ai.activeProfileId = profileId;
@@ -193,9 +197,20 @@ export function mountSettingsPanel() {
     syncFormFromConfig();   // 解锁后表单立即显示新配置
   }
 
+  // === 匿名统计开关（最底部，无说明；「开」时才允许解锁云端） ===
+  const $telemetry = root.querySelector('#ykt-telemetry');
+  if ($telemetry) {
+    $telemetry.checked = telemetry.enabled();
+    $telemetry.addEventListener('change', () => {
+      telemetry.setEnabled($telemetry.checked);
+      refreshDevHint();   // 关掉后解锁按钮语义不变，但下次解锁会被拦
+    });
+  }
+
   $devBtn?.addEventListener('click', async () => {
     const pass = ($devPass?.value || '').trim();
     if (!pass) { ui.toast?.('请输入解锁码'); return; }
+    if (!telemetry.enabled()) { ui.toast?.('请先开启「匿名统计使用情况」'); return; }
     $devBtn.disabled = true;
     const originalText = $devBtn.textContent;
     $devBtn.textContent = '校验中…';
@@ -281,6 +296,7 @@ export function mountSettingsPanel() {
       model: '',
       visionModel: '',
       thinking: true,  // 默认开启思考
+      reasoningEffort: 'medium',
     };
     ui.config.ai.profiles.push(newP);
     ui.config.ai.activeProfileId = id;
@@ -322,6 +338,7 @@ export function mountSettingsPanel() {
       p.model = $model.value.trim() || p.model;
       p.visionModel = $visionModel.value.trim() || p.visionModel;
       if ($thinking) p.thinking = !!$thinking.checked;
+      if ($effort) p.reasoningEffort = $effort.value || 'medium';
       const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
       if (curOpt) curOpt.textContent = p.name || p.id;
     }

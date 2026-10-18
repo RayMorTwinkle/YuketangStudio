@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.5.8
+// @version      0.5.9
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
@@ -772,6 +772,144 @@
       check();
     });
   }
+  // src/core/telemetry.js
+  // 匿名使用统计：installId（首启生成 UUID）+ 平台 + 版本 + 是否用码 +
+  // 当日调用次数 + 首字时间/总时长聚合 → POST /yuketangstudio/telemetry
+  // 开关存 storage['telemetry.enabled']（默认关）；「开」时立即 ping 一次
+    const ENDPOINT = "https://api.raymor.top/yuketangstudio/telemetry";
+  const K_ENABLED = "telemetry.enabled";
+  const K_ID = "telemetry.installId";
+  const K_DAY = "telemetry.day";
+ // { date, calls, ttft:{sum,max,n}, dur:{sum,max,n}, pinged }
+    function enabled() {
+    return storage.get(K_ENABLED) === true;
+  }
+  function setEnabled(v) {
+    storage.set(K_ENABLED, !!v);
+    if (v) ping(hasCloudUnlock()).catch(() => {});
+  }
+  function installId() {
+    let id = storage.get(K_ID);
+    if (!id) {
+      id = crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx".replace(/x/g, () => (Math.random() * 16 | 0).toString(16)) + "-" + Date.now().toString(36);
+      storage.set(K_ID, id);
+    }
+    return id;
+  }
+  function platform() {
+    if (typeof window !== "undefined" && window.YktBridge) return "android";
+    return "pc";
+  }
+  function version() {
+    try {
+      return typeof GM_info !== "undefined" && GM_info.script.version || "dev";
+    } catch {
+      return "dev";
+    }
+  }
+  function today() {
+    const d = new Date;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  function day() {
+    const t = today();
+    let d = storage.get(K_DAY);
+    if (!d || d.date !== t) d = {
+      date: t,
+      calls: 0,
+      ttft: {
+        sum: 0,
+        max: 0,
+        n: 0
+      },
+      dur: {
+        sum: 0,
+        max: 0,
+        n: 0
+      },
+      pinged: false
+    };
+    return d;
+  }
+  function saveDay(d) {
+    storage.set(K_DAY, d);
+  }
+  /** 记录一次服务端 LLM 调用。ttft/dur 毫秒（可选）。 */  function recordCall({ttft: ttft, dur: dur} = {}) {
+    if (!enabled()) return;
+    const d = day();
+    d.calls++;
+    if (Number.isFinite(ttft) && ttft > 0) {
+      d.ttft.n++;
+      d.ttft.sum += ttft;
+      if (ttft > d.ttft.max) d.ttft.max = ttft;
+    }
+    if (Number.isFinite(dur) && dur > 0) {
+      d.dur.n++;
+      d.dur.sum += dur;
+      if (dur > d.dur.max) d.dur.max = dur;
+    }
+    saveDay(d);
+    schedulePing();
+  }
+  let pingTimer = 0;
+  /** 防抖 ping：5s 内多次调用合并成一次上报（当天不限次数，服务端按 installId 覆盖） */  function schedulePing() {
+    if (pingTimer) return;
+    pingTimer = setTimeout(() => {
+      pingTimer = 0;
+      ping(true).catch(() => {});
+    }, 5e3);
+  }
+  /** 判断一个 profile 是否走云端（svc 代理） */  function isCloudProfile(baseUrl) {
+    return /api\.raymor\.top\/yuketangstudio/i.test(String(baseUrl || ""));
+  }
+  /** 是否已解锁过云端配置（读 devmode 的 storage key，不 import 避免循环依赖） */  function hasCloudUnlock() {
+    const cfgs = storage.get("devmode.configs");
+    return Array.isArray(cfgs) && cfgs.some(c => isCloudProfile(c?.baseUrl));
+  }
+  /** 上报当日聚合（enabled=false 时不发）。useCode 由调用方覆盖（云端调用后必为 true） */  async function ping(useCode) {
+    if (!enabled()) return;
+    const d = day();
+    const body = {
+      installId: installId(),
+      platform: platform(),
+      version: version(),
+      useCode: useCode ?? hasCloudUnlock(),
+      calls: d.calls,
+      ttft: d.ttft.n ? {
+        avg: d.ttft.sum / d.ttft.n,
+        max: d.ttft.max,
+        n: d.ttft.n
+      } : {
+        avg: 0,
+        max: 0,
+        n: 0
+      },
+      dur: d.dur.n ? {
+        avg: d.dur.sum / d.dur.n,
+        max: d.dur.max,
+        n: d.dur.n
+      } : {
+        avg: 0,
+        max: 0,
+        n: 0
+      },
+      date: d.date
+    };
+    await new Promise((resolve, reject) => {
+      gm.xhr({
+        method: "POST",
+        url: ENDPOINT,
+        headers: {
+          "Content-Type": "application/json"
+        },
+        data: JSON.stringify(body),
+        timeout: 8e3,
+        onload: r => r.status >= 200 && r.status < 300 ? resolve() : reject(new Error("HTTP " + r.status)),
+        onerror: reject,
+        ontimeout: reject
+      });
+    });
+  }
   // src/core/devmode.js
   // 开发者模式：云端解锁码 → svc 验证 → 注入「云端 profile」（LLM 调用走代理）
   
@@ -789,6 +927,7 @@
    */  async function unlockDevMode(password) {
     const code = password.trim();
     if (!code) throw new Error("解锁码错误");
+    if (!enabled()) throw new Error("请先开启「匿名统计使用情况」");
     const cloud = await tryCloudUnlock(code);
     if (!cloud) throw new Error("解锁码错误或网络不可用");
     addDevConfig(cloud.cfg, -1);
@@ -904,18 +1043,65 @@
    * @param {Object} [opts.override]      { baseUrl, apiKey, model, reasoningEffort } 覆盖内置配置
    * @param {number} [opts.timeoutMs]
    * @returns {Promise<{content:string, reasoning:string, toolCalls?:Array, usage?:Object}>}
-   */  async function agnesChat(opts) {
+   */
+  // ============================================================
+  // 流式平滑：上游 chunk 常是「攒一大坨→停→再一坨」，直接渲染会一卡一卡。
+  // 把 delta 先进队列，24ms 心跳按比例吐出；backlog 大时自动加速追平。
+  // 只在 stream 调用生效；reasoning/content 各一条队列互不影响。
+  // ============================================================
+    function makeSmoother(opts) {
+    const queue = {
+      reasoning: "",
+      content: ""
+    };
+    const tick = () => {
+      for (const k of [ "reasoning", "content" ]) {
+        const q = queue[k];
+        if (!q) continue;
+        const n = Math.max(4, Math.ceil(q.length / 8));
+        const part = q.slice(0, n);
+        queue[k] = q.slice(n);
+        if (k === "reasoning") opts.onReasoning?.(part); else opts.onDelta?.(part);
+      }
+    };
+    const timer = setInterval(tick, 24);
+    return {
+      feed(kind, s) {
+        queue[kind] += s;
+      },
+      /** 流结束：把残余队列一次性吐完（调用方在 resolve 前调） */
+      end() {
+        clearInterval(timer);
+        if (queue.reasoning) {
+          opts.onReasoning?.(queue.reasoning);
+          queue.reasoning = "";
+        }
+        if (queue.content) {
+          opts.onDelta?.(queue.content);
+          queue.content = "";
+        }
+      },
+      abort() {
+        clearInterval(timer);
+        queue.reasoning = queue.content = "";
+      }
+    };
+  }
+  async function agnesChat(opts) {
     const dev = getDevConfig() || {};
     const ov = opts.override || {};
     const baseUrl = ov.baseUrl || dev.baseUrl;
     const apiKey = ov.apiKey || dev.apiKey;
     const model = ov.model || dev.model;
     if (!baseUrl || !apiKey) throw new Error("开发者模式未解锁：请到设置中解锁内置配置");
+    const isCloud = isCloudProfile(baseUrl);
+    // 「开遥测才能用解锁码」的第二层：解锁后关掉遥测 → 云端调用直接拦
+        if (isCloud && !enabled()) throw new Error("请先在设置底部开启「匿名统计使用情况」");
     const thinking = opts.thinking !== false;
-    // 思考开启时默认 effort=high（用户开关只需开/关，不暴露强度概念）；
+    // 思考开启时默认 effort=medium（设置里可调 低/中/高/超高max）；
     // 显式配置的 reasoningEffort 优先，'off' 表示关闭。关闭时不发该字段——
     // 硬编码 effort 会让不支持该参数的端点报 400
-        const effort = thinking ? ov.reasoningEffort || dev.reasoningEffort || "high" : null;
+        const effort = thinking ? ov.reasoningEffort || dev.reasoningEffort || "medium" : null;
     const body = {
       model: model,
       messages: opts.messages
@@ -928,32 +1114,73 @@
     const stream = !!opts.stream;
     if (stream) body.stream = true;
     const url = makeChatUrl$1(baseUrl);
-    const timeoutMs = opts.timeoutMs || 12e4;
+    // 流式默认 300s 总预算；非流式 120s。流式真正的「掐」在 fetchStream 的
+    // 空闲超时（读 chunk 会重置），长思考流不会再被总超时误杀
+        const timeoutMs = opts.timeoutMs || (stream ? 3e5 : 12e4);
     dlog("request", {
       url: url,
       model: model,
       stream: stream,
       thinking: thinking
     });
+    // 遥测计时：t0 请求发出，tFirst 首字节（reasoning 或 content），tEnd 流结束
+        const t0 = Date.now();
+    let tFirst = 0;
+    const smooth = stream ? makeSmoother(opts) : null;
+    // 包一层 opts：delta 先进平滑队列；首个 delta 记 TTFB
+        const o2 = Object.assign({}, opts, {
+      onDelta: s => {
+        if (!tFirst) tFirst = Date.now();
+        smooth ? smooth.feed("content", s) : opts.onDelta?.(s);
+      },
+      onReasoning: s => {
+        if (!tFirst) tFirst = Date.now();
+        smooth ? smooth.feed("reasoning", s) : opts.onReasoning?.(s);
+      }
+    });
+    const recordTele = () => {
+      if (isCloud) recordCall({
+        ttft: tFirst ? tFirst - t0 : 0,
+        dur: Date.now() - t0
+      });
+    };
     // 只有「网络层失败」（CORS/连接错误）才值得降级 GM_xhr；
     // 中止与明确的 HTTP 错误都意味着请求已到达服务端——重发会造成重复计费/双份回答
         const shouldFallback = e => e?.name !== "AbortError" && !opts.signal?.aborted && !/^HTTP \d/.test(String(e?.message || ""));
     if (stream) 
     // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
     try {
-      return await fetchStream(url, apiKey, body, opts, timeoutMs);
+      const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
+      smooth.end();
+      recordTele();
+      return r;
     } catch (e) {
-      if (!shouldFallback(e)) throw e;
+      if (!shouldFallback(e)) {
+        smooth.abort();
+        throw e;
+      }
       dlog("fetch stream failed, fallback to GM_xhr:", e?.message || e);
-      return await gmXhrStream(url, apiKey, body, opts, timeoutMs);
+      try {
+        const r = await gmXhrStream(url, apiKey, body, o2, timeoutMs);
+        smooth.end();
+        recordTele();
+        return r;
+      } catch (e2) {
+        smooth.abort();
+        throw e2;
+      }
     }
     // 非流式同样 fetch 优先，GM_xhr 兜底
         try {
-      return await fetchStream(url, apiKey, body, opts, timeoutMs);
+      const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
+      recordTele();
+      return r;
     } catch (e) {
       if (!shouldFallback(e)) throw e;
       dlog("fetch failed, fallback to GM_xhr:", e?.message || e);
-      return gmXhrOnce(url, apiKey, body, timeoutMs);
+      const r = await gmXhrOnce(url, apiKey, body, timeoutMs);
+      recordTele();
+      return r;
     }
   }
   function pickDelta(obj, opts, acc) {
@@ -991,7 +1218,18 @@
         const mkAbort = msg => Object.assign(new Error(msg), {
       name: "AbortError"
     });
-    const timer = setTimeout(() => ctrl.abort(mkAbort("请求超时")), timeoutMs);
+    // 流式用「空闲超时」：每读到一个 chunk 重置计时——思考型模型跑几分钟也
+    // 不会被总超时误杀（之前 120s 总超时是「请求超时」报错的主因）。
+    // 非流式仍走总超时。
+        const IDLE_MS = 6e4;
+    let timer;
+    if (body.stream) {
+      timer = setTimeout(() => ctrl.abort(mkAbort("响应中断（60s 无数据）")), IDLE_MS);
+      var resetIdle = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => ctrl.abort(mkAbort("响应中断（60s 无数据）")), IDLE_MS);
+      };
+    } else timer = setTimeout(() => ctrl.abort(mkAbort("请求超时")), timeoutMs);
     const onAbort = () => ctrl.abort(mkAbort("aborted"));
     if (opts.signal) {
       if (opts.signal.aborted) {
@@ -1034,6 +1272,7 @@
       for (;;) {
         const {done: done, value: value} = await reader.read();
         if (done) break;
+        resetIdle?.();
         buf += dec.decode(value, {
           stream: true
         });
@@ -4581,7 +4820,7 @@
       $sel("#ykt-chat-log").scrollTop = $sel("#ykt-chat-log").scrollHeight;
     }
   }
-  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    \n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">\n          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <div class="apikey-row">\n            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">\n            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>\n            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>\n          </div>\n          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-thinking">\n            <span class="checkmark"></span>\n            启用思考（推理模型深度思考）\n          </label>\n          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>\n        </div>\n\n        <details class="setting-advanced">\n          <summary>高级选项</summary>\n          <div class="setting-item">\n            <label for="ykt-ai-vision-model">图像模型 ID:</label>\n            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">\n            <small>仅当图像识别需用与文本不同的模型时填写（如 moonshot-v1-8k-vision-preview）。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-fallback-answer">\n            <span class="checkmark"></span>\n            无 API Key 时提交兜底答案\n          </label>\n          <small>危险：未配置 AI 时自动作答会提交占位答案（选择题为 A）。默认关闭，宁缺答不误答。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <details class="setting-advanced">\n          <summary>自定义提示音</summary>\n          <div class="setting-item">\n            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n              <button id="ykt-btn-apply-audio-url">应用URL</button>\n              <button id="ykt-btn-preview-audio">预览</button>\n              <button id="ykt-btn-clear-audio">清除自定义音频</button>\n            </div>\n            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    \n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">\n          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <div class="apikey-row">\n            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">\n            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>\n            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>\n          </div>\n          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-thinking">\n            <span class="checkmark"></span>\n            启用思考（推理模型深度思考）\n          </label>\n          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-effort">思考强度:</label>\n          <select id="ykt-ai-effort">\n            <option value="low">低</option>\n            <option value="medium" selected>中</option>\n            <option value="high">高</option>\n            <option value="max">超高（max）</option>\n          </select>\n          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>\n        </div>\n\n        <details class="setting-advanced">\n          <summary>高级选项</summary>\n          <div class="setting-item">\n            <label for="ykt-ai-vision-model">图像模型 ID:</label>\n            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">\n            <small>仅当图像识别需用与文本不同的模型时填写（如 moonshot-v1-8k-vision-preview）。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-fallback-answer">\n            <span class="checkmark"></span>\n            无 API Key 时提交兜底答案\n          </label>\n          <small>危险：未配置 AI 时自动作答会提交占位答案（选择题为 A）。默认关闭，宁缺答不误答。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <details class="setting-advanced">\n          <summary>自定义提示音</summary>\n          <div class="setting-item">\n            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n              <button id="ykt-btn-apply-audio-url">应用URL</button>\n              <button id="ykt-btn-preview-audio">预览</button>\n              <button id="ykt-btn-clear-audio">清除自定义音频</button>\n            </div>\n            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="checkbox" id="ykt-telemetry" />\n          <label for="ykt-telemetry" style="opacity:.85">匿名统计使用情况</label>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // settings.js (new version)
     let mounted$2 = false;
   let root$2;
@@ -4625,6 +4864,7 @@
     const $model = root$2.querySelector("#ykt-ai-model");
     const $visionModel = root$2.querySelector("#ykt-ai-vision-model");
     const $thinking = root$2.querySelector("#ykt-ai-thinking");
+    const $effort = root$2.querySelector("#ykt-ai-effort");
     const $apiEye = root$2.querySelector("#ykt-apikey-eye");
     const $apiTest = root$2.querySelector("#ykt-apikey-test");
     const $apiTestResult = root$2.querySelector("#ykt-apikey-test-result");
@@ -4668,6 +4908,7 @@
       $model.value = p.model || "";
       $visionModel.value = p.visionModel || "";
       if ($thinking) $thinking.checked = p.thinking !== false;
+      if ($effort) $effort.value = p.reasoningEffort || "medium";
     }
     // 初始化 Profile 下拉框
         refreshProfileSelect();
@@ -4737,7 +4978,8 @@
         apiKey: devCfg.apiKey,
         model: devCfg.model,
         visionModel: devCfg.visionModel || devCfg.model,
-        thinking: true
+        thinking: true,
+        reasoningEffort: devCfg.reasoningEffort || "medium"
       });
       if (devCfg.reasoningEffort) p.reasoningEffort = devCfg.reasoningEffort;
       ai.activeProfileId = profileId;
@@ -4745,10 +4987,24 @@
       syncFormFromConfig();
  // 解锁后表单立即显示新配置
         }
+    // === 匿名统计开关（最底部，无说明；「开」时才允许解锁云端） ===
+        const $telemetry = root$2.querySelector("#ykt-telemetry");
+    if ($telemetry) {
+      $telemetry.checked = enabled();
+      $telemetry.addEventListener("change", () => {
+        setEnabled($telemetry.checked);
+        refreshDevHint();
+ // 关掉后解锁按钮语义不变，但下次解锁会被拦
+            });
+    }
     $devBtn?.addEventListener("click", async () => {
       const pass = ($devPass?.value || "").trim();
       if (!pass) {
         ui.toast?.("请输入解锁码");
+        return;
+      }
+      if (!enabled()) {
+        ui.toast?.("请先开启「匿名统计使用情况」");
         return;
       }
       $devBtn.disabled = true;
@@ -4865,7 +5121,9 @@
         apiKey: "",
         model: "",
         visionModel: "",
-        thinking: true
+        thinking: true,
+        // 默认开启思考
+        reasoningEffort: "medium"
       };
       ui.config.ai.profiles.push(newP);
       ui.config.ai.activeProfileId = id;
@@ -4901,6 +5159,7 @@
         p.model = $model.value.trim() || p.model;
         p.visionModel = $visionModel.value.trim() || p.visionModel;
         if ($thinking) p.thinking = !!$thinking.checked;
+        if ($effort) p.reasoningEffort = $effort.value || "medium";
         const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
         if (curOpt) curOpt.textContent = p.name || p.id;
       }
@@ -5052,8 +5311,8 @@
   function mountTutorialPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // 注入构建版本号（"0.5.8" 由 rollup 从 package.json 替换，单一来源）
-        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.5.8"}<`);
+    // 注入构建版本号（"0.5.9" 由 rollup 从 package.json 替换，单一来源）
+        host.innerHTML = tpl.replace('class="ykt-tutorial-version">…<', `class="ykt-tutorial-version">${"0.5.9"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-tutorial-panel");
     // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
