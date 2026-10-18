@@ -1,5 +1,10 @@
 # 更新日志
 
+0.5.10:
+
+- 🐛 **「匿名统计使用情况」开关不可见**：该开关用了裸 `<input type="checkbox">`，而面板 CSS 把原生 checkbox 设为 `opacity:0; height:0; width:0`，靠 `.checkbox-label + .checkmark` 画可见方框——所以真实勾选框完全看不到。改为与面板其他开关一致的结构
+- 🐛 **「重置为默认」漏项**：`Object.assign(config, DEFAULT_CONFIG)` 只会覆盖 `DEFAULT_CONFIG` 里存在的键，而它缺了 `autoJoinEnabled`/`autoAnswerOnAutoJoin`/`aiAutoAnalyze`/`aiSlidePickPriority`/`notifyPopupDuration`/`notifyVolume`/`customNotifyAudioSrc`/`customNotifyAudioName`——重置后这些还留着旧值。补全默认值 + 重置时先删残留键再整体覆盖；遥测开关（独立 storage key）也一并复位
+
 0.5.9:
 
 - 📊 **匿名使用统计**：设置最底部新增「匿名统计使用情况」开关（默认关）。开启后上报安装ID/平台/版本/是否用码/当日调用次数/首字时间/总时长聚合。**开启遥测才能使用解锁码**（解锁时校验 + 云端调用时二次校验）

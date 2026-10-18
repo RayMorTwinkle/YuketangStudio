@@ -402,6 +402,7 @@ export function mountSettingsPanel() {
     $audioName.textContent = ui.config.customNotifyAudioName
       ? `当前：${ui.config.customNotifyAudioName}`
       : '当前：使用内置“叮-咚”提示音';
+    if ($telemetry) $telemetry.checked = telemetry.enabled();
     fillPrompts();
   }
   // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
@@ -414,11 +415,22 @@ export function mountSettingsPanel() {
   root.querySelector('#ykt-btn-settings-reset').addEventListener('click', () => {
     if (!confirm('确定要重置为默认设置吗？')) return;
 
-    Object.assign(ui.config, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
+    // 彻底重置：先删掉 DEFAULT_CONFIG 里没有的残留键（旧版本遗留/实验字段/
+    // 解锁写入的 profiles），再整体覆盖——只 Object.assign 会漏项，用户会看到
+    // 「重置后某些开关还是原来的值」
+    const fresh = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    for (const k of Object.keys(ui.config)) {
+      if (!(k in fresh)) delete ui.config[k];
+    }
+    Object.assign(ui.config, fresh);
     ensureAIProfiles(ui.config.ai);
 
     syncFormFromConfig();
     storage.set('kimiApiKey', '');
+
+    // 遥测开关不在 config 里（独立 storage key），一并复位
+    telemetry.setEnabled(false);
+    if ($telemetry) $telemetry.checked = false;
 
     ui.saveConfig();
     ui.updateAutoAnswerBtn();

@@ -36,6 +36,16 @@ export const DEFAULT_CONFIG = {
   // 未配置 API Key 时是否提交兜底答案（A/略）。默认关——宁缺答不误答
   autoAnswerFallbackDefault: false,
   iftex: true,
+  // 自动进入课堂 / 自动进入后自动作答 / AI 自动分析 / 优先选主课件
+  autoJoinEnabled: false,
+  autoAnswerOnAutoJoin: false,
+  aiAutoAnalyze: false,
+  aiSlidePickPriority: true,
+  // 习题提醒
+  notifyPopupDuration: 5000,
+  notifyVolume: 0.6,
+  customNotifyAudioSrc: '',
+  customNotifyAudioName: '',
   systemPromptChat: '',   // 空 = 使用 DEFAULT_SYSTEM_PROMPT_CHAT
   systemPromptAI: '',     // 空 = 使用 DEFAULT_SYSTEM_PROMPT_AI
   // AI profiles（config.ai.profiles / config.ai.activeProfileId）由 settings.js 的 ensureAIProfiles 惰性创建
