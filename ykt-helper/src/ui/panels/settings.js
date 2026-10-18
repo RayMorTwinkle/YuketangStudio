@@ -17,17 +17,17 @@ let root;
 function ensureAIProfiles(configAI) {
   if (!configAI) return;
 
-  // 只有 kimiApiKey 时创建第一个 profile
+  // 只有旧版 kimiApiKey 时创建第一个 profile（默认模板：DeepSeek）
   if (!Array.isArray(configAI.profiles) || configAI.profiles.length === 0) {
     const legacyKey = configAI.kimiApiKey || configAI.apiKey || storage.get('kimiApiKey') || '';
     configAI.profiles = [
       {
         id: 'default',
-        name: 'Kimi',
-        baseUrl: 'https://api.moonshot.cn/v1/chat/completions',
+        name: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com',
         apiKey: legacyKey,
-        model: 'moonshot-v1-8k',
-        visionModel: 'moonshot-v1-8k-vision-preview',
+        model: 'deepseek-flash',
+        visionModel: '',
       },
     ];
     configAI.activeProfileId = 'default';

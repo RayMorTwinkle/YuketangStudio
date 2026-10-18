@@ -106,9 +106,9 @@ export async function agnesChat(opts) {
   if (stream) body.stream = true;
 
   const url = makeChatUrl(baseUrl);
-  // 流式默认 300s 总预算；非流式 120s。流式真正的「掐」在 fetchStream 的
-  // 空闲超时（读 chunk 会重置），长思考流不会再被总超时误杀
-  const timeoutMs = opts.timeoutMs || (stream ? 300000 : 120000);
+  // 流式不再用总时长：首字 90s + 「最后字符后 15s」空闲超时（见 fetchStream）。
+  // 非流式仍走 120s 总超时。
+  const timeoutMs = opts.timeoutMs || 120000;
   dlog('request', { url, model, stream, thinking });
 
   // 遥测计时：t0 请求发出，tFirst 首字节（reasoning 或 content），tEnd 流结束
@@ -187,17 +187,27 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
   // abort 的 reason 必须带 AbortError 名——否则外层 catch 识别不出中止，
   // 会掉进 GM_xhr 兜底再发一次请求
   const mkAbort = (msg) => Object.assign(new Error(msg), { name: 'AbortError' });
-  // 流式用「空闲超时」：每读到一个 chunk 重置计时——思考型模型跑几分钟也
-  // 不会被总超时误杀（之前 120s 总超时是「请求超时」报错的主因）。
-  // 非流式仍走总超时。
-  const IDLE_MS = 60000;
+  // 流式超时语义（2026-10-18 改）：不再用「固定总时长」——长回答/长思考会被误杀。
+  // 改为两段：
+  //   ① 首字超时 90s：请求发出后等第一个 token（思考型模型可能想很久）
+  //   ② 空闲超时 15s：只要还有数据就不算超时；吐出最后一个字符后 15s 无新数据才判中断
+  // 非流式仍走总超时（没有"最后一个字符"这个概念）。
+  const FIRST_BYTE_MS = 90000;
+  const IDLE_AFTER_DATA_MS = 15000;
   let timer;
-  if (body.stream) {
-    timer = setTimeout(() => ctrl.abort(mkAbort('响应中断（60s 无数据）')), IDLE_MS);
-    var resetIdle = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(mkAbort('响应中断（60s 无数据）')), IDLE_MS); };
-  } else {
-    timer = setTimeout(() => ctrl.abort(mkAbort('请求超时')), timeoutMs);
-  }
+  let gotData = false;
+  const arm = (ms, msg) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => ctrl.abort(mkAbort(msg)), ms);
+  };
+  if (body.stream) arm(FIRST_BYTE_MS, '等待首字超时（90s）');
+  else arm(timeoutMs, '请求超时');
+  // 每收到一段数据：进入「最后字符后 15s」倒计时
+  const bumpIdle = () => {
+    if (!body.stream) return;
+    gotData = true;
+    arm(IDLE_AFTER_DATA_MS, '输出超时（15s 无新数据）');
+  };
   const onAbort = () => ctrl.abort(mkAbort('aborted'));
   if (opts.signal) {
     if (opts.signal.aborted) { clearTimeout(timer); throw mkAbort('aborted'); }
@@ -220,10 +230,11 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
     const dec = new TextDecoder();
     const acc = { content: '', reasoning: '', toolCalls: [] };
     let buf = '';
+    let sawDone = false;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      resetIdle?.();
+      bumpIdle();
       buf += dec.decode(value, { stream: true });
       let idx;
       while ((idx = buf.indexOf('\n')) >= 0) {
@@ -232,9 +243,21 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
         if (!line.startsWith('data:')) continue;
         const data = line.slice(5).trim();
         if (!data) continue;
-        if (data === '[DONE]') break;
-        try { pickDelta(JSON.parse(data), opts, acc); } catch (e) { dlog('parse', e); }
+        if (data === '[DONE]') { sawDone = true; break; }
+        try {
+          const obj = JSON.parse(data);
+          pickDelta(obj, opts, acc);
+          const fr = obj?.choices?.[0]?.finish_reason;
+          if (fr) acc.finishReason = fr;
+        } catch (e) { dlog('parse', e); }
       }
+      if (sawDone) break;
+    }
+    // 截断判定：既没收到 [DONE] 也没有 finish_reason，说明上游/中间层把连接
+    // 提前关了（此前这种情况会被当成正常结束，用户只看到「输出到一半突然停」）
+    if (!sawDone && !acc.finishReason) {
+      acc.truncated = true;
+      dlog('stream ended without [DONE]/finish_reason — truncated');
     }
     return acc;
   } finally {
@@ -247,29 +270,58 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
   return new Promise((resolve, reject) => {
     const acc = { content: '', reasoning: '', toolCalls: [] };
     let seen = 0;
+    let sawDone = false;
     // sseParser 必须跨 onprogress 复用——每次新建会丢掉跨 chunk 拆开的 data: 行
-    const feed = sseParser((obj) => { if (obj) pickDelta(obj, opts, acc); });
-    gm.xhr({
+    const feed = sseParser((obj) => {
+      if (!obj) { sawDone = true; return; }
+      pickDelta(obj, opts, acc);
+      const fr = obj?.choices?.[0]?.finish_reason;
+      if (fr) acc.finishReason = fr;
+    });
+
+    // GM_xhr 的 timeout 是固定总时长，无法表达「最后字符后 15s」。
+    // 这里自建看门狗：onprogress 每次推进重置为 15s，首字前给 90s。
+    // GM_xhr 的 timeout 设 0（不启用），完全交给看门狗，避免长回答被总时长误杀。
+    let watchdog = 0;
+    let settled = false;
+    const arm = (ms, msg) => {
+      clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try { handle?.abort?.(); } catch {}
+        reject(Object.assign(new Error(msg), { name: 'AbortError' }));
+      }, ms);
+    };
+    const finish = (fn, v) => { if (settled) return; settled = true; clearTimeout(watchdog); fn(v); };
+
+    arm(90000, '等待首字超时（90s）');
+    const handle = gm.xhr({
       method: 'POST',
       url,
-      timeout: timeoutMs,
+      timeout: 0,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       data: JSON.stringify(body),
       onprogress: (res) => {
         const text = res.responseText || '';
         const chunk = text.slice(seen);
         seen = text.length;
+        if (chunk) arm(15000, '输出超时（15s 无新数据）');
         feed(chunk);
       },
       onload: (res) => {
-        if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || '').slice(0, 200)}`));
+        if (res.status !== 200) return finish(reject, new Error(`HTTP ${res.status}: ${(res.responseText || '').slice(0, 200)}`));
         // 兜底：progress 可能漏最后一段（补个 \n 把半行 data: 喂完）
         const text = res.responseText || '';
         feed(text.slice(seen) + '\n');
-        resolve(acc);
+        if (!sawDone && !acc.finishReason) {
+          acc.truncated = true;
+          dlog('GM_xhr stream ended without [DONE]/finish_reason — truncated');
+        }
+        finish(resolve, acc);
       },
-      onerror: () => reject(new Error('网络错误（GM_xhr）')),
-      ontimeout: () => reject(new Error('请求超时（GM_xhr）')),
+      onerror: () => finish(reject, new Error('网络错误（GM_xhr）')),
+      ontimeout: () => finish(reject, new Error('请求超时（GM_xhr）')),
     });
   });
 }

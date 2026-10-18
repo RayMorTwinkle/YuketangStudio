@@ -493,6 +493,13 @@ async function sendCurrent({ auto = false, retryText = null } = {}) {
     renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
     if (acc.content) await renderer.finish(acc.content);
     else aiBubble.querySelector('.ykt-sr-content').innerHTML = '<span class="err">（空回复）</span>';
+    // 截断提示（同 chat.js）：流未正常收尾就结束，明确告知而不是静默
+    if (res.truncated) {
+      const warn = document.createElement('div');
+      warn.className = 'ykt-chat-warn';
+      warn.textContent = '⚠️ 输出中断：连接被提前关闭（已收到的内容保留）。';
+      aiBubble.appendChild(warn);
+    }
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {
@@ -505,7 +512,7 @@ async function sendCurrent({ auto = false, retryText = null } = {}) {
     if (aborted) {
       addBubble('ai', `<span class="muted">（已中断：${escapeHtml(emsg || '请求被中止')}）</span>${retryBtn}`);
     } else {
-      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>提示：到设置里检查 AI 配置的 API Key。</small>`);
+      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>${isTimeout ? '提示：上游响应过慢或网络中断，可点重试。' : '提示：到设置里检查 AI 配置的 API Key。'}</small>`);
     }
     // 重试按钮绑事件（addBubble 用 innerHTML，需手动绑）
     const lastBubble = $sel('#ykt-ai-log')?.lastElementChild;

@@ -24,13 +24,13 @@
         <!-- 具体配置字段：针对当前 profile -->
         <div class="setting-item">
           <label for="ykt-ai-profile-name">名称:</label>
-          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">
+          <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">
         </div>
 
         <div class="setting-item">
           <label for="ykt-ai-base-url">URL:</label>
-          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">
-          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>
+          <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">
+          <small>兼容 OpenAI 协议的服务端，例如 api.deepseek.com / api.openai.com / 自建代理。</small>
         </div>
 
         <div class="setting-item">
@@ -45,7 +45,7 @@
 
         <div class="setting-item">
           <label for="ykt-ai-model">模型 ID:</label>
-          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">
+          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-flash / gpt-4o-mini">
         </div>
 
         <div class="setting-item">
@@ -73,7 +73,7 @@
           <div class="setting-item">
             <label for="ykt-ai-vision-model">图像模型 ID:</label>
             <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">
-            <small>仅当图像识别需用与文本不同的模型时填写（如 moonshot-v1-8k-vision-preview）。</small>
+            <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>
           </div>
         </details>
       </div>

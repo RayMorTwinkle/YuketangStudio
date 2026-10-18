@@ -14,6 +14,7 @@ export const DEFAULT_SYSTEM_PROMPT_CHAT = [
   '1) 用户消息可能附带课件截图与题目文本，优先依据文本、结合图片回答；',
   '2) 回答使用简体中文，生动形象、条理清晰，善用类比和例子；',
   '3) 鼓励使用多种可视化形式帮助理解，在适合的场景主动使用：mermaid 流程图/思维导图（```mermaid 代码块）、表格、SVG 示意图（```svg）、HTML 片段（```html）；',
+  '   写 mermaid 时，节点文本只要含空格、括号、斜杠、中文标点或任何特殊字符，必须用双引号包裹，如 A["真实函数 f(x)"]、B["求导 / 积分"]——不加引号会导致整张图渲染失败；',
   '4) 所有数学符号与公式必须用 \\(...\\)（行内）与 \\[...\\]（独立成行）包裹——含简单记号（例：写 \\(x_0\\) 不写 (x_0)，写 \\(f(x)\\) 不写 (f(x))）；不要用 $...$ / $$...$$ 定界符；',
   '5) 解题类问题给出思路与关键步骤，不要只给结论；',
   '6) 无法识别图片或文本时直接说明，不要编造。',
@@ -50,12 +51,12 @@ export const DEFAULT_CONFIG = {
   systemPromptAI: '',     // 空 = 使用 DEFAULT_SYSTEM_PROMPT_AI
   // AI profiles（config.ai.profiles / config.ai.activeProfileId）由 settings.js 的 ensureAIProfiles 惰性创建
   ai: {
-    provider: 'kimi',
+    provider: 'deepseek',
     kimiApiKey: '',
     apiKey: '',
-    endpoint: 'https://api.moonshot.cn/v1/chat/completions',
-    model: 'moonshot-v1-8k',
-    visionModel: 'moonshot-v1-8k-vision-preview',
+    endpoint: 'https://api.deepseek.com',
+    model: 'deepseek-flash',
+    visionModel: '',
     temperature: 0.3,
     maxTokens: 1000,
   },

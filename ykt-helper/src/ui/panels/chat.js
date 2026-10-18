@@ -402,6 +402,14 @@ async function sendCurrent({ retryText = null } = {}) {
     renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
     if (acc.content) await renderer.finish(acc.content);
     else aiBubble.querySelector('.ykt-sr-content').innerHTML = '<span class="err">（空回复）</span>';
+    // 截断提示：流在没收到 [DONE]/finish_reason 的情况下结束——上游或中间层
+    // 提前断开了连接。之前这种情形完全静默，用户只看到「输出到一半突然停」。
+    if (res.truncated) {
+      const warn = document.createElement('div');
+      warn.className = 'ykt-chat-warn';
+      warn.textContent = '⚠️ 输出中断：连接被提前关闭（已收到的内容保留）。可点下方「↻ 重试」重发。';
+      aiBubble.appendChild(warn);
+    }
 
     history.push({ role: 'assistant', content: acc.content || '（无内容）' });
   } catch (e) {
@@ -414,7 +422,7 @@ async function sendCurrent({ retryText = null } = {}) {
     if (aborted) {
       addBubble('ai', `<span class="muted">（已中断：${escapeHtml(emsg || '请求被中止')}）</span>${retryBtn}`);
     } else {
-      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>提示：到设置里检查 API 配置是否正确。</small>`);
+      addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>${isTimeout ? '提示：上游响应过慢或网络中断，可点重试。' : '提示：到设置里检查 API 配置是否正确。'}</small>`);
     }
     const lastBubble = $sel('#ykt-chat-log')?.lastElementChild;
     lastBubble?.querySelector('.ykt-retry-btn')?.addEventListener('click', () => {
