@@ -1,5 +1,14 @@
 # 更新日志
 
+0.5.14:
+
+- 🐛 **手机端输入框被挤出屏幕**：shell 内容区在 442px 高的小屏上只有 195px，而聊天/AI 面板的 log 区 `min-height` 加上上下文行、输入区共 300+px——输入框和「发送」按钮跑到面板外，**发消息必须先滚整个面板**。压缩 shell 头部/标签条/面板头，log 改 `min-height:0`，输入区固定 36px，现在 chat/AI 溢出为 0
+- 🐛 **「附带当前页」勾选框看不见**：雨课堂页面全局 CSS 把 `input[type=checkbox]` 设成 `appearance:none` + 0 尺寸，聊天和 AI 面板的裸 checkbox 直接不可见（桌面端同样受影响）。显式还原为原生 checkbox 14×14
+- 🐛 **关于页内容看不全**：shell 内面板统一 `overflow:hidden`，关于页 854px 内容在 195px 容器里被裁掉且**无法滚动**；改为 `overflow:auto`（设置/题目同理）
+- 🐛 **课件面板内容溢出**：手机端 `panel-body` 被设为 `height:auto`，内容 580px 直接超出面板；改为 `height:100% + overflow:auto` 单列滚动
+- 🐛 **悬浮工具栏压住面板**：窄屏下面板打开时，左下角工具栏（46×90px）盖住输入区；面板打开时隐藏，关闭后恢复
+- 🐛 **每次 CDN 请求刷异常日志**：`assets/cdn/` 删除后拦截器成死代码，每个 jsdelivr/cdnjs 请求都抛 `FileNotFoundException`；整段移除
+
 0.5.13:
 
 - 🐛 **账号存储彻底修复**：`fingerprint()` 只扫 localStorage 的 `authorization`/`token`，但雨课堂把登录态放在 **Cookie**（localStorage 里只有 `user_profile`）——所以永远判定「未登录」，保存/识别账号全失效。改用 `user_profile.user_id` 作指纹、`user_profile.name` 作显示名

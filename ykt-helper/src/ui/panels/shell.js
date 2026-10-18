@@ -61,6 +61,8 @@ function currentPanel() {
 export function showShell(visible = true, tabId = null) {
   if (!mounted) mountShell();
   root.classList.toggle('visible', visible);
+  // 窄屏下悬浮工具栏会压住面板左下角（输入框/＋按钮），面板打开时隐藏它
+  document.body.classList.toggle('ykt-shell-open', !!visible);
   // 工具栏按钮态跟着真实可见性走
   document.getElementById('ykt-btn-shell')?.classList.toggle('active', !!visible);
   if (visible) switchTo(tabId || activeTab);
