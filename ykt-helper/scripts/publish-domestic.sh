@@ -25,8 +25,10 @@ upload() {  # 覆盖式上传：先删同名（Cloudreve 不覆盖）再传
   curl -s --max-time 300 -H "X-API-Key: $K" -F "file=@${f}" "${H}/upload?path=${path}&direct=1" >/dev/null
 }
 dl_host() {  # path → https://dl.raymor.top/f/<id>（幂等，同 path 同 id）
+  # /host 返回的 url 是完整内网地址 http://10.126.126.1:3005/f/<id>，
+  # 只取最后一段 id 再拼公网域名——直接拼会得到两个 URL 粘在一起
   curl -s -X POST -H "X-API-Key: $K" "${H}/host?path=$1" \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin).get("data",{}); print("https://dl.raymor.top"+d.get("url","") if d.get("url") else "")'
+    | python3 -c 'import json,sys; u=json.load(sys.stdin).get("data",{}).get("url",""); fid=u.rstrip("/").rsplit("/",1)[-1]; print("https://dl.raymor.top/f/"+fid if fid else "")'
 }
 
 REMOTE_JS="/apps/yuketangstudio/YuketangStudio-latest.user.js"
