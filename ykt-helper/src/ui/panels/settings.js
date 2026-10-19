@@ -1,7 +1,7 @@
 // settings.js (new version)
 import tpl from './settings.html';
 import { log } from '../../core/log.js';
-import { ui } from '../ui-api.js';
+import { ui, copyText } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
 import { unlockDevMode, getDevConfigs } from '../../core/devmode.js';
@@ -229,6 +229,12 @@ export function mountSettingsPanel() {
 
   $devPass?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') $devBtn?.click();
+  });
+
+  // 群号一键复制
+  root.querySelector('#ykt-devmode-qq')?.addEventListener('click', async () => {
+    const ok = await copyText('901466023');
+    ui.toast?.(ok ? '已复制群号 901466023' : '复制失败，请手动输入 901466023', 2200);
   });
 
   refreshDevHint();

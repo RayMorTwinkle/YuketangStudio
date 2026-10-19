@@ -3,6 +3,7 @@
 import tpl from './about.html';
 import { fetchLatest } from '../../core/update-check.js';
 import { gm } from '../../core/env.js';
+import { ui, copyText } from '../ui-api.js';
 import { log } from '../../core/log.js';
 
 let mounted = false;
@@ -57,6 +58,12 @@ export function mountAboutPanel() {
       $btn.disabled = false;
     }
   };
+
+  // 讨论群号一键复制（WebView 里 clipboard 可能不可用，copyText 已做回退）
+  root.querySelector('#ykt-about-qq-copy')?.addEventListener('click', async () => {
+    const ok = await copyText('901466023');
+    ui.toast?.(ok ? '已复制群号 901466023' : '复制失败，请手动输入 901466023', 2200);
+  });
 
   $btn.addEventListener('click', runCheck);
   $dl.addEventListener('click', () => {

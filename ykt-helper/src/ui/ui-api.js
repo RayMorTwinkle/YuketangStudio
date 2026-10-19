@@ -351,3 +351,30 @@ export const ui = {
     if (_config.autoAnswer) el.classList.add('active'); else el.classList.remove('active');
   },
 };
+
+/**
+ * 复制文本：优先 Clipboard API，失败回退 execCommand。
+ * Android WebView / 非安全上下文里 navigator.clipboard 可能不可用。
+ */
+export async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* 落到回退分支 */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
