@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.5.15
+// @version      0.6.0
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -212,10 +212,6 @@
     } catch {
       return String(url).slice(0, 60);
     }
-  }
-  async function ensureHtml2Canvas() {
-    const h = await ensureLib("html2canvas", w => typeof w.html2canvas === "function" || typeof w.html2canvas?.default === "function", VENDOR.h2c, "https://html2canvas.hertzen.com/dist/html2canvas.min.js");
-    return h?.default || h;
   }
   async function ensureJsPDF() {
     // jsPDF 由 @require 预置 → 落在沙箱 window；script/inline 注入 → 落在主世界 gm.uw。两处都查
@@ -574,8 +570,8 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$7 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
-  const L$2 = (...a) => log.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
+  var tpl$7 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n    /* 工具调用：提交答案卡片 */\n    .ykt-tool-card { margin-top: 8px; border: 1px solid #cfe0ff; background: #f5f9ff; border-radius: 8px; padding: 8px 10px; }\n    .ykt-tool-card.done { border-color: #b7e4c7; background: #f0fbf4; }\n    .ykt-tool-title { font-size: 12px; font-weight: 600; color: #1d63df; margin-bottom: 4px; }\n    .ykt-tool-answer { font-size: 15px; font-weight: 600; color: #111827; word-break: break-word; white-space: pre-wrap; }\n    .ykt-tool-reason { font-size: 12px; color: #607190; margin-top: 4px; white-space: pre-wrap; }\n    .ykt-tool-actions { margin-top: 8px; }\n    .ykt-tool-submit { padding: 5px 14px; border: none; border-radius: 6px; background: #1d63df; color: #fff; cursor: pointer; font-size: 13px; }\n    .ykt-tool-submit:disabled { opacity: .6; cursor: not-allowed; }\n    .ykt-tool-status { margin-top: 6px; font-size: 12px; color: #2e7d32; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
+  const L$3 = (...a) => log.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
   const W$2 = (...a) => log.warn("[雨课堂助手][WARN][vuex-helper]", ...a);
   const E = (...a) => log.err("[雨课堂助手][ERR][vuex-helper]", ...a);
   let _vueMissWarned = false;
@@ -661,12 +657,12 @@
       };
       const unwatch = store.watch(lastSid, (n, o) => {
         if (!n || n === o) return;
-        L$2("移动版时间线幻灯片切换", {
+        L$3("移动版时间线幻灯片切换", {
           newSid: n
         });
         callback(n, null);
       });
-      L$2("已启动移动版时间线幻灯片监听");
+      L$3("已启动移动版时间线幻灯片监听");
       return unwatch;
     }
     // 移动版实时课堂：watch「最后一个含 sid 卡片的 sid 值」——
@@ -681,18 +677,18 @@
       };
       const unwatch = store.watch(lastSid, (n, o) => {
         if (!n || n === o) return;
-        L$2("移动版时间线页面切换", {
+        L$3("移动版时间线页面切换", {
           newSid: n
         });
         callback(n, null);
       });
-      L$2("已启动移动版时间线页面监听");
+      L$3("已启动移动版时间线页面监听");
       return unwatch;
     }
     const unwatch = store.watch(state => state.currSlide, (ns, os) => {
       const newSid = ns?.sid == null ? null : String(ns.sid);
       const oldSid = os?.sid == null ? null : String(os.sid);
-      L$2("主界面页面切换", {
+      L$3("主界面页面切换", {
         oldSid: oldSid,
         newSid: newSid,
         newType: ns?.type,
@@ -704,7 +700,7 @@
     }, {
       deep: false
     });
-    L$2("已启动主界面页面切换监听");
+    L$3("已启动主界面页面切换监听");
     return unwatch;
   }
   /** 统一从各种移动版 store 形态取「幻灯片列表」：
@@ -765,7 +761,7 @@
       });
       updated++;
     }
-    if (updated) L$2("移动版幻灯片镜像进 repo:", updated, "个课件");
+    if (updated) L$3("移动版幻灯片镜像进 repo:", updated, "个课件");
     return updated;
   }
   function waitForVueReady(timeoutMs = 15e3) {
@@ -774,7 +770,7 @@
       const check = () => {
         const app = getVueApp();
         if (app && getStore(app)) {
-          L$2("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
+          L$3("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
           resolve(app);
         } else if (Date.now() - t0 >= timeoutMs) {
           W$2(`waitForVueReady: ${timeoutMs}ms 内未等到 Vue store，放弃（跟随/识别功能降级）`);
@@ -1009,11 +1005,39 @@
     if (idx >= 0) all[idx] = entry; else all.push(entry);
     storage.set("devmode.configs", all);
   }
+  // src/core/test-mode.js
+  // 测试模式：URL 带 ?ykt_test=1 或 localStorage['ykt:test-mode']='1' 时启用。
+  // 仅用于无真实课堂时验证 AI 工具调用链路，生产环境默认关闭。
+    function isTestMode() {
+    try {
+      const q = new URLSearchParams(location.search);
+      if (q.get("ykt_test") === "1") return true;
+      return localStorage.getItem("ykt:test-mode") === "1";
+    } catch {
+      return false;
+    }
+  }
+  /** 取当前测试用的假 AI 响应（未启用测试模式时永远为 null） */  function getTestMock() {
+    if (!isTestMode()) return null;
+    try {
+      return window.__yktTestMock || null;
+    } catch {
+      return null;
+    }
+  }
+  /** 取提交模拟模式（null=真实提交；'ok'|'retry'|'fail'） */  function getTestSubmitMode() {
+    if (!isTestMode()) return null;
+    try {
+      return window.__yktTestMockSubmit || null;
+    } catch {
+      return null;
+    }
+  }
   // src/ai/agnes.js
   // Agnes（OpenAI 兼容）LLM 封装：对话 / 图片 / 思考 / 流式 / 工具调用
   // 默认配置来自开发者模式解锁的内置配置（core/devmode.js），也可传参覆盖
   /** 本模块日志前缀 */  const dlog = (...args) => log.dbg("[Agnes]", ...args);
-  /** 与 openai.js 的 makeChatUrl 相同的自适应拼接逻辑 */  function makeChatUrl$1(baseUrl) {
+  /** 与 openai.js 的 makeChatUrl 相同的自适应拼接逻辑 */  function makeChatUrl(baseUrl) {
     let base = String(baseUrl || "").replace(/\/+$/, "");
     if (!base) base = "https://api.agnes-ai.cn/v1";
     if (base.includes("/chat/completions")) return base;
@@ -1052,6 +1076,7 @@
    * @param {(delta:string)=>void} [opts.onReasoning]    流式思考增量
    * @param {boolean} [opts.thinking]     是否开启思考（默认 true，reasoning_effort 取配置）
    * @param {Array}  [opts.tools]         工具定义
+   * @param {string} [opts.toolChoice]    'auto' | 'required'（默认 auto）
    * @param {Object} [opts.override]      { baseUrl, apiKey, model, reasoningEffort } 覆盖内置配置
    * @param {number} [opts.timeoutMs]
    * @returns {Promise<{content:string, reasoning:string, toolCalls?:Array, usage?:Object}>}
@@ -1099,7 +1124,44 @@
       }
     };
   }
+  /** 测试模式：模拟一次流式响应（不联网、不需要 API Key） */  async function mockChat(opts, mock) {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    await sleep(120);
+    // 只有「带 tools 的请求」才报不支持——降级重发（无 tools）时正常返回文本
+        if (mock.kind === "error-tools" && opts.tools?.length) throw new Error('HTTP 400: {"error":{"message":"tools is not supported by this model"}}');
+    const text = String(mock.content || "");
+    for (const chunk of text.match(/[\s\S]{1,16}/g) || []) {
+      opts.onDelta?.(chunk);
+      await sleep(18);
+    }
+    if (mock.reasoning) opts.onReasoning?.(mock.reasoning);
+    if (mock.kind === "truncated") return {
+      content: text,
+      reasoning: "",
+      toolCalls: [],
+      truncated: true
+    };
+    if (mock.tool) return {
+      content: text,
+      reasoning: "",
+      toolCalls: [ {
+        id: "mock_call_1",
+        type: "function",
+        function: {
+          name: "submit_answer",
+          arguments: JSON.stringify(mock.tool)
+        }
+      } ]
+    };
+    return {
+      content: text,
+      reasoning: "",
+      toolCalls: []
+    };
+  }
   async function agnesChat(opts) {
+    const mock = getTestMock();
+    if (mock) return mockChat(opts, mock);
     const dev = getDevConfig() || {};
     const ov = opts.override || {};
     const baseUrl = ov.baseUrl || dev.baseUrl;
@@ -1121,11 +1183,12 @@
     if (thinking && effort && effort !== "off") body.reasoning_effort = effort;
     if (opts.tools && opts.tools.length) {
       body.tools = opts.tools;
-      body.tool_choice = "auto";
+      // auto：模型自行决定；required：强制调用（自动作答用，保证一定会提交）
+            body.tool_choice = opts.toolChoice || "auto";
     }
     const stream = !!opts.stream;
     if (stream) body.stream = true;
-    const url = makeChatUrl$1(baseUrl);
+    const url = makeChatUrl(baseUrl);
     // 流式不再用总时长：首字 90s + 「最后字符后 15s」空闲超时（见 fetchStream）。
     // 非流式仍走 120s 总超时。
         const timeoutMs = opts.timeoutMs || 12e4;
@@ -1523,13 +1586,656 @@
       "'": "&#39;"
     }[c]));
   }
+  // src/ai/tools.js
+  // 「提交答案」工具：定义 + 参数归一化。
+  // 设计原则：模型只负责产出结构化答案，真正的提交由前端 submit-flow 完成
+  // （含过期补交判断、二次确认），模型没有直接提交权限。
+    const SUBMIT_ANSWER_TOOL = {
+    type: "function",
+    function: {
+      name: "submit_answer",
+      description: "把本题的最终答案提交到雨课堂。确定答案后必须调用本工具；只输出文字不算完成。" + "选择题传选项字母；填空题按空位顺序每空一项；主观题传完整作答文本。",
+      parameters: {
+        type: "object",
+        properties: {
+          answers: {
+            type: "array",
+            items: {
+              type: "string"
+            },
+            description: '答案数组。单选/多选/投票：["A"] 或 ["A","C"]；' + '填空：每个空一项，如 ["12","3.5"]；主观/问答：一个元素，内容为完整作答文本。'
+          },
+          reason: {
+            type: "string",
+            description: "一句话说明选择该答案的理由（可选）。"
+          }
+        },
+        required: [ "answers" ]
+      }
+    }
+  };
+  /**
+   * 运行时追加到 system prompt 的工具使用要求。
+   * 不写进 DEFAULT_SYSTEM_PROMPT_AI，避免用户自定义提示词把工具规则覆盖掉。
+   * @param {object|null} problem
+   * @param {{mandatory?: boolean}} [opts] mandatory=自动作答，必须调用工具
+   */  function toolPromptBlock(problem, {mandatory: mandatory = false} = {}) {
+    if (!problem) return "";
+    const lines = [ "【工具使用要求】", "当前页有可提交的题目。确定最终答案后，必须调用 submit_answer 工具提交答案；只输出文字不算完成。", "submit_answer 的 answers 参数：", '- 单选/多选/投票：选项字母数组，例如 ["A"] 或 ["A","C"]；', "- 填空：按空位顺序，每个空一项；", "- 主观/问答：一个元素，内容为完整作答文本。", "提交成功后可以继续给用户简要说明思路。" ];
+    if (mandatory) lines.push("本次为自动作答：必须调用 submit_answer，否则本次作答视为失败。");
+    return lines.join("\n");
+  }
+  /** 判断错误是否属于「当前端点不支持 tool calling」 */  function isToolUnsupportedError(err) {
+    const msg = String(err?.message || err || "");
+    // 常见形态：HTTP 400: {"error":{"message":"tools is not supported ..."}}
+        if (!/HTTP\s*400/i.test(msg) && !/HTTP\s*422/i.test(msg)) return false;
+    return /tool|function[_ ]?call|tool_choice/i.test(msg);
+  }
+  /**
+   * 归一化工具参数 → 提交用的 content 与结构化 result。
+   * @param {string|object} rawArgs 模型返回的 arguments（通常是 JSON 字符串）
+   * @param {number} problemType 1单选 2多选 3投票 4填空 5主观
+   * @returns {{content:string, result:any, display:string}}
+   */  function normalizeToolArgs(rawArgs, problemType) {
+    let args = rawArgs;
+    if (typeof args === "string") {
+      const s = args.trim();
+      if (!s) throw new Error("工具参数为空");
+      try {
+        args = JSON.parse(s);
+      } catch {
+        throw new Error("工具参数不是合法 JSON");
+      }
+    }
+    if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("工具参数格式不正确");
+    let answers = args.answers;
+    if (typeof answers === "string") answers = [ answers ];
+    if (!Array.isArray(answers)) throw new Error("answers 必须是数组");
+    answers = answers.map(x => String(x ?? "").trim()).filter(Boolean);
+    if (!answers.length) throw new Error("answers 为空");
+    const pt = Number(problemType);
+    if (pt === 1 || pt === 2 || pt === 3) {
+      const letters = [];
+      for (const a of answers) {
+        const m = String(a).toUpperCase().match(/[A-Z]/g) || [];
+        for (const c of m) if (!letters.includes(c)) letters.push(c);
+      }
+      if (!letters.length) throw new Error("选择题答案里没有选项字母");
+      letters.sort();
+      return {
+        content: letters.join(","),
+        result: letters,
+        display: letters.join("、")
+      };
+    }
+    if (pt === 4) return {
+      content: answers.join("\n"),
+      result: answers,
+      display: answers.join(" | ")
+    };
+    if (pt === 5) {
+      const text = answers.join("\n");
+      return {
+        content: text,
+        result: {
+          content: text,
+          pics: []
+        },
+        display: text
+      };
+    }
+    throw new Error(`不支持的题型：${problemType}`);
+  }
+  /** 从工具参数里取可选的 reason（用于卡片展示，不参与提交） */  function toolReason(rawArgs) {
+    try {
+      const a = typeof rawArgs === "string" ? JSON.parse(rawArgs) : rawArgs;
+      return String(a?.reason || "").trim();
+    } catch {
+      return "";
+    }
+  }
+  // src/capture/screenshoot.js
+  /**
+   * 获取指定幻灯片的截图
+   * @param {string} slideId - 幻灯片ID
+   * @returns {Promise<string|null>} base64图片数据
+   */  async function captureSlideImage(slideId) {
+    try {
+      log.dbg("[captureSlideImage] 获取幻灯片图片:", slideId);
+      const slide = repo.slides.get(String(slideId));
+      if (!slide) {
+        log.err("[captureSlideImage] 找不到幻灯片:", slideId);
+        return null;
+      }
+      // 使用 cover 或 coverAlt 图片URL
+            const imageUrl = slide.coverAlt || slide.cover || slide.image || slide.thumbnail;
+      if (!imageUrl) {
+        log.err("[captureSlideImage] 幻灯片没有图片URL");
+        return null;
+      }
+      log.dbg("[captureSlideImage] 图片URL:", imageUrl);
+      // 下载图片并转换为base64
+            const base64 = await downloadImageAsBase64(imageUrl);
+      if (!base64) {
+        log.err("[captureSlideImage] 下载图片失败");
+        return null;
+      }
+      log.dbg("[captureSlideImage] ✅ 成功获取图片, 大小:", Math.round(base64.length / 1024), "KB");
+      return base64;
+    } catch (e) {
+      log.err("[captureSlideImage] 失败:", e);
+      return null;
+    }
+  }
+  /**
+   * 下载图片并转换为base64
+   * @param {string} url - 图片URL
+   * @returns {Promise<string|null>}
+   */  async function downloadImageAsBase64(url) {
+    // 首选 GM_xhr → dataURL：无视 OSS CORS（crossOrigin=anonymous 在无 CORS 头的域上直接加载失败）
+    try {
+      const dataUrl = await fetchAsDataURL(url);
+      const b64 = String(dataUrl || "").split(",")[1] || "";
+      if (b64) return b64;
+    } catch (e) {
+      log.warn("[downloadImageAsBase64] fetchAsDataURL 失败，退回 Image+canvas:", e?.message);
+    }
+    return new Promise(resolve => {
+      try {
+        const img = new Image;
+        img.crossOrigin = "anonymous";
+        // 兜底计时器：挂起的 TCP 连接下 onload/onerror 都可能不触发——
+        // 没有它，Promise 永不 settle，外层 auto-answer 的 answering 标志永久卡死
+                const timer = setTimeout(() => {
+          try {
+            img.src = "";
+          } catch {}
+          log.err("[downloadImageAsBase64] Image 加载超时");
+          resolve(null);
+        }, 3e4);
+        const clear = () => clearTimeout(timer);
+        img.onload = () => {
+          clear();
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
+            if (base64.length > 1e6) {
+              log.dbg("[雨课堂助手][INFO][downloadImageAsBase64] 图片过大，进行压缩...");
+              const compressed = canvas.toDataURL("image/jpeg", .5).split(",")[1];
+              log.dbg("[雨课堂助手][INFO][downloadImageAsBase64] 压缩后大小:", Math.round(compressed.length / 1024), "KB");
+              resolve(compressed);
+            } else resolve(base64);
+          } catch (e) {
+            log.err("[雨课堂助手][ERR][downloadImageAsBase64] Canvas处理失败:", e);
+            resolve(null);
+          }
+        };
+        img.onerror = e => {
+          clear();
+          log.err("[雨课堂助手][ERR][downloadImageAsBase64] 图片加载失败:", e);
+          resolve(null);
+        };
+        img.src = url;
+      } catch (e) {
+        log.err("[雨课堂助手][ERR][downloadImageAsBase64] 失败:", e);
+        resolve(null);
+      }
+    });
+  }
+  // 改进的答案解析函数
+    function parseAIAnswer(problem, aiAnswer) {
+    try {
+      // 哨兵优先：AI 按要求输出 STATE: NO_PROMPT（页面无题目）时绝不能当答案提交——
+      // 此前它会落到首行兜底，被选择题分支提取出字母乱答
+      if (/^\s*STATE\s*:/im.test(String(aiAnswer || "")) || /\bNO_PROMPT\b/i.test(String(aiAnswer || ""))) {
+        log.warn("[雨课堂助手][WARN][parseAIAnswer] 检测到 STATE 哨兵/NO_PROMPT，判为无题目，不解析答案");
+        return null;
+      }
+      const lines = String(aiAnswer || "").split("\n");
+      let answerLine = "";
+      let answerIdx = -1;
+      // 先定位“答案:”所在行
+            for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.includes("答案:") || line.includes("答案：")) {
+          answerLine = line.replace(/答案[:：]\s*/, "").trim();
+          answerIdx = i;
+          break;
+        }
+      }
+      // === 对填空题和主观题，允许多行答案 ===
+            if ((problem.problemType === 4 || problem.problemType === 5) && answerIdx >= 0) {
+        const block = [];
+        // 当前行如果有内容，先收进去
+                if (answerLine) block.push(answerLine);
+        // 继续向下收集，直到遇到“解释:”或文本结束
+                for (let i = answerIdx + 1; i < lines.length; i++) {
+          const l = lines[i];
+          if (/^\s*解释[:：]/.test(l)) break;
+          block.push((l || "").trimEnd());
+        }
+        const merged = block.join("\n").trim();
+        if (merged) answerLine = merged;
+      }
+      // 如果仍然没有任何答案内容，退回到第一行兜底——
+      // 但首行兜底对选择题太危险（"The answer is B" 会提取出 T），只允许「整行就是选项字母」的形态
+            if (!answerLine) {
+        const first = (lines[0] || "").trim();
+        const isChoice = [ 1, 2, 3 ].includes(problem.problemType);
+        if (isChoice) {
+          if (/^[A-Z](\s*[,，、.·]\s*[A-Z])*[.。]?\s*$/.test(first)) answerLine = first;
+          // 否则 answerLine 留空 → 各分支自然解析失败返回 null
+                } else answerLine = first;
+      }
+      log.dbg("[雨课堂助手][INFO][parseAIAnswer] 题目类型:", problem.problemType, "原始答案行:", answerLine);
+      switch (problem.problemType) {
+       case 1:
+ // 单选题
+               case 3:
+        {
+          // 投票题
+          let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
+          if (m) {
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:", [ m[0] ]);
+            return [ m[0] ];
+          }
+          const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
+          if (chineseMatch) {
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票中文解析结果:", [ chineseMatch[1] ]);
+            return [ chineseMatch[1] ];
+          }
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析失败");
+          return null;
+        }
+
+       case 2:
+        {
+          // 多选题
+          if (answerLine.includes("、")) {
+            const options = answerLine.split("、").map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
+            if (options.length > 0) {
+              const result = [ ...new Set(options) ].sort();
+              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选顿号解析结果:", result);
+              return result;
+            }
+          }
+          if (answerLine.includes(",") || answerLine.includes("，")) {
+            const options = answerLine.split(/[,，]/).map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
+            if (options.length > 0) {
+              const result = [ ...new Set(options) ].sort();
+              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选逗号解析结果:", result);
+              return result;
+            }
+          }
+          const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
+          if (letters && letters.length > 1) {
+            const result = [ ...new Set(letters) ].sort();
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选连续解析结果:", result);
+            return result;
+          }
+          if (letters && letters.length === 1) {
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选单个解析结果:", letters);
+            return letters;
+          }
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选解析失败");
+          return null;
+        }
+
+       case 4:
+        {
+          // 填空题
+          let cleanAnswer = answerLine.replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, "").trim();
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 清理后答案:", cleanAnswer);
+          // 如果清理后还包含这些词，继续清理
+                    if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
+            cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, "").trim();
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 二次清理后:", cleanAnswer);
+          }
+          // 剥掉首尾的非文字字符（引号、括号、句号等）
+                    cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, "").replace(/[^\w\u4e00-\u9fa5]+$/, "");
+          // 多空只按逗号/分号拆——不按空格（"New York" 这类含空格答案会被切碎）
+          // 且始终返回数组：填空题端点吃的是多空数组，{content,pics} 是主观题的形状
+                    const blanks = cleanAnswer.split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
+          if (blanks.length) {
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:", blanks);
+            return blanks;
+          }
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 填空解析失败");
+          return null;
+        }
+
+       case 5:
+        {
+          // 主观题
+          const content = answerLine.replace(/^(主观题|论述题)[:：\s]*/i, "").trim();
+          if (content) {
+            const result = {
+              content: content,
+              pics: []
+            };
+            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 主观题解析结果:", result);
+            return result;
+          }
+          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 主观题解析失败");
+          return null;
+        }
+
+       default:
+        log.dbg("[雨课堂助手][INFO][parseAIAnswer] 未知题目类型:", problem.problemType);
+        return null;
+      }
+    } catch (e) {
+      log.err("[雨课堂助手][ERR][parseAIAnswer] 解析失败", e);
+      return null;
+    }
+  }
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, Math.max(0, ms | 0)));
+  }
+  function calcAutoWaitMs() {
+    const base = Math.max(0, ui?.config?.autoAnswerDelay ?? 0);
+    const rand = Math.max(0, ui?.config?.autoAnswerRandomDelay ?? 0);
+    return base + (rand ? Math.floor(Math.random() * rand) : 0);
+  }
+  function shouldAutoAnswerForLesson_(lessonId) {
+    if (ui?.config?.autoAnswer) return true;
+    if (!lessonId) return false;
+    if (repo?.autoJoinedLessons?.has(lessonId) && ui?.config?.autoAnswerOnAutoJoin) return true;
+    if (repo?.forceAutoAnswerLessons?.has(lessonId)) return true;
+    return false;
+  }
+  const DEFAULT_HEADERS = () => ({
+    "Content-Type": "application/json",
+    xtbz: "ykt",
+    "X-Client": "h5",
+    Authorization: "Bearer " + (typeof localStorage !== "undefined" ? localStorage.getItem("Authorization") : "")
+  });
+  /**
+   * Low-level POST helper using XMLHttpRequest to align with site requirements.
+   * @param {string} url
+   * @param {object} data
+   * @param {Record<string,string>} headers
+   * @returns {Promise<any>}
+   */  function xhrPost(url, data, headers) {
+    return new Promise((resolve, reject) => {
+      try {
+        const xhr = new XMLHttpRequest;
+        xhr.open("POST", url);
+        for (const [k, v] of Object.entries(headers || {})) xhr.setRequestHeader(k, v);
+        // 必须给所有终止态一个 rejection——超时不设回调会让 Promise 永远挂起
+        // （外层 answering 标志随之卡死，题目再也答不了）
+                xhr.timeout = 2e4;
+        xhr.ontimeout = () => reject(new Error("提交超时（20s）"));
+        xhr.onabort = () => reject(new Error("请求被中止"));
+        xhr.onload = () => {
+          try {
+            const resp = JSON.parse(xhr.responseText);
+            if (resp && typeof resp === "object") resolve(resp); else reject(new Error("解析响应失败"));
+          } catch {
+            reject(new Error("解析响应失败"));
+          }
+        };
+        xhr.onerror = () => reject(new Error("网络请求失败"));
+        xhr.send(JSON.stringify(data));
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+  /**
+   * POST /api/v3/lesson/problem/answer
+   * Mirrors the 1.16.1 logic (no UI). Returns {code, data, msg, ...} on success code===0.
+   * @param {{problemId:number, problemType:number}} problem
+   * @param {any} result
+   * @param {{headers?:Record<string,string>, dt?:number}} [options]
+   */  async function answerProblem(problem, result, options = {}) {
+    const url = "/api/v3/lesson/problem/answer";
+    const headers = {
+      ...DEFAULT_HEADERS(),
+      ...options.headers || {}
+    };
+    const payload = {
+      problemId: problem.problemId,
+      problemType: problem.problemType,
+      dt: options.dt ?? Date.now(),
+      result: result
+    };
+    const resp = await xhrPost(url, payload, headers);
+    if (resp.code === 0) return resp;
+    throw new Error(`${resp?.msg || "服务器返回错误"} (${resp?.code})`);
+  }
+  /**
+   * POST /api/v3/lesson/problem/retry
+   * Expects server to echo success ids in data.success (as in v1.16.1).
+   * @param {{problemId:number, problemType:number}} problem
+   * @param {any} result
+   * @param {number} dt - simulated answer time (epoch ms)
+   * @param {{headers?:Record<string,string>}} [options]
+   */  async function retryAnswer(problem, result, dt, options = {}) {
+    const url = "/api/v3/lesson/problem/retry";
+    const headers = {
+      ...DEFAULT_HEADERS(),
+      ...options.headers || {}
+    };
+    const payload = {
+      problems: [ {
+        problemId: problem.problemId,
+        problemType: problem.problemType,
+        dt: dt,
+        result: result
+      } ]
+    };
+    const resp = await xhrPost(url, payload, headers);
+    if (resp.code !== 0) throw new Error(`${resp?.msg || "服务器返回错误"} (${resp?.code})`);
+    const okList = resp?.data?.success || [];
+    // 服务端可能返回数字 id——统一字符串比较，避免类型不一致误判失败
+        if (!Array.isArray(okList) || !okList.map(String).includes(String(problem.problemId))) throw new Error("服务器未返回成功信息");
+    return resp;
+  }
+  /**
+   * High-level orchestrator: answer first; if deadline has passed, optionally retry.
+   * This is the module adaptation of the 1.16.1 userscript submit flow.
+   *
+   * @param {{problemId:number, problemType:number}} problem
+   * @param {any} result
+   * @param {Object} submitOptions
+   * @param {number} [submitOptions.startTime] - unlock time (epoch ms). Required for retry path.
+   * @param {number} [submitOptions.endTime]   - deadline (epoch ms). If now >= endTime -> retry path.
+   * @param {boolean} [submitOptions.forceRetry=false] - when past deadline, directly use retry without prompting.
+   * @param {number} [submitOptions.retryDtOffsetMs=2000] - dt = startTime + offset when retrying.
+   * @param {Record<string,string>} [submitOptions.headers] - extra/override headers.
+   * @returns {Promise<{'route':'answer'|'retry', resp:any}>}
+   * @param {number|string} [submitOptions.lessonId] - 所属课堂；缺省时将使用 repo.currentLessonId
+   * @param {boolean} [submitOptions.autoGate=true]  - 是否启用“自动进入课堂/默认自动答题”的判定（向后兼容，默认开启）
+   * @param {number} [submitOptions.waitMs]          - 覆盖自动等待时间；未提供时按设置计算
+   */  async function submitAnswer(problem, result, submitOptions = {}) {
+    const startTime = submitOptions?.startTime;
+    const endTime = submitOptions?.endTime;
+    const forceRetry = submitOptions?.forceRetry ?? false;
+    const retryDtOffsetMs = submitOptions?.retryDtOffsetMs ?? 2e3;
+    const headers = submitOptions?.headers;
+    const autoGate = submitOptions?.autoGate ?? true;
+    const waitMs = submitOptions?.waitMs;
+    const lessonIdFromOpts = submitOptions && "lessonId" in submitOptions ? submitOptions.lessonId : void 0;
+    // 统一拿 lessonId
+        const lessonId = lessonIdFromOpts ?? repo?.currentLessonId ?? null;
+    // endTime 是服务端时钟（unlock 时记了 clockOffset）——判过期/限时都要换算回服务端时间轴
+        const psEarly = repo?.problemStatus?.get?.(String(problem.problemId));
+    const clockOffset = Number.isFinite(psEarly?.clockOffset) ? psEarly.clockOffset : 0;
+    const serverNow = () => Date.now() + clockOffset;
+    if (autoGate && shouldAutoAnswerForLesson_(lessonId)) {
+      const ms = typeof waitMs === "number" ? Math.max(0, waitMs) : calcAutoWaitMs();
+      if (ms > 0) {
+        const guard = typeof endTime === "number" ? Math.max(0, endTime - serverNow() - 80) : ms;
+        await sleep(Math.min(ms, guard));
+      }
+    }
+    const now = serverNow();
+    const pastDeadline = typeof endTime === "number" && Number.isFinite(endTime) && now >= endTime;
+    if (pastDeadline || forceRetry) {
+      log.dbg("[雨课堂助手][DEBUG][answer] >>> 进入补交分支判断");
+      log.dbg("problemId:", problem.problemId);
+      log.dbg("pastDeadline:", pastDeadline, "(now=", now, ", endTime=", endTime, ")");
+      log.dbg("forceRetry:", forceRetry);
+      log.dbg("传入 startTime:", startTime, "传入 endTime:", endTime);
+      const ps = repo?.problemStatus?.get?.(String(problem.problemId));
+      log.dbg("从 repo.problemStatus 获取:", ps);
+      const st = Number.isFinite(startTime) ? startTime : ps?.startTime;
+      const et = Number.isFinite(endTime) ? endTime : ps?.endTime;
+      log.dbg("最终用于 retry 的 st=", st, " et=", et);
+      // 计算 dt
+            const off = Math.max(0, retryDtOffsetMs);
+      let dt;
+      if (Number.isFinite(st)) {
+        dt = st + off;
+        log.dbg("补交 dt = startTime + offset =", dt);
+      } else if (Number.isFinite(et)) {
+        dt = Math.max(0, et - Math.max(off, 5e3));
+        log.dbg("补交 dt = near endTime window =", dt);
+      } else {
+        dt = Date.now() - off;
+        log.dbg("补交 dt = fallback =", dt);
+      }
+      log.dbg(">>> 即将调用 retryAnswer()");
+      try {
+        const resp = await retryAnswer(problem, result, dt, {
+          headers: headers
+        });
+        log.dbg("[雨课堂助手][INFO][answer] 补交成功 (/retry)", {
+          problemId: problem.problemId,
+          dt: dt,
+          pastDeadline: pastDeadline,
+          forceRetry: forceRetry
+        });
+        return {
+          route: "retry",
+          resp: resp
+        };
+      } catch (e) {
+        log.err("[雨课堂助手][ERR][answer] 补交失败 (/retry)：", e);
+        log.err("[雨课堂助手][ERR][answer] 失败参数：", {
+          st: st,
+          et: et,
+          dt: dt,
+          pastDeadline: pastDeadline,
+          forceRetry: forceRetry
+        });
+        throw e;
+      }
+    }
+    const resp = await answerProblem(problem, result, {
+      headers: headers,
+      dt: now
+    });
+    return {
+      route: "answer",
+      resp: resp
+    };
+  }
+  // src/tsm/submit-flow.js
+  // 统一的「提交答案」流程：解析 → 提交（含过期补交）→ 更新本地状态。
+  // 供 actions.submit（手动）与 AI 工具调用共用，避免两套逻辑漂移。
+  /** 把用户/AI 的文本答案转成接口需要的 result 结构 */  function parseManualAnswer(problemType, content) {
+    switch (Number(problemType)) {
+     case 1:
+     case 2:
+     case 3:
+      return (String(content).toUpperCase().match(/[A-Z]/g) || []).sort();
+
+     case 4:
+      return String(content).split(/[\n,，;；]+/).map(s => s.trim()).filter(Boolean);
+
+     case 5:
+      return {
+        content: content,
+        pics: []
+      };
+
+     default:
+      return null;
+    }
+  }
+  /** 提交成功后更新本地状态（题目结果 + 已遇到列表 + 面板刷新） */  function markAnswered(problemId, result) {
+    const p = repo.problems.get(String(problemId));
+    if (p) p.result = result;
+    const i = repo.encounteredProblems.findIndex(e => String(e.problemId) === String(problemId));
+    if (i !== -1) repo.encounteredProblems[i].result = result;
+    ui.updateProblemList?.();
+  }
+  /**
+   * 提交结构化答案。
+   * @param {{problemId:number, problemType:number}} problem
+   * @param {any} result
+   * @param {{startTime?:number,endTime?:number,forceRetry?:boolean,lessonId?:any}} [opts]
+   * @returns {Promise<'answer'|'retry'>}
+   */  async function submitProblemAnswer(problem, result, opts = {}) {
+    // 测试模式：不请求真实接口，直接模拟结果
+    const testMode = getTestSubmitMode();
+    if (testMode) {
+      await new Promise(r => setTimeout(r, 350));
+      if (testMode === "fail") throw new Error("模拟提交失败");
+      markAnswered(problem.problemId, result);
+      return testMode === "retry" ? "retry" : "answer";
+    }
+    const {route: route} = await submitAnswer(problem, result, {
+      lessonId: opts.lessonId ?? repo.currentLessonId,
+      autoGate: false,
+      // 手动/工具提交都不套自动延迟
+      startTime: opts.startTime,
+      endTime: opts.endTime,
+      forceRetry: !!opts.forceRetry
+    });
+    markAnswered(problem.problemId, result);
+    return route;
+  }
+  // src/ui/confirm.js
+  // 自绘二次确认框（WebView 里 window.confirm 默认返回 false，不能用）。
+  // 返回 Promise<boolean>。
+    function confirmDialog$1(text, {okText: okText = "确认", cancelText: cancelText = "取消", danger: danger = false} = {}) {
+    return new Promise(resolve => {
+      const mask = document.createElement("div");
+      mask.style.cssText = [ "position:fixed", "inset:0", "z-index:2147483000", "background:rgba(15,23,42,.45)", "display:flex", "align-items:center", "justify-content:center", "padding:24px" ].join(";");
+      const box = document.createElement("div");
+      box.style.cssText = [ "background:#fff", "color:#1f2937", "border-radius:12px", "max-width:340px", "width:100%", "padding:18px 18px 12px", "box-shadow:0 20px 50px rgba(0,0,0,.25)", "font-size:14px", "line-height:1.6" ].join(";");
+      const msg = document.createElement("div");
+      msg.textContent = text;
+      msg.style.cssText = "white-space:pre-wrap;word-break:break-word;";
+      const bar = document.createElement("div");
+      bar.style.cssText = "display:flex;gap:10px;justify-content:flex-end;margin-top:16px;";
+      const no = document.createElement("button");
+      no.textContent = cancelText;
+      no.style.cssText = "padding:7px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;cursor:pointer;";
+      const ok = document.createElement("button");
+      ok.textContent = okText;
+      ok.style.cssText = `padding:7px 14px;border:none;border-radius:8px;color:#fff;cursor:pointer;background:${danger ? "#dc2626" : "#1d63df"};`;
+      const done = v => {
+        mask.remove();
+        resolve(v);
+      };
+      no.onclick = () => done(false);
+      ok.onclick = () => done(true);
+      mask.addEventListener("click", e => {
+        if (e.target === mask) done(false);
+      });
+      bar.appendChild(no);
+      bar.appendChild(ok);
+      box.appendChild(msg);
+      box.appendChild(bar);
+      mask.appendChild(box);
+      document.body.appendChild(mask);
+    });
+  }
   // src/ui/panels/ai.js
   // AI 解答面板：题目专注版多轮对话。
   // 与 PPT对话(chat) 的区别：自动识别当前页 + 注入课堂系统的题干文本（比截图 OCR 可靠），
   // 首轮「解答此页」一键触发，后续追问共享上下文。
   // 调用链：agnesChat（OpenAI 兼容流式，支持 reasoning_content 思考链与取消），
   //         override 来自当前激活的 AI Profile——任意 OpenAI 兼容端点都能用。
-    const L$1 = (...a) => log.dbg("[ai]", ...a);
+    const L$2 = (...a) => log.dbg("[ai]", ...a);
   const W$1 = (...a) => log.warn("[ai]", ...a);
   let mounted$7 = false;
   let root$6;
@@ -1678,7 +2384,7 @@
     });
     waitForVueReady().then(() => {
       watchMainPageChange((slideId, slideInfo) => {
-        L$1("主界面页面切换事件", {
+        L$2("主界面页面切换事件", {
           slideId: slideId,
           slideInfoType: slideInfo?.type,
           problemID: slideInfo?.problemID,
@@ -1691,7 +2397,7 @@
       W$1("Vue 实例初始化失败，将使用备用方案:", e);
     });
     window.addEventListener("ykt:presentation:slide-selected", ev => {
-      L$1("收到小窗选页事件", ev?.detail);
+      L$2("收到小窗选页事件", ev?.detail);
       const sid = asIdStr(ev?.detail?.slideId);
       if (sid) preferredSlideFromPresentation = {
         slideId: sid,
@@ -1791,7 +2497,7 @@
       }
       if (Array.isArray(problem.blanks) && problem.blanks.length) parts.push(`空位：${problem.blanks.join(" | ")}`);
     }
-    if (isAnalyze) parts.push(problem ? "请结合以上题目文本与页面截图解答此题。" : "【页面说明】当前页面可能不是题目页；请根据截图内容概述页面，若有题目请解答。");
+    parts.push(problem ? "请结合以上题目文本与页面截图解答此题。" : "【页面说明】当前页面可能不是题目页；请根据截图内容概述页面，若有题目请解答。");
     if (customPrompt) parts.push(`【用户自定义要求】\n${customPrompt}`);
     return parts.join("\n");
   }
@@ -1891,155 +2597,440 @@
       if (on) document.body.dataset.yksStreaming = "1"; else delete document.body.dataset.yksStreaming;
     } catch {}
   }
-  async function sendCurrent$1({auto: auto = false, retryText: retryText = null} = {}) {
-    if (streaming$1) return;
-    const $input = $sel$1("#ykt-ai-input");
-    // retryText 非 null = 重试：用上次的文本，并弹出上一条 user 历史避免重复
-        const text = retryText !== null ? retryText : ($input?.value || "").trim();
-    if (retryText !== null) if (history$1.length && history$1[history$1.length - 1]?.role === "user") history$1.pop();
-    const isAnalyze = !text;
- // 空输入 = 解答此页
-        const customPrompt = ($sel$1("#ykt-ai-custom-prompt")?.value || "").trim();
-    const attach = $sel$1("#ykt-ai-attach")?.checked ?? true;
-    lastSendText$1 = text;
-    streaming$1 = true;
-    setStreamingFlag$1(true);
-    $sel$1("#ykt-ai-send").disabled = true;
-    try {
-      const content = [ {
-        type: "text",
-        text: text || DEFAULT_ANALYZE_PROMPT
-      } ];
-      let attachFailed = "";
-      if (attach || isAnalyze) {
-        const pending = addBubble$1("user", `⏳ 正在获取当前 PPT…${text ? "" : "（解答此页）"}`);
-        const {dataUrl: dataUrl, reason: reason} = await resolveCurrentSlideImage();
-        pending.remove();
-        if (dataUrl) content.push({
-          type: "image_url",
-          image_url: {
-            url: dataUrl
-          }
-        }); else if (isAnalyze) attachFailed = reason || "未取到当前 PPT 页";
-      }
-      const userText = buildUserText(pickCurrentSlide().slide?.problem, customPrompt, isAnalyze);
-      // 题干文本注入：首轮整段作为文本；追问时只追加用户输入（题干已在历史里）
-            if (isAnalyze) content[0].text = userText || DEFAULT_ANALYZE_PROMPT; else if (text) content[0].text = text + (customPrompt ? `\n【用户自定义要求】\n${customPrompt}` : "");
-      history$1.push({
-        role: "user",
-        content: content
-      });
-      trimOldImages$1(1);
-      const userBubble = addBubble$1("user", escapeHtml(text || DEFAULT_ANALYZE_PROMPT));
-      for (const c of content) if (c.type === "image_url") {
-        const img = document.createElement("img");
-        img.src = c.image_url.url;
-        img.alt = "当前 PPT 页";
-        userBubble.appendChild(img);
-      }
-      if (attachFailed) {
-        const warn = document.createElement("div");
-        warn.className = "ykt-chat-warn";
-        warn.textContent = `⚠️ ${attachFailed}——本条无截图，仅依据题目文本作答`;
-        userBubble.appendChild(warn);
-      }
-      if ($input) $input.value = "";
-      // AI 气泡（流式，思考中自动展开 → 正文自动折叠）
-            const aiBubble = addBubble$1("ai", "<em>思考中…</em>");
-      const acc = {
-        content: "",
-        reasoning: ""
+  // ---------------- 工具调用：提交答案 ----------------
+  /** 取指定题目所在页的图片（自动作答时题目可能已不在当前页） */  async function resolveImageForProblem(problem) {
+    const status = repo.problemStatus.get(String(problem?.problemId));
+    const sid = status?.slideId;
+    if (sid != null) try {
+      const img = await captureSlideImage(sid);
+      if (img) return {
+        dataUrl: img,
+        source: "problem-slide"
       };
-      const renderer = new StreamRenderer;
- // 封板/活跃区增量渲染：公式、mermaid 流中即渲染
-            let raf = 0;
-      let phase = "waiting";
-      const paint = () => {
-        if (raf) return;
-        raf = requestAnimationFrame(() => {
-          raf = 0;
-          if (phase !== "answering" && acc.content) phase = "answering"; else if (phase === "waiting" && acc.reasoning) phase = "thinking";
-          const thinking = phase === "thinking";
-          aiBubble.innerHTML = (acc.reasoning ? `<details ${thinking ? "open" : ""}><summary>💭 思考过程${thinking ? "（进行中…）" : "（点击展开）"}</summary><div class="reasoning-body"></div></details>` : "") + '<div class="ykt-sr-content"></div>';
-          renderer.attach(aiBubble.querySelector(".ykt-sr-content"));
-          renderer.update(acc.content, thinking ? "" : "<em>…</em>");
-          const rBody = aiBubble.querySelector(".reasoning-body");
-          if (rBody) {
-            rBody.textContent = acc.reasoning;
-            rBody.scrollTop = rBody.scrollHeight;
-          }
-          const $log = $sel$1("#ykt-ai-log");
-          $log.scrollTop = $log.scrollHeight;
+    } catch (e) {
+      W$1("captureSlideImage fail:", e);
+    }
+    return resolveCurrentSlideImage();
+  }
+  /** parseAIAnswer 的结果 → 卡片需要的 {content,result,display}（降级路径用） */  function argsFromParsed(problemType, parsed) {
+    const pt = Number(problemType);
+    if (pt === 1 || pt === 2 || pt === 3) {
+      const arr = Array.isArray(parsed) ? parsed.map(String) : [];
+      return {
+        content: arr.join(","),
+        result: arr,
+        display: arr.join("、")
+      };
+    }
+    if (pt === 4) {
+      const arr = Array.isArray(parsed) ? parsed.map(String) : [ String(parsed ?? "") ];
+      return {
+        content: arr.join("\n"),
+        result: arr,
+        display: arr.join(" | ")
+      };
+    }
+    const text = typeof parsed === "string" ? parsed : String(parsed?.content ?? "");
+    return {
+      content: text,
+      result: {
+        content: text,
+        pics: []
+      },
+      display: text
+    };
+  }
+  /**
+   * 在 AI 气泡里渲染「提交答案」卡片。
+   * autoSubmit=true（自动作答）时不再二次确认，直接提交。
+   * @returns {Promise<{attempted:boolean, route?:'answer'|'retry'|null, pending?:boolean, display:string}>}
+   */  async function renderToolCard(aiBubble, {problem: problem, args: args, reason: reason, autoSubmit: autoSubmit, degraded: degraded = false}) {
+    const card = document.createElement("div");
+    card.className = "ykt-tool-card";
+    const title = document.createElement("div");
+    title.className = "ykt-tool-title";
+    title.textContent = degraded ? "📤 提交答案（文本解析）" : "📤 提交答案";
+    card.appendChild(title);
+    const ans = document.createElement("div");
+    ans.className = "ykt-tool-answer";
+    ans.textContent = args.display;
+    card.appendChild(ans);
+    if (reason) {
+      const r = document.createElement("div");
+      r.className = "ykt-tool-reason";
+      r.textContent = reason;
+      card.appendChild(r);
+    }
+    const bar = document.createElement("div");
+    bar.className = "ykt-tool-actions";
+    const btn = document.createElement("button");
+    btn.className = "ykt-tool-submit";
+    btn.textContent = autoSubmit ? "自动提交中…" : "提交";
+    bar.appendChild(btn);
+    card.appendChild(bar);
+    const stEl = document.createElement("div");
+    stEl.className = "ykt-tool-status";
+    card.appendChild(stEl);
+    aiBubble.appendChild(card);
+    const $log = $sel$1("#ykt-ai-log");
+    if ($log) $log.scrollTop = $log.scrollHeight;
+    const doSubmit = async () => {
+      if (btn.disabled) return null;
+      const st = repo.problemStatus.get(String(problem.problemId));
+      const offset = Number.isFinite(st?.clockOffset) ? st.clockOffset : 0;
+      const endTime = Number.isFinite(st?.endTime) ? st.endTime : void 0;
+      const past = Number.isFinite(endTime) && Date.now() + offset >= endTime;
+      // 手动模式：二次确认；过期再单独确认补交
+            if (!autoSubmit) {
+        const ok = await confirmDialog$1(`确认提交答案：${args.display}？`, {
+          okText: "提交"
         });
-      };
-      abortCtrl$1 = new AbortController;
-      const ov = getOverride();
-      const res = await agnesChat({
-        messages: [ {
-          role: "system",
-          content: systemPrompt$1()
-        }, ...history$1 ],
-        stream: true,
-        thinking: ov?.thinking !== false,
-        // 跟设置里的「启用思考」开关走
-        signal: abortCtrl$1.signal,
-        override: ov || void 0,
-        onDelta: d => {
-          acc.content += d;
-          paint();
-        },
-        onReasoning: d => {
-          acc.reasoning += d;
-          paint();
+        if (!ok) return null;
+        if (past) {
+          const ok2 = await confirmDialog$1("这道题已超过截止时间，将以补交方式提交。确定继续吗？", {
+            okText: "补交",
+            danger: true
+          });
+          if (!ok2) return null;
         }
+      }
+      btn.disabled = true;
+      btn.textContent = "提交中…";
+      stEl.textContent = "";
+      try {
+        const route = await submitProblemAnswer(problem, args.result, {
+          startTime: st?.startTime,
+          endTime: endTime,
+          forceRetry: past
+        });
+        card.classList.add("done");
+        btn.textContent = "已提交";
+        stEl.textContent = route === "retry" ? "✅ 补交成功" : "✅ 提交成功";
+        ui.toast?.(route === "retry" ? "✅ 补交成功" : "✅ 提交成功", 2500);
+        return route;
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "重试提交";
+        stEl.textContent = `❌ 提交失败：${e?.message || e}`;
+        return null;
+      }
+    };
+    btn.addEventListener("click", doSubmit);
+    if (autoSubmit) {
+      const route = await doSubmit();
+      return {
+        attempted: true,
+        route: route,
+        display: args.display
+      };
+    }
+    return {
+      attempted: true,
+      pending: true,
+      display: args.display
+    };
+  }
+  /** 处理一轮回答里的工具调用 / 降级解析 */  async function handleToolCall({aiBubble: aiBubble, problem: problem, toolCall: toolCall, autoSubmit: autoSubmit, degraded: degraded, content: content}) {
+    const pt = Number(problem?.problemType);
+    if (!(pt >= 1 && pt <= 5)) return null;
+    if (toolCall) try {
+      const args = normalizeToolArgs(toolCall.function?.arguments, pt);
+      const reason = toolReason(toolCall.function?.arguments);
+      L$2("tool call:", {
+        problemId: problem.problemId,
+        args: args,
+        reason: reason
       });
-      acc.content = res.content || acc.content;
-      acc.reasoning = res.reasoning || acc.reasoning;
-      if (raf) {
-        cancelAnimationFrame(raf);
+      try {
+        window.__yktLastToolCall = {
+          args: args,
+          reason: reason,
+          at: Date.now()
+        };
+      } catch {}
+      return await renderToolCard(aiBubble, {
+        problem: problem,
+        args: args,
+        reason: reason,
+        autoSubmit: autoSubmit
+      });
+    } catch (e) {
+      W$1("tool args invalid:", e);
+      addBubble$1("ai", `<span class="err">工具参数无效：${escapeHtml(e?.message || e)}</span>`);
+      return null;
+    }
+    // 模型不支持工具：从正文解析答案，生成同样的卡片
+        if (degraded) {
+      const parsed = parseAIAnswer(problem, content || "");
+      if (!parsed) return null;
+      const args = argsFromParsed(pt, parsed);
+      if (!args.content) return null;
+      return await renderToolCard(aiBubble, {
+        problem: problem,
+        args: args,
+        reason: "",
+        autoSubmit: autoSubmit,
+        degraded: true
+      });
+    }
+    return null;
+  }
+  /** 单轮请求：返回本轮结果，供 sendCurrent 决定是否重试 */  async function runSendInner({retryText: retryText = null, problemOverride: problemOverride = null, autoSubmit: autoSubmit = false, nudge: nudge = null, useTools: useTools = true, attempt: attempt = 1} = {}) {
+    const $input = $sel$1("#ykt-ai-input");
+    // retryText 非 null = 手动重试：用上次的文本，并弹出上一条 user 历史避免重复
+        const text = nudge ? nudge : retryText !== null ? retryText : ($input?.value || "").trim();
+    if (retryText !== null && !nudge) if (history$1.length && history$1[history$1.length - 1]?.role === "user") history$1.pop();
+    const isAnalyze = !text;
+    const customPrompt = ($sel$1("#ykt-ai-custom-prompt")?.value || "").trim();
+    const attach = $sel$1("#ykt-ai-attach")?.checked ?? true;
+    if (!nudge) lastSendText$1 = text;
+    // 题目上下文：自动作答用传入的题目；手动模式用当前页
+        const ctxSlide = pickCurrentSlide().slide;
+    const problem = problemOverride || ctxSlide?.problem || null;
+    const problemType = Number(problem?.problemType);
+    const canSubmit = !!problem && problemType >= 1 && problemType <= 5;
+    // 自动作答使用独立会话：不污染用户聊天，也不会把上一题的上下文带进来
+        const conv = autoSubmit ? [] : history$1;
+    const content = [ {
+      type: "text",
+      text: text || DEFAULT_ANALYZE_PROMPT
+    } ];
+    let attachFailed = "";
+    if (!nudge && (attach || isAnalyze)) {
+      const pending = addBubble$1("user", `⏳ 正在获取当前 PPT…${text ? "" : "（解答此页）"}`);
+      let dataUrl;
+      let reason;
+      if (problemOverride) {
+        const r = await resolveImageForProblem(problemOverride);
+        dataUrl = r?.dataUrl || "";
+        reason = r?.reason || "";
+      } else {
+        const r = await resolveCurrentSlideImage();
+        dataUrl = r?.dataUrl || "";
+        reason = r?.reason || "";
+      }
+      pending.remove();
+      if (dataUrl) content.push({
+        type: "image_url",
+        image_url: {
+          url: dataUrl
+        }
+      }); else if (isAnalyze) attachFailed = reason || "未取到当前 PPT 页";
+    }
+    if (nudge) content[0].text = nudge; else if (isAnalyze) content[0].text = buildUserText(problem, customPrompt) || DEFAULT_ANALYZE_PROMPT; else if (text) content[0].text = text + (customPrompt ? `\n【用户自定义要求】\n${customPrompt}` : "");
+    conv.push({
+      role: "user",
+      content: content
+    });
+    if (!autoSubmit) trimOldImages$1(1);
+    const userBubble = addBubble$1("user", escapeHtml(nudge || text || DEFAULT_ANALYZE_PROMPT));
+    for (const c of content) if (c.type === "image_url") {
+      const img = document.createElement("img");
+      img.src = c.image_url.url;
+      img.alt = "当前 PPT 页";
+      userBubble.appendChild(img);
+    }
+    if (attachFailed) {
+      const warn = document.createElement("div");
+      warn.className = "ykt-chat-warn";
+      warn.textContent = `⚠️ ${attachFailed}——本条无截图，仅依据题目文本作答`;
+      userBubble.appendChild(warn);
+    }
+    if ($input) $input.value = "";
+    // AI 气泡（流式，思考中自动展开 → 正文自动折叠）
+        const aiBubble = addBubble$1("ai", "<em>思考中…</em>");
+    const acc = {
+      content: "",
+      reasoning: ""
+    };
+    const renderer = new StreamRenderer;
+ // 封板/活跃区增量渲染：公式、mermaid 流中即渲染
+        let raf = 0;
+    let phase = "waiting";
+    const paint = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
         raf = 0;
-      }
- // 防止挂起的 paint 覆盖 renderRich 成果
-            aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : "") + '<div class="ykt-sr-content"></div>';
-      renderer.attach(aiBubble.querySelector(".ykt-sr-content"));
-      if (acc.content) await renderer.finish(acc.content); else aiBubble.querySelector(".ykt-sr-content").innerHTML = '<span class="err">（空回复）</span>';
-      // 截断提示（同 chat.js）：流未正常收尾就结束，明确告知而不是静默
-            if (res.truncated) {
-        const warn = document.createElement("div");
-        warn.className = "ykt-chat-warn";
-        warn.textContent = "⚠️ 输出中断：连接被提前关闭（已收到的内容保留）。";
-        aiBubble.appendChild(warn);
-      }
-      history$1.push({
-        role: "assistant",
-        content: acc.content || "（无内容）"
+        if (phase !== "answering" && acc.content) phase = "answering"; else if (phase === "waiting" && acc.reasoning) phase = "thinking";
+        const thinking = phase === "thinking";
+        aiBubble.innerHTML = (acc.reasoning ? `<details ${thinking ? "open" : ""}><summary>💭 思考过程${thinking ? "（进行中…）" : "（点击展开）"}</summary><div class="reasoning-body"></div></details>` : "") + '<div class="ykt-sr-content"></div>';
+        renderer.attach(aiBubble.querySelector(".ykt-sr-content"));
+        renderer.update(acc.content, thinking ? "" : "<em>…</em>");
+        const rBody = aiBubble.querySelector(".reasoning-body");
+        if (rBody) {
+          rBody.textContent = acc.reasoning;
+          rBody.scrollTop = rBody.scrollHeight;
+        }
+        const $log = $sel$1("#ykt-ai-log");
+        $log.scrollTop = $log.scrollHeight;
       });
+    };
+    abortCtrl$1 = new AbortController;
+    const ov = getOverride();
+    // 工具只在「首轮解答」或「自动作答」时强制；追问不强制，避免反复提交
+        const mandatoryTool = useTools && canSubmit && (isAnalyze || autoSubmit);
+    const sys = systemPrompt$1() + (mandatoryTool ? "\n\n" + toolPromptBlock(problem, {
+      mandatory: autoSubmit
+    }) : "");
+    const tools = useTools && canSubmit ? [ SUBMIT_ANSWER_TOOL ] : void 0;
+    const call = toolList => agnesChat({
+      messages: [ {
+        role: "system",
+        content: sys
+      }, ...conv ],
+      stream: true,
+      thinking: ov?.thinking !== false,
+      // 跟设置里的「启用思考」开关走
+      signal: abortCtrl$1.signal,
+      override: ov || void 0,
+      tools: toolList,
+      toolChoice: autoSubmit ? "required" : "auto",
+      onDelta: d => {
+        acc.content += d;
+        paint();
+      },
+      onReasoning: d => {
+        acc.reasoning += d;
+        paint();
+      }
+    });
+    let res;
+    let degraded = false;
+    try {
+      res = await call(tools);
+    } catch (e) {
+      // 端点不支持 tool calling：去掉 tools 重发一次（同一轮内降级，不占重试次数）
+      if (tools && isToolUnsupportedError(e)) {
+        degraded = true;
+        W$1("tool calling unsupported, degrade:", e?.message || e);
+        res = await call(void 0);
+      } else throw e;
+    }
+    acc.content = res.content || acc.content;
+    acc.reasoning = res.reasoning || acc.reasoning;
+    const toolCall = (res.toolCalls || []).find(t => t?.function?.name === "submit_answer");
+    if (raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+ // 防止挂起的 paint 覆盖 renderRich 成果
+        aiBubble.innerHTML = (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : "") + '<div class="ykt-sr-content"></div>';
+    renderer.attach(aiBubble.querySelector(".ykt-sr-content"));
+    if (acc.content) await renderer.finish(acc.content); else if (toolCall) aiBubble.querySelector(".ykt-sr-content").innerHTML = '<span class="muted">✅ 已生成答案</span>'; else aiBubble.querySelector(".ykt-sr-content").innerHTML = '<span class="err">（空回复）</span>';
+    if (degraded) {
+      const note = document.createElement("div");
+      note.className = "ykt-chat-warn";
+      note.textContent = "⚠️ 当前模型不支持工具调用，已降级为文本作答。";
+      aiBubble.appendChild(note);
+    }
+    // 截断提示（同 chat.js）：流未正常收尾就结束，明确告知而不是静默
+        if (res.truncated) {
+      const warn = document.createElement("div");
+      warn.className = "ykt-chat-warn";
+      warn.textContent = "⚠️ 输出中断：连接被提前关闭（已收到的内容保留）。";
+      aiBubble.appendChild(warn);
+    }
+    let submitInfo = await handleToolCall({
+      aiBubble: aiBubble,
+      problem: problem,
+      toolCall: toolCall,
+      autoSubmit: autoSubmit,
+      degraded: degraded,
+      content: acc.content
+    });
+    // 手动模式最后一次仍未调用工具：把正文解析成答案卡片，至少能一键提交（仍需二次确认）
+        if (!submitInfo && !degraded && !toolCall && (isAnalyze || !!nudge) && !autoSubmit && canSubmit && attempt >= 2) {
+      const parsed = parseAIAnswer(problem, acc.content || "");
+      if (parsed) {
+        const args = argsFromParsed(problemType, parsed);
+        if (args.content) submitInfo = await renderToolCard(aiBubble, {
+          problem: problem,
+          args: args,
+          reason: "",
+          autoSubmit: false,
+          degraded: true
+        });
+      }
+    }
+    conv.push({
+      role: "assistant",
+      content: acc.content || (submitInfo ? `（已提交答案：${submitInfo.display || ""}）` : "（无内容）")
+    });
+    return {
+      res: res,
+      problem: problem,
+      toolCall: toolCall,
+      submitInfo: submitInfo,
+      degraded: degraded,
+      isAnalyze: isAnalyze
+    };
+  }
+  /** 单轮请求（带错误兜底）：失败时渲染错误气泡并返回 null */  async function runSend(opts = {}) {
+    try {
+      return await runSendInner(opts);
     } catch (e) {
       const emsg = String(e?.message || "");
       const isTimeout = /timeout|超时/i.test(emsg);
       const aborted = e?.name === "AbortError" && !isTimeout || /abort|cancel/i.test(emsg);
       const retryBtn = lastSendText$1 !== null ? `<button class="ykt-retry-btn" style="margin-left:8px;padding:2px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:12px">↻ 重试</button>` : "";
       if (aborted) addBubble$1("ai", `<span class="muted">（已中断：${escapeHtml(emsg || "请求被中止")}）</span>${retryBtn}`); else addBubble$1("ai", `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>${isTimeout ? "提示：上游响应过慢或网络中断，可点重试。" : "提示：到设置里检查 AI 配置的 API Key。"}</small>`);
-      // 重试按钮绑事件（addBubble 用 innerHTML，需手动绑）
-            const lastBubble = $sel$1("#ykt-ai-log")?.lastElementChild;
+      const lastBubble = $sel$1("#ykt-ai-log")?.lastElementChild;
       lastBubble?.querySelector(".ykt-retry-btn")?.addEventListener("click", () => {
         lastBubble.remove();
         sendCurrent$1({
           retryText: lastSendText$1
         });
       });
+      return null;
+    }
+  }
+  /**
+   * 发送一轮对话（对外入口）。
+   * 模型未调用工具时追加提示重试，总共最多 2 次。
+   */  async function sendCurrent$1(opts = {}) {
+    // 自动作答可能从未打开过 AI tab：先挂载（面板默认隐藏，不打扰用户）
+    if (!mounted$7) mountAIPanel();
+    if (streaming$1) {
+      ui.toast?.("AI 正在作答，请稍候", 1500);
+      return null;
+    }
+    streaming$1 = true;
+    setStreamingFlag$1(true);
+    const sendBtn = $sel$1("#ykt-ai-send");
+    if (sendBtn) sendBtn.disabled = true;
+    try {
+      let r = await runSend(opts);
+      const attempt = opts.attempt || 1;
+      const needRetry = r && !r.submitInfo && r.problem && !r.degraded && (r.isAnalyze || opts.autoSubmit) && attempt < 2;
+      if (needRetry) {
+        L$2("retry: model did not call submit_answer, attempt", attempt + 1);
+        r = await runSend({
+          ...opts,
+          attempt: attempt + 1,
+          nudge: "继续，记得调用工具提交答案。"
+        });
+      }
+      return r;
     } finally {
       streaming$1 = false;
       setStreamingFlag$1(false);
       abortCtrl$1 = null;
-      $sel$1("#ykt-ai-send").disabled = false;
-      $sel$1("#ykt-ai-log").scrollTop = $sel$1("#ykt-ai-log").scrollHeight;
+      if (sendBtn) sendBtn.disabled = false;
+      const $log = $sel$1("#ykt-ai-log");
+      if ($log) $log.scrollTop = $log.scrollHeight;
     }
   }
   // ---------------- 兼容旧导出（其他模块引用） ----------------
     async function askAIForCurrent() {
     return sendCurrent$1({
       auto: true
+    });
+  }
+  /** 自动作答入口：指定题目 + 直接提交 */  async function askAIForProblem(problem, {autoSubmit: autoSubmit = false} = {}) {
+    return sendCurrent$1({
+      auto: true,
+      problemOverride: problem,
+      autoSubmit: autoSubmit
     });
   }
   // ---------------- Markdown / 富媒体渲染 ----------------
@@ -3290,7 +4281,7 @@
     }
     return null;
   }
-  const L = (...a) => log.dbg("[presentation]", ...a);
+  const L$1 = (...a) => log.dbg("[presentation]", ...a);
   const W = (...a) => log.warn("[presentation]", ...a);
   function $$2(sel) {
     return document.querySelector(sel);
@@ -3314,7 +4305,7 @@
         // 保留旧键以防其他模块还在用数字键；仅打印提示
             }
       const afterSample = Array.from(repo.slides.keys()).slice(0, 8);
-      L(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
+      L$1(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
     } catch (e) {
       W("normalizeRepoSlidesKeys error:", e);
     }
@@ -3461,7 +4452,7 @@
       ui.saveConfig();
       syncFilterBtn();
       ui.toast(ui.config.filterProblemsOnly ? "只显示带题目的页面" : "显示全部页面", 1500);
-      L("切换 filterProblemsOnly =", ui.config.filterProblemsOnly);
+      L$1("切换 filterProblemsOnly =", ui.config.filterProblemsOnly);
       updatePresentationList();
     });
     // 跟随当前页开关：开启时选中项自动跟随课堂翻页；手动点缩略图会脱离
@@ -3481,7 +4472,7 @@
         waitForVueReady().then(() => {
       watchMainPageChange(slideId => {
         const sid = slideId == null ? null : String(slideId);
-        L("课堂翻页事件", {
+        L$1("课堂翻页事件", {
           slideId: sid,
           followCurrent: followCurrent
         });
@@ -3501,7 +4492,7 @@
     $$2("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
     $$2("#ykt-import-history")?.addEventListener("click", openHistoryImporter);
     mounted$6 = true;
-    L("mountPresentationPanel 完成");
+    L$1("mountPresentationPanel 完成");
     // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
         host.__yksOnShow = () => updatePresentationList();
     // 不中止导出：切 tab/收起壳时 PDF 继续在后台生成（不刷新页面就不丢进度）
@@ -3523,7 +4514,7 @@
       block: "nearest",
       behavior: "smooth"
     });
-    L("跟随高亮", {
+    L$1("跟随高亮", {
       currentIdStr: currentIdStr
     });
   }
@@ -3590,7 +4581,7 @@
     }
     // 课件按 presentation_id 收集、无法可靠归属到课堂——此前按 URL lessonId 过滤是无效逻辑（恒等于全量），删掉
         const presentationsToShow = repo.presentations;
-    L("展示课件数量=", presentationsToShow.size);
+    L$1("展示课件数量=", presentationsToShow.size);
     try {
       let filled = 0, total = 0;
       for (const [, pres] of presentationsToShow) {
@@ -3605,7 +4596,7 @@
         }
       }
       const sample = Array.from(repo.slides.keys()).slice(0, 8);
-      L("[hydrate slides → repo.slides]", {
+      L$1("[hydrate slides → repo.slides]", {
         filled: filled,
         totalVisibleSlides: total,
         sampleKeys: sample
@@ -3629,7 +4620,7 @@
       cont.appendChild(titleEl);
       titleEl.querySelector(".download-btn")?.addEventListener("click", e => {
         e.stopPropagation();
-        L("点击下载课件", {
+        L$1("点击下载课件", {
           presId: String(presentation.id)
         });
         downloadPresentation(presentation);
@@ -3640,7 +4631,7 @@
       const showProblemsOnly = !!ui.config.filterProblemsOnly;
       const slidesToShow = showProblemsOnly ? slides.filter(s => s.problem) : slides;
       const currentIdStr = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
-      L("渲染课件缩略图", {
+      L$1("渲染课件缩略图", {
         presId: String(presentation.id),
         slidesTotal: slides.length,
         slidesShown: slidesToShow.length,
@@ -3674,7 +4665,7 @@
             const cross = findSlideAcrossPresentations(slideIdStr);
             if (cross) {
               repo.slides.set(slideIdStr, cross);
-              L("click-fill repo.slides <- cross", {
+              L$1("click-fill repo.slides <- cross", {
                 slideIdStr: slideIdStr
               });
             }
@@ -3712,7 +4703,7 @@
   }
   function downloadPresentation(presentation) {
     repo.currentPresentationId = String(presentation.id);
-    L("downloadPresentation -> 设置 currentPresentationId", repo.currentPresentationId);
+    L$1("downloadPresentation -> 设置 currentPresentationId", repo.currentPresentationId);
     downloadPresentationPDF();
   }
   function updateSlideView() {
@@ -3723,7 +4714,7 @@
     problemView.innerHTML = "";
     const curId = getCurrentSlideId();
     const lookup = getSlideByAny(curId);
-    L("updateSlideView", {
+    L$1("updateSlideView", {
       curId: curId,
       lookupHit: lookup.hit,
       hasInMap: !!lookup.slide
@@ -4079,7 +5070,7 @@
       if (first.done) return ui.toast("当前没有可导出的课件（等课件加载后重试）");
       pid = first.value[0];
       repo.currentPresentationId = pid;
-      L("downloadPresentationPDF: 自动回退到课件", {
+      L$1("downloadPresentationPDF: 自动回退到课件", {
         pid: pid
       });
     }
@@ -4979,7 +5970,7 @@
       $sel("#ykt-chat-log").scrollTop = $sel("#ykt-chat-log").scrollHeight;
     }
   }
-  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    \n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">\n          <small>兼容 OpenAI 协议的服务端，例如 api.deepseek.com / api.openai.com / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <div class="apikey-row">\n            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">\n            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>\n            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>\n          </div>\n          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-flash / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-thinking">\n            <span class="checkmark"></span>\n            启用思考（推理模型深度思考）\n          </label>\n          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-effort">思考强度:</label>\n          <select id="ykt-ai-effort">\n            <option value="low">低</option>\n            <option value="medium" selected>中</option>\n            <option value="high">高</option>\n            <option value="max">超高（max）</option>\n          </select>\n          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>\n        </div>\n\n        <details class="setting-advanced">\n          <summary>高级选项</summary>\n          <div class="setting-item">\n            <label for="ykt-ai-vision-model">图像模型 ID:</label>\n            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">\n            <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-fallback-answer">\n            <span class="checkmark"></span>\n            无 API Key 时提交兜底答案\n          </label>\n          <small>危险：未配置 AI 时自动作答会提交占位答案（选择题为 A）。默认关闭，宁缺答不误答。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <details class="setting-advanced">\n          <summary>自定义提示音</summary>\n          <div class="setting-item">\n            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n              <button id="ykt-btn-apply-audio-url">应用URL</button>\n              <button id="ykt-btn-preview-audio">预览</button>\n              <button id="ykt-btn-clear-audio">清除自定义音频</button>\n            </div>\n            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry">\n            <span class="checkmark"></span>\n            匿名统计使用情况\n          </label>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    \n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">\n          <small>兼容 OpenAI 协议的服务端，例如 api.deepseek.com / api.openai.com / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <div class="apikey-row">\n            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">\n            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>\n            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>\n          </div>\n          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-flash / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-thinking">\n            <span class="checkmark"></span>\n            启用思考（推理模型深度思考）\n          </label>\n          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-effort">思考强度:</label>\n          <select id="ykt-ai-effort">\n            <option value="low">低</option>\n            <option value="medium" selected>中</option>\n            <option value="high">高</option>\n            <option value="max">超高（max）</option>\n          </select>\n          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>\n        </div>\n\n        <details class="setting-advanced">\n          <summary>高级选项</summary>\n          <div class="setting-item">\n            <label for="ykt-ai-vision-model">图像模型 ID:</label>\n            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">\n            <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-fallback-answer">\n            <span class="checkmark"></span>\n            无 API Key 时提交兜底答案\n          </label>\n          <small>未配置 AI 时提交占位答案（选择题为 A）；开启自动作答且模型两次都未调用「提交答案」工具时，也会解析正文并提交。默认关闭，宁缺答不误答。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <details class="setting-advanced">\n          <summary>自定义提示音</summary>\n          <div class="setting-item">\n            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n              <button id="ykt-btn-apply-audio-url">应用URL</button>\n              <button id="ykt-btn-preview-audio">预览</button>\n              <button id="ykt-btn-clear-audio">清除自定义音频</button>\n            </div>\n            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry">\n            <span class="checkmark"></span>\n            匿名统计使用情况\n          </label>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // settings.js (new version)
     let mounted$2 = false;
   let root$2;
@@ -5501,7 +6492,7 @@
       if (typeof GM_info !== "undefined" && GM_info.script?.version) return GM_info.script.version;
     } catch {}
     try {
-      return "0.5.15";
+      return "0.6.0";
     } catch {}
     return "0.0.0";
   }
@@ -5614,8 +6605,8 @@
   function mountAboutPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // "0.5.15" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.5.15"}<`);
+    // "0.6.0" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.0"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-about-panel");
     const $btn = root$1.querySelector("#ykt-about-check");
@@ -6082,488 +7073,6 @@
       if (_config.autoAnswer) el.classList.add("active"); else el.classList.remove("active");
     }
   };
-  function sleep(ms) {
-    return new Promise(r => setTimeout(r, Math.max(0, ms | 0)));
-  }
-  function calcAutoWaitMs() {
-    const base = Math.max(0, ui?.config?.autoAnswerDelay ?? 0);
-    const rand = Math.max(0, ui?.config?.autoAnswerRandomDelay ?? 0);
-    return base + (rand ? Math.floor(Math.random() * rand) : 0);
-  }
-  function shouldAutoAnswerForLesson_(lessonId) {
-    if (ui?.config?.autoAnswer) return true;
-    if (!lessonId) return false;
-    if (repo?.autoJoinedLessons?.has(lessonId) && ui?.config?.autoAnswerOnAutoJoin) return true;
-    if (repo?.forceAutoAnswerLessons?.has(lessonId)) return true;
-    return false;
-  }
-  const DEFAULT_HEADERS = () => ({
-    "Content-Type": "application/json",
-    xtbz: "ykt",
-    "X-Client": "h5",
-    Authorization: "Bearer " + (typeof localStorage !== "undefined" ? localStorage.getItem("Authorization") : "")
-  });
-  /**
-   * Low-level POST helper using XMLHttpRequest to align with site requirements.
-   * @param {string} url
-   * @param {object} data
-   * @param {Record<string,string>} headers
-   * @returns {Promise<any>}
-   */  function xhrPost(url, data, headers) {
-    return new Promise((resolve, reject) => {
-      try {
-        const xhr = new XMLHttpRequest;
-        xhr.open("POST", url);
-        for (const [k, v] of Object.entries(headers || {})) xhr.setRequestHeader(k, v);
-        // 必须给所有终止态一个 rejection——超时不设回调会让 Promise 永远挂起
-        // （外层 answering 标志随之卡死，题目再也答不了）
-                xhr.timeout = 2e4;
-        xhr.ontimeout = () => reject(new Error("提交超时（20s）"));
-        xhr.onabort = () => reject(new Error("请求被中止"));
-        xhr.onload = () => {
-          try {
-            const resp = JSON.parse(xhr.responseText);
-            if (resp && typeof resp === "object") resolve(resp); else reject(new Error("解析响应失败"));
-          } catch {
-            reject(new Error("解析响应失败"));
-          }
-        };
-        xhr.onerror = () => reject(new Error("网络请求失败"));
-        xhr.send(JSON.stringify(data));
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-  /**
-   * POST /api/v3/lesson/problem/answer
-   * Mirrors the 1.16.1 logic (no UI). Returns {code, data, msg, ...} on success code===0.
-   * @param {{problemId:number, problemType:number}} problem
-   * @param {any} result
-   * @param {{headers?:Record<string,string>, dt?:number}} [options]
-   */  async function answerProblem(problem, result, options = {}) {
-    const url = "/api/v3/lesson/problem/answer";
-    const headers = {
-      ...DEFAULT_HEADERS(),
-      ...options.headers || {}
-    };
-    const payload = {
-      problemId: problem.problemId,
-      problemType: problem.problemType,
-      dt: options.dt ?? Date.now(),
-      result: result
-    };
-    const resp = await xhrPost(url, payload, headers);
-    if (resp.code === 0) return resp;
-    throw new Error(`${resp?.msg || "服务器返回错误"} (${resp?.code})`);
-  }
-  /**
-   * POST /api/v3/lesson/problem/retry
-   * Expects server to echo success ids in data.success (as in v1.16.1).
-   * @param {{problemId:number, problemType:number}} problem
-   * @param {any} result
-   * @param {number} dt - simulated answer time (epoch ms)
-   * @param {{headers?:Record<string,string>}} [options]
-   */  async function retryAnswer(problem, result, dt, options = {}) {
-    const url = "/api/v3/lesson/problem/retry";
-    const headers = {
-      ...DEFAULT_HEADERS(),
-      ...options.headers || {}
-    };
-    const payload = {
-      problems: [ {
-        problemId: problem.problemId,
-        problemType: problem.problemType,
-        dt: dt,
-        result: result
-      } ]
-    };
-    const resp = await xhrPost(url, payload, headers);
-    if (resp.code !== 0) throw new Error(`${resp?.msg || "服务器返回错误"} (${resp?.code})`);
-    const okList = resp?.data?.success || [];
-    // 服务端可能返回数字 id——统一字符串比较，避免类型不一致误判失败
-        if (!Array.isArray(okList) || !okList.map(String).includes(String(problem.problemId))) throw new Error("服务器未返回成功信息");
-    return resp;
-  }
-  /**
-   * High-level orchestrator: answer first; if deadline has passed, optionally retry.
-   * This is the module adaptation of the 1.16.1 userscript submit flow.
-   *
-   * @param {{problemId:number, problemType:number}} problem
-   * @param {any} result
-   * @param {Object} submitOptions
-   * @param {number} [submitOptions.startTime] - unlock time (epoch ms). Required for retry path.
-   * @param {number} [submitOptions.endTime]   - deadline (epoch ms). If now >= endTime -> retry path.
-   * @param {boolean} [submitOptions.forceRetry=false] - when past deadline, directly use retry without prompting.
-   * @param {number} [submitOptions.retryDtOffsetMs=2000] - dt = startTime + offset when retrying.
-   * @param {Record<string,string>} [submitOptions.headers] - extra/override headers.
-   * @returns {Promise<{'route':'answer'|'retry', resp:any}>}
-   * @param {number|string} [submitOptions.lessonId] - 所属课堂；缺省时将使用 repo.currentLessonId
-   * @param {boolean} [submitOptions.autoGate=true]  - 是否启用“自动进入课堂/默认自动答题”的判定（向后兼容，默认开启）
-   * @param {number} [submitOptions.waitMs]          - 覆盖自动等待时间；未提供时按设置计算
-   */  async function submitAnswer(problem, result, submitOptions = {}) {
-    const startTime = submitOptions?.startTime;
-    const endTime = submitOptions?.endTime;
-    const forceRetry = submitOptions?.forceRetry ?? false;
-    const retryDtOffsetMs = submitOptions?.retryDtOffsetMs ?? 2e3;
-    const headers = submitOptions?.headers;
-    const autoGate = submitOptions?.autoGate ?? true;
-    const waitMs = submitOptions?.waitMs;
-    const lessonIdFromOpts = submitOptions && "lessonId" in submitOptions ? submitOptions.lessonId : void 0;
-    // 统一拿 lessonId
-        const lessonId = lessonIdFromOpts ?? repo?.currentLessonId ?? null;
-    // endTime 是服务端时钟（unlock 时记了 clockOffset）——判过期/限时都要换算回服务端时间轴
-        const psEarly = repo?.problemStatus?.get?.(String(problem.problemId));
-    const clockOffset = Number.isFinite(psEarly?.clockOffset) ? psEarly.clockOffset : 0;
-    const serverNow = () => Date.now() + clockOffset;
-    if (autoGate && shouldAutoAnswerForLesson_(lessonId)) {
-      const ms = typeof waitMs === "number" ? Math.max(0, waitMs) : calcAutoWaitMs();
-      if (ms > 0) {
-        const guard = typeof endTime === "number" ? Math.max(0, endTime - serverNow() - 80) : ms;
-        await sleep(Math.min(ms, guard));
-      }
-    }
-    const now = serverNow();
-    const pastDeadline = typeof endTime === "number" && Number.isFinite(endTime) && now >= endTime;
-    if (pastDeadline || forceRetry) {
-      log.dbg("[雨课堂助手][DEBUG][answer] >>> 进入补交分支判断");
-      log.dbg("problemId:", problem.problemId);
-      log.dbg("pastDeadline:", pastDeadline, "(now=", now, ", endTime=", endTime, ")");
-      log.dbg("forceRetry:", forceRetry);
-      log.dbg("传入 startTime:", startTime, "传入 endTime:", endTime);
-      const ps = repo?.problemStatus?.get?.(String(problem.problemId));
-      log.dbg("从 repo.problemStatus 获取:", ps);
-      const st = Number.isFinite(startTime) ? startTime : ps?.startTime;
-      const et = Number.isFinite(endTime) ? endTime : ps?.endTime;
-      log.dbg("最终用于 retry 的 st=", st, " et=", et);
-      // 计算 dt
-            const off = Math.max(0, retryDtOffsetMs);
-      let dt;
-      if (Number.isFinite(st)) {
-        dt = st + off;
-        log.dbg("补交 dt = startTime + offset =", dt);
-      } else if (Number.isFinite(et)) {
-        dt = Math.max(0, et - Math.max(off, 5e3));
-        log.dbg("补交 dt = near endTime window =", dt);
-      } else {
-        dt = Date.now() - off;
-        log.dbg("补交 dt = fallback =", dt);
-      }
-      log.dbg(">>> 即将调用 retryAnswer()");
-      try {
-        const resp = await retryAnswer(problem, result, dt, {
-          headers: headers
-        });
-        log.dbg("[雨课堂助手][INFO][answer] 补交成功 (/retry)", {
-          problemId: problem.problemId,
-          dt: dt,
-          pastDeadline: pastDeadline,
-          forceRetry: forceRetry
-        });
-        return {
-          route: "retry",
-          resp: resp
-        };
-      } catch (e) {
-        log.err("[雨课堂助手][ERR][answer] 补交失败 (/retry)：", e);
-        log.err("[雨课堂助手][ERR][answer] 失败参数：", {
-          st: st,
-          et: et,
-          dt: dt,
-          pastDeadline: pastDeadline,
-          forceRetry: forceRetry
-        });
-        throw e;
-      }
-    }
-    const resp = await answerProblem(problem, result, {
-      headers: headers,
-      dt: now
-    });
-    return {
-      route: "answer",
-      resp: resp
-    };
-  }
-  // src/ai/openai.js
-  // OpenAI 兼容协议封装：queryAI（纯文本）/ queryAIVision（图文，可选两步 pipeline）
-  // 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
-  // 约定：
-  // 1 -> single_choice   （单选）
-  // 2 -> multiple_choice （多选）
-  // 3 -> single_choice   （投票题按单选处理）
-  // 4 -> fill_in         （填空题）
-  // 5 -> subjective      （主观题 / 简答题）
-    function mapProblemTypeToQuestionType(problemType) {
-    if (problemType == null) return null;
-    const n = Number(problemType);
-    switch (n) {
-     case 1:
-      return "single_choice";
-
-     case 2:
-      return "multiple_choice";
-
-     case 3:
-      return "single_choice";
-
-     case 4:
-      return "fill_in";
-
-     case 5:
-      return "subjective";
-
-     default:
-      return null;
-    }
-  }
-  function getActiveProfile(aiCfg) {
-    const cfg = aiCfg || {};
-    const profiles = Array.isArray(cfg.profiles) ? cfg.profiles : [];
-    if (!profiles.length) {
-      const legacyKey = cfg.kimiApiKey;
-      if (!legacyKey) return null;
-      return {
-        id: "legacy",
-        name: "Kimi Legacy",
-        baseUrl: "https://api.moonshot.cn/v1/chat/completions",
-        apiKey: legacyKey,
-        model: "moonshot-v1-8k",
-        visionModel: "moonshot-v1-8k-vision-preview"
-      };
-    }
-    const activeId = cfg.activeProfileId;
-    const p = profiles.find(p => p.id === activeId) || profiles[0];
-    // 不原地改 profile（p 是 config 里的对象）——补默认 baseUrl 走浅拷贝
-        return {
-      ...p,
-      baseUrl: p.baseUrl || "https://api.moonshot.cn/v1/chat/completions"
-    };
-  }
-  function makeChatUrl(profile) {
-    let base = (profile.baseUrl || "https://api.moonshot.cn/v1/chat/completions").replace(/\/+$/, "");
-    if (!base.includes("/chat/completions")) if (base.includes("/v1")) base += "/chat/completions"; else if (base.includes("/openai")) base += "/v1/chat/completions"; else base += "/v1/chat/completions";
-    return base;
-  }
-  // -----------------------------------------------
-  // Unified Prompt blocks for Text & Vision
-  // -----------------------------------------------
-    const BASE_SYSTEM_PROMPT = [ "1) 任何时候优先遵循【用户输入（优先级最高）】中的明确要求；", "2) 当输入是课件页面（PPT）图像或题干文本时，先判断是否存在“明确题目”；", "3) 若存在明确题目，则输出以下格式的内容：", "   单选：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A", "   多选：格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C", "   投票：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项，如A", "   填空/主观题: 格式要求：答案: [直接给出答案内容]，解释: [补充说明]", "4) 若识别不到明确题目，直接使用回答用户输入的问题", "3) 如果PROMPT格式不正确，或者你只接收了图片，输出：", "   STATE: NO_PROMPT", "   SUMMARY: <介绍页面/上下文的主要内容>" ].join("\n");
-  // Vision 补充：识别题型与版面元素的步骤说明
-    const VISION_GUIDE = [ "【视觉识别要求】", "A. 先判断是否为题目页面（是否有题干/选项/空格/问句等）", "B. 若是题目，尝试提取题干、选项与关键信息；", "C. 否则参考用户输入回答" ].join("\n");
-  // 通用 OpenAI 协议聊天请求封装（用于 Vision 两步调用）
-    function chatCompletion(profile, payload, debugLabel = "[AI OpenAI]", timeoutMs = 6e4) {
-    const url = makeChatUrl(profile);
-    return new Promise((resolve, reject) => {
-      gm.xhr({
-        method: "POST",
-        url: url,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${profile.apiKey}`
-        },
-        data: JSON.stringify(payload),
-        timeout: timeoutMs,
-        onload: res => {
-          try {
-            log.dbg(`[雨课堂助手]${debugLabel} Status:`, res.status);
-            log.dbg(`[雨课堂助手]${debugLabel} Response:`, res.responseText);
-            if (res.status !== 200) {
-              let errorMessage = `AI 请求失败: ${res.status}`;
-              try {
-                const errorData = JSON.parse(res.responseText);
-                if (errorData.error?.message) errorMessage += ` - ${errorData.error.message}`;
-                if (errorData.error?.code) errorMessage += ` (${errorData.error.code})`;
-              } catch {
-                errorMessage += ` - ${res.responseText}`;
-              }
-              reject(new Error(errorMessage));
-              return;
-            }
-            const data = JSON.parse(res.responseText);
-            resolve(data);
-          } catch (e) {
-            log.err(`[雨课堂助手]${debugLabel} 解析响应失败:`, e);
-            reject(new Error(`解析API响应失败: ${e.message}`));
-          }
-        },
-        onerror: err => {
-          log.err(`[雨课堂助手]${debugLabel} 网络请求失败:`, err);
-          reject(new Error("网络请求失败"));
-        },
-        ontimeout: () => reject(new Error(`AI 请求超时（${Math.round(timeoutMs / 1e3)}s）`))
-      });
-    });
-  }
-  async function singleStepVisionCall(profile, cleanBase64List, textPrompt, options = {}) {
-    const visionModel = profile.visionModel || profile.model;
-    const timeoutMs = options.timeout || 6e4;
-    const visionTextHeader = [ "【融合模式说明】你将看到一张课件/PPT截图与可选的附加文本。", VISION_GUIDE ].join("\n");
-    const imageBlocks = [];
-    for (const b64 of cleanBase64List) imageBlocks.push({
-      type: "image_url",
-      image_url: {
-        url: `data:image/jpeg;base64,${b64}`
-      }
-    });
-    const messages = [ {
-      role: "system",
-      content: BASE_SYSTEM_PROMPT
-    }, {
-      role: "user",
-      content: [ ...imageBlocks, {
-        type: "text",
-        text: [ visionTextHeader, "【用户输入（优先级最高）】", textPrompt || "（无）" ].join("\n")
-      } ]
-    } ];
-    const data = await chatCompletion(profile, {
-      model: visionModel,
-      messages: messages,
-      temperature: .3
-    }, "[AI OpenAI Vision 单步]", timeoutMs);
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error("AI返回内容为空");
-    log.dbg("[AI OpenAI Vision] 成功获取回答(单步)");
-    return content;
-  }
-  /**
-   * 通用 OpenAI 协议 Vision 模型（图像+文本）
-   */  async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}) {
-    const profile = getActiveProfile(aiCfg);
-    if (!profile || !profile.apiKey) throw new Error("请先在设置中配置 AI API Key");
-    // ===== 兼容单图 / 多图 =====
-        const inputList = Array.isArray(imageBase64) ? imageBase64 : [ imageBase64 ];
-    const cleanBase64List = inputList.filter(Boolean).map(x => String(x).replace(/^data:image\/[^;]+;base64,/, "")).filter(x => !!x);
-    if (cleanBase64List.length === 0) throw new Error("图像数据格式错误");
-    const visionModel = profile.visionModel || profile.model;
-    const textModel = profile.model;
-    const hasSeparateTextModel = !!textModel && textModel !== visionModel;
-    const {disableTwoStep: disableTwoStep = false, twoStepDebug: twoStepDebug = false, timeout: timeoutMs = 6e4, problemType: problemType = null} = options || {};
-    // -------- 0. 如果只有 VLM（或者显式关闭两步），回退到单步逻辑 --------
-        if (!hasSeparateTextModel || disableTwoStep) {
-      if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision] use single-step vision", {
-        hasSeparateTextModel: hasSeparateTextModel,
-        disableTwoStep: disableTwoStep
-      });
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision] use TWO-STEP pipeline", {
-      visionModel: visionModel,
-      textModel: textModel
-    });
-    // ===================== Step 1: Vision 抽结构化题目 =====================
-        const STEP1_SYSTEM_PROMPT = `\n你是一个“题目结构化助手”。你将看到课件截图和可选的附加文本，请从中提取出清晰的题目结构，并以 JSON 格式输出。\n\n你不仅要识别文字（类似 OCR），还要理解图片里的内容（例如物体、颜色、形状、数量、相对位置等），并把这些与题目有关的信息转化为题干或补充说明的一部分。\n\n【题型识别优先级】\n1. 如果页面上出现了明确的题型标签文字，如：\n   - "单选题"、"多选题"、"投票题"、"填空题"、"主观题" 等，\n   请优先根据这些标签设置 question_type：\n   - 单选题 / 投票题 -> "single_choice"\n   - 多选题         -> "multiple_choice"\n   - 填空题         -> "fill_in"\n   - 主观题 / 简答题 / 论述题 -> "subjective"\n2. 当没有明显题型标签时，再根据题干语义和版面结构推断题型。\n\n【选项字母规则】\n- 只有在页面上出现了清晰的选项字母（通常为 "A."、"B."、"C."、"D." 等）并跟随选项内容时，才能将 question_type 设为 "single_choice" 或 "multiple_choice"（或投票题对应的 "single_choice"）。\n- 如果没有任何 A/B/C/D 这种选项字母，而问题又需要开放性自由回答，请优先将 question_type 设为 "subjective"。\n\n请尽量识别：\n- question_type: "single_choice" | "multiple_choice" | "fill_in" | "subjective" | "visual_only" | "unknown"\n- stem: 题干文本（如果题干主要依赖图片，请用自然语言描述图片中与题目相关的内容，可保留数学公式信息）\n- options: 一个对象，键为 "A"、"B"、"C"、"D" 等，值为选项内容文字（若不是选择题可为空对象）\n- image_facts: （可选）一个字符串数组，列出与解题有关的关键图像事实，例如 ["图中是一根黄色的香蕉", "背景是白色"]。\n- requires_image_for_solution: 布尔值。如果即使你尽力用文字描述图片，仍然很难仅凭文字保证答对（例如复杂几何图形或高度依赖精确位置关系的题目），请设为 true；如果你的文字描述已经足够让人类或文字模型解题，请设为 false。\n\n输出示例（仅示例，不是固定模板）：\n{\n  "question_type": "single_choice",\n  "stem": "根据图片中的水果，选择它的颜色。",\n  "options": {\n    "A": "红色",\n    "B": "黄色",\n    "C": "蓝色",\n    "D": "绿色"\n  },\n  "image_facts": [\n    "图片中是一根黄色的香蕉，背景为白色"\n  ],\n  "requires_image_for_solution": false\n}\n\n如果无法识别题目或截图并非题目，请尽量给出你能看到的内容，但仍然保持上述 JSON 结构（字段缺省时可以用 null、空对象或空数组）。\n仅输出 JSON，不要任何额外文字。\n`.trim();
-    const step1Messages = [ {
-      role: "system",
-      content: STEP1_SYSTEM_PROMPT
-    }, {
-      role: "user",
-      content: [ ...cleanBase64List.map(b64 => ({
-        type: "image_url",
-        image_url: {
-          url: `data:image/jpeg;base64,${b64}`
-        }
-      })), textPrompt ? {
-        type: "text",
-        text: `【辅助文本】\n${textPrompt}`
-      } : {
-        type: "text",
-        text: "【辅助文本】（无额外文本，仅根据截图识别题目）"
-      } ]
-    } ];
-    let structuredQuestion;
-    try {
-      const data1 = await chatCompletion(profile, {
-        model: visionModel,
-        messages: step1Messages,
-        temperature: .1
-      }, "[AI OpenAI Vision Step1]", timeoutMs);
-      const content1 = data1.choices?.[0]?.message?.content || "";
-      if (twoStepDebug) log.dbg("[雨课堂助手][DEBUG][vision-step1] raw content:", content1);
-      const jsonMatch = content1.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("no JSON found in step1 result");
-      structuredQuestion = JSON.parse(jsonMatch[0]);
-    } catch (err) {
-      log.warn("[雨课堂助手][WARN][vision-step1] failed, fallback to single-step", err);
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-    if (!structuredQuestion || !structuredQuestion.stem) {
-      log.warn("[雨课堂助手][WARN][vision-step1] invalid structuredQuestion, fallback");
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step1] structuredQuestion:", structuredQuestion);
-    // ========= 题型合并逻辑：后端 problemType 优先，其次 VLM 推断，全部缺失则回退 subjective =========
-        const backendQuestionType = mapProblemTypeToQuestionType(problemType);
-    const vlmQuestionType = structuredQuestion.question_type || null;
-    let finalQuestionType = backendQuestionType || vlmQuestionType || null;
-    // 如果 VLM 返回的是 unknown / visual_only 这类不太可用的类型，也当成“缺失”
-        if (finalQuestionType === "unknown" || finalQuestionType === "visual_only") finalQuestionType = null;
-    // 当后端和 VLM 都没有给出可用题型时，统一回退为主观题
-        if (!finalQuestionType) finalQuestionType = "subjective";
-    if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step1] questionType merged:", {
-      problemType: problemType,
-      backendQuestionType: backendQuestionType,
-      vlmQuestionType: vlmQuestionType,
-      finalQuestionType: finalQuestionType
-    });
-    // 如果模型明确表示“必须依赖原始图像才能解题”，则回退到单步 Vision，避免纯文本推理丢失关键信息
-        if (structuredQuestion.requires_image_for_solution === true) {
-      log.warn("[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step");
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-    // ===================== Step 2: Text 模型纯文本推理解题 =====================
-        const {stem: stem, options: sqOptions = {}, image_facts: image_facts = []} = structuredQuestion;
-    let solvePrompt = "你是一个严谨的解题助手，请根据下面的题目进行推理解答：\n\n";
-    solvePrompt += `【题干】\n${stem}\n\n`;
-    const optionKeys = Object.keys(sqOptions);
-    if (optionKeys.length > 0) {
-      solvePrompt += "【选项】\n";
-      for (const key of optionKeys) solvePrompt += `${key}. ${sqOptions[key]}\n`;
-      solvePrompt += "\n";
-    }
-    solvePrompt += "请逐步推理，推理结果按以下格式输出：\n";
-    if (finalQuestionType === "single_choice") solvePrompt += "答案: [单个大写字母]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "multiple_choice") solvePrompt += "答案: [多个大写字母，用顿号分隔，如 A、C、D]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "fill_in") solvePrompt += "答案: [直接给出需要填入的内容，多个空用逗号分隔]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "subjective") solvePrompt += "答案: [完整回答]\n解释: [可选的补充说明]\n";
-    // 将图像关键信息一并提供给文本模型，用于弥补完全无图像输入的劣势
-        if (Array.isArray(image_facts) && image_facts.length > 0) {
-      solvePrompt += "【图像关键信息】\n";
-      for (const fact of image_facts) if (typeof fact === "string" && fact.trim()) solvePrompt += `- ${fact.trim()}\n`;
-      solvePrompt += "\n";
-    }
-    const step2Messages = [ {
-      role: "system",
-      content: "你是一个解题助手，请严格按照用户指定的输出格式作答，尽量保证答案正确。"
-    }, {
-      role: "user",
-      content: [ {
-        type: "text",
-        text: solvePrompt
-      } ]
-    } ];
-    try {
-      const data2 = await chatCompletion(profile, {
-        model: textModel,
-        messages: step2Messages,
-        temperature: .2
-      }, "[AI OpenAI Vision Step2]", timeoutMs);
-      const content2 = data2.choices?.[0]?.message?.content || "";
-      if (!content2) throw new Error("AI返回内容为空");
-      if (twoStepDebug) log.dbg("[雨课堂助手][INFO][vision-step2] final content:", content2);
-      return content2;
-    } catch (err) {
-      log.warn("[雨课堂助手][WARN][vision-step2] failed, fallback to single-step", err);
-      return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
-        timeout: timeoutMs
-      });
-    }
-  }
   // src/ui/panels/auto-answer-popup.js
   // 显示自动作答成功弹窗
     function showAutoAnswerPopup(problem, aiAnswer, cfg = {}) {
@@ -6590,349 +7099,6 @@
     }, autoDelay);
     // 入场动画
         requestAnimationFrame(() => popup.classList.add("visible"));
-  }
-  function cleanProblemBody(body, problemType, TYPE_MAP) {
-    if (!body) return "";
-    const typeLabel = TYPE_MAP[problemType];
-    if (!typeLabel) return body;
-    // 去除题目开头的类型标识，如 "填空题：" "单选题：" 等
-        const pattern = new RegExp(`^${typeLabel}[：:\\s]+`, "i");
-    return body.replace(pattern, "").trim();
-  }
-  // 改进的融合模式 prompt 格式化函数
-    function formatProblemForVision(problem, TYPE_MAP, hasTextInfo = false) {
-    const problemType = TYPE_MAP[problem.problemType] || "题目";
-    let basePrompt = hasTextInfo ? `结合文本信息和图片内容分析${problemType}，按格式回答：` : `观察图片内容，识别${problemType}并按格式回答：`;
-    if (hasTextInfo && problem.body) {
-      // ✅ 清理题目内容
-      const cleanBody = cleanProblemBody(problem.body, problem.problemType, TYPE_MAP);
-      basePrompt += `\n\n【文本信息】\n题目：${cleanBody}`;
-      if (problem.options?.length) {
-        basePrompt += "\n选项：";
-        for (const o of problem.options) basePrompt += `\n${o.key}. ${o.value}`;
-      }
-      basePrompt += "\n\n若图片内容与文本冲突，以图片为准。";
-    }
-    // 根据题目类型添加具体格式要求
-        switch (problem.problemType) {
-     case 1:
-      // 单选题
-      basePrompt += `\n\n格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A`;
-      break;
-
-     case 2:
-      // 多选题
-      basePrompt += `\n\n格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C`;
-      break;
-
-     case 3:
-      // 投票题
-      basePrompt += `\n\n格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项`;
-      break;
-
-     case 4:
-      // 填空题
-      basePrompt += `\n\n这是一道填空题。\n\n重要说明：\n- 题目内容已经处理，不含"填空题"等字样\n- 观察图片和文本，找出需要填入的内容\n- 答案中不要出现任何题目类型标识\n\n格式要求：\n答案: [直接给出填空内容]\n解释: [简要说明]\n\n示例：\n答案: 氧气,葡萄糖\n解释: 光合作用的产物\n\n多个填空用逗号分开`;
-      break;
-
-     case 5:
-      // 主观题
-      basePrompt += `\n\n格式要求：\n答案: [完整回答]\n解释: [补充说明]\n\n注意：直接回答，不要重复题目`;
-      break;
-
-     default:
-      basePrompt += `\n\n格式要求：\n答案: [你的答案]\n解释: [详细解释]`;
-    }
-    return basePrompt;
-  }
-  // 改进的答案解析函数
-    function parseAIAnswer(problem, aiAnswer) {
-    try {
-      // 哨兵优先：AI 按要求输出 STATE: NO_PROMPT（页面无题目）时绝不能当答案提交——
-      // 此前它会落到首行兜底，被选择题分支提取出字母乱答
-      if (/^\s*STATE\s*:/im.test(String(aiAnswer || "")) || /\bNO_PROMPT\b/i.test(String(aiAnswer || ""))) {
-        log.warn("[雨课堂助手][WARN][parseAIAnswer] 检测到 STATE 哨兵/NO_PROMPT，判为无题目，不解析答案");
-        return null;
-      }
-      const lines = String(aiAnswer || "").split("\n");
-      let answerLine = "";
-      let answerIdx = -1;
-      // 先定位“答案:”所在行
-            for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.includes("答案:") || line.includes("答案：")) {
-          answerLine = line.replace(/答案[:：]\s*/, "").trim();
-          answerIdx = i;
-          break;
-        }
-      }
-      // === 对填空题和主观题，允许多行答案 ===
-            if ((problem.problemType === 4 || problem.problemType === 5) && answerIdx >= 0) {
-        const block = [];
-        // 当前行如果有内容，先收进去
-                if (answerLine) block.push(answerLine);
-        // 继续向下收集，直到遇到“解释:”或文本结束
-                for (let i = answerIdx + 1; i < lines.length; i++) {
-          const l = lines[i];
-          if (/^\s*解释[:：]/.test(l)) break;
-          block.push((l || "").trimEnd());
-        }
-        const merged = block.join("\n").trim();
-        if (merged) answerLine = merged;
-      }
-      // 如果仍然没有任何答案内容，退回到第一行兜底——
-      // 但首行兜底对选择题太危险（"The answer is B" 会提取出 T），只允许「整行就是选项字母」的形态
-            if (!answerLine) {
-        const first = (lines[0] || "").trim();
-        const isChoice = [ 1, 2, 3 ].includes(problem.problemType);
-        if (isChoice) {
-          if (/^[A-Z](\s*[,，、.·]\s*[A-Z])*[.。]?\s*$/.test(first)) answerLine = first;
-          // 否则 answerLine 留空 → 各分支自然解析失败返回 null
-                } else answerLine = first;
-      }
-      log.dbg("[雨课堂助手][INFO][parseAIAnswer] 题目类型:", problem.problemType, "原始答案行:", answerLine);
-      switch (problem.problemType) {
-       case 1:
- // 单选题
-               case 3:
-        {
-          // 投票题
-          let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
-          if (m) {
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:", [ m[0] ]);
-            return [ m[0] ];
-          }
-          const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
-          if (chineseMatch) {
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票中文解析结果:", [ chineseMatch[1] ]);
-            return [ chineseMatch[1] ];
-          }
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析失败");
-          return null;
-        }
-
-       case 2:
-        {
-          // 多选题
-          if (answerLine.includes("、")) {
-            const options = answerLine.split("、").map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
-            if (options.length > 0) {
-              const result = [ ...new Set(options) ].sort();
-              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选顿号解析结果:", result);
-              return result;
-            }
-          }
-          if (answerLine.includes(",") || answerLine.includes("，")) {
-            const options = answerLine.split(/[,，]/).map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
-            if (options.length > 0) {
-              const result = [ ...new Set(options) ].sort();
-              log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选逗号解析结果:", result);
-              return result;
-            }
-          }
-          const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
-          if (letters && letters.length > 1) {
-            const result = [ ...new Set(letters) ].sort();
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选连续解析结果:", result);
-            return result;
-          }
-          if (letters && letters.length === 1) {
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选单个解析结果:", letters);
-            return letters;
-          }
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 多选解析失败");
-          return null;
-        }
-
-       case 4:
-        {
-          // 填空题
-          let cleanAnswer = answerLine.replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, "").trim();
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 清理后答案:", cleanAnswer);
-          // 如果清理后还包含这些词，继续清理
-                    if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
-            cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, "").trim();
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 二次清理后:", cleanAnswer);
-          }
-          // 剥掉首尾的非文字字符（引号、括号、句号等）
-                    cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, "").replace(/[^\w\u4e00-\u9fa5]+$/, "");
-          // 多空只按逗号/分号拆——不按空格（"New York" 这类含空格答案会被切碎）
-          // 且始终返回数组：填空题端点吃的是多空数组，{content,pics} 是主观题的形状
-                    const blanks = cleanAnswer.split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
-          if (blanks.length) {
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:", blanks);
-            return blanks;
-          }
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 填空解析失败");
-          return null;
-        }
-
-       case 5:
-        {
-          // 主观题
-          const content = answerLine.replace(/^(主观题|论述题)[:：\s]*/i, "").trim();
-          if (content) {
-            const result = {
-              content: content,
-              pics: []
-            };
-            log.dbg("[雨课堂助手][INFO][parseAIAnswer] 主观题解析结果:", result);
-            return result;
-          }
-          log.dbg("[雨课堂助手][INFO][parseAIAnswer] 主观题解析失败");
-          return null;
-        }
-
-       default:
-        log.dbg("[雨课堂助手][INFO][parseAIAnswer] 未知题目类型:", problem.problemType);
-        return null;
-      }
-    } catch (e) {
-      log.err("[雨课堂助手][ERR][parseAIAnswer] 解析失败", e);
-      return null;
-    }
-  }
-  // src/capture/screenshoot.js
-    async function captureProblemScreenshot() {
-    try {
-      const html2canvas = await ensureHtml2Canvas();
-      const el = document.querySelector(".ques-title") || document.querySelector(".problem-body") || 
-      // 移动版 student/v3：题目卡片在时间线 feed 中
-      document.querySelector('.timeline-item [class*="problem"], .timeline-item [class*="ques"], .timeline__problem') || document.querySelector(".ppt-inner") || document.querySelector(".ppt-courseware-inner") || 
-      // 移动版兜底：时间线最新一张卡片（老师刚推送的内容）
-      [ ...document.querySelectorAll(".student__timeline .timeline-item, .J_cards .timeline-item") ].pop() || null;
-      // 不再退回 document.body——把整页截图当题目图发给 AI 既浪费 token 又误导模型
-            if (!el) {
-        log.warn("[captureProblemScreenshot] 页面上找不到题目/PPT 容器，放弃截图");
-        return null;
-      }
-      return await html2canvas(el, {
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: "#ffffff",
-        scale: 1,
-        width: Math.min(el.scrollWidth, 1200),
-        height: Math.min(el.scrollHeight, 800)
-      });
-    } catch (e) {
-      log.err("[captureProblemScreenshot] failed", e);
-      return null;
-    }
-  }
-  /**
-   * 获取指定幻灯片的截图
-   * @param {string} slideId - 幻灯片ID
-   * @returns {Promise<string|null>} base64图片数据
-   */  async function captureSlideImage(slideId) {
-    try {
-      log.dbg("[captureSlideImage] 获取幻灯片图片:", slideId);
-      const slide = repo.slides.get(String(slideId));
-      if (!slide) {
-        log.err("[captureSlideImage] 找不到幻灯片:", slideId);
-        return null;
-      }
-      // 使用 cover 或 coverAlt 图片URL
-            const imageUrl = slide.coverAlt || slide.cover || slide.image || slide.thumbnail;
-      if (!imageUrl) {
-        log.err("[captureSlideImage] 幻灯片没有图片URL");
-        return null;
-      }
-      log.dbg("[captureSlideImage] 图片URL:", imageUrl);
-      // 下载图片并转换为base64
-            const base64 = await downloadImageAsBase64(imageUrl);
-      if (!base64) {
-        log.err("[captureSlideImage] 下载图片失败");
-        return null;
-      }
-      log.dbg("[captureSlideImage] ✅ 成功获取图片, 大小:", Math.round(base64.length / 1024), "KB");
-      return base64;
-    } catch (e) {
-      log.err("[captureSlideImage] 失败:", e);
-      return null;
-    }
-  }
-  /**
-   * 下载图片并转换为base64
-   * @param {string} url - 图片URL
-   * @returns {Promise<string|null>}
-   */  async function downloadImageAsBase64(url) {
-    // 首选 GM_xhr → dataURL：无视 OSS CORS（crossOrigin=anonymous 在无 CORS 头的域上直接加载失败）
-    try {
-      const dataUrl = await fetchAsDataURL(url);
-      const b64 = String(dataUrl || "").split(",")[1] || "";
-      if (b64) return b64;
-    } catch (e) {
-      log.warn("[downloadImageAsBase64] fetchAsDataURL 失败，退回 Image+canvas:", e?.message);
-    }
-    return new Promise(resolve => {
-      try {
-        const img = new Image;
-        img.crossOrigin = "anonymous";
-        // 兜底计时器：挂起的 TCP 连接下 onload/onerror 都可能不触发——
-        // 没有它，Promise 永不 settle，外层 auto-answer 的 answering 标志永久卡死
-                const timer = setTimeout(() => {
-          try {
-            img.src = "";
-          } catch {}
-          log.err("[downloadImageAsBase64] Image 加载超时");
-          resolve(null);
-        }, 3e4);
-        const clear = () => clearTimeout(timer);
-        img.onload = () => {
-          clear();
-          try {
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0);
-            const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
-            if (base64.length > 1e6) {
-              log.dbg("[雨课堂助手][INFO][downloadImageAsBase64] 图片过大，进行压缩...");
-              const compressed = canvas.toDataURL("image/jpeg", .5).split(",")[1];
-              log.dbg("[雨课堂助手][INFO][downloadImageAsBase64] 压缩后大小:", Math.round(compressed.length / 1024), "KB");
-              resolve(compressed);
-            } else resolve(base64);
-          } catch (e) {
-            log.err("[雨课堂助手][ERR][downloadImageAsBase64] Canvas处理失败:", e);
-            resolve(null);
-          }
-        };
-        img.onerror = e => {
-          clear();
-          log.err("[雨课堂助手][ERR][downloadImageAsBase64] 图片加载失败:", e);
-          resolve(null);
-        };
-        img.src = url;
-      } catch (e) {
-        log.err("[雨课堂助手][ERR][downloadImageAsBase64] 失败:", e);
-        resolve(null);
-      }
-    });
-  }
-  // 原有的 captureProblemForVision
-    async function captureProblemForVision() {
-    try {
-      log.dbg("[captureProblemForVision] 开始截图...");
-      const canvas = await captureProblemScreenshot();
-      if (!canvas) {
-        log.err("[captureProblemForVision] 截图失败");
-        return null;
-      }
-      log.dbg("[captureProblemForVision] 截图成功，转换为base64...");
-      const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
-      log.dbg("[captureProblemForVision] base64 长度:", base64.length);
-      if (base64.length > 1e6) {
-        log.dbg("[captureProblemForVision] 图片过大，进行压缩...");
-        const smallerBase64 = canvas.toDataURL("image/jpeg", .5).split(",")[1];
-        log.dbg("[captureProblemForVision] 压缩后长度:", smallerBase64.length);
-        return smallerBase64;
-      }
-      return base64;
-    } catch (e) {
-      log.err("[captureProblemForVision] failed", e);
-      return null;
-    }
   }
   // src/net/xhr-interceptor.js
     function installXHRInterceptor() {
@@ -7327,8 +7493,27 @@
     // 兼容旧版
         return !!cfg.kimiApiKey;
   }
-  // 融合模式自动答题
-    async function handleAutoAnswerInternal(problem) {
+  // ---------------- 自动作答（AI 面板 + 工具） ----------------
+  // 多题同时解锁时串行执行，避免抢同一条 AI 流
+    let _autoAnswerChain = Promise.resolve();
+  function enqueueAutoAnswer(fn) {
+    const run = _autoAnswerChain.then(fn, fn);
+    _autoAnswerChain = run.catch(() => {});
+    return run;
+  }
+  /** 等 AI 面板空闲（用户正在聊天时排队；超时放弃） */  async function waitAIIdle(timeoutMs = 9e4) {
+    const t0 = Date.now();
+    while (document.body?.dataset?.yksStreaming === "1") {
+      if (Date.now() - t0 > timeoutMs) return false;
+      await new Promise(r => setTimeout(r, 300));
+    }
+    return true;
+  }
+  /**
+   * 自动作答：走 AI 解答面板 + submit_answer 工具。
+   * - 模型调用工具 → 直接提交（不再二次确认）
+   * - 两次都没调用 → 看「无 API Key 时提交兜底答案」开关：勾选则解析正文提交，未勾选则放弃
+   */  async function handleAutoAnswerInternal(problem) {
     const status = repo.problemStatus.get(String(problem.problemId));
     if (!status || status.answering || problem.result) {
       log.dbg("[AutoAnswer] 跳过：", {
@@ -7347,12 +7532,12 @@
     status.answering = true;
     try {
       log.dbg("[雨课堂助手][INFO][AutoAnswer] =================================");
-      log.dbg("[雨课堂助手][INFO][AutoAnswer] 开始自动答题");
+      log.dbg("[雨课堂助手][INFO][AutoAnswer] 开始自动答题（工具调用模式）");
       log.dbg("[雨课堂助手][INFO][AutoAnswer] 题目ID:", problem.problemId);
       log.dbg("[雨课堂助手][INFO][AutoAnswer] 题目类型:", PROBLEM_TYPE_MAP[problem.problemType]);
       log.dbg("[雨课堂助手][INFO][AutoAnswer] 题目内容:", problem.body?.slice(0, 50) + "...");
-      if (!hasActiveAIProfile(ui.config.ai)) {
-        // 无 API Key 时默认跳过（宁缺答不误答）；用户在设置里显式开启才提交兜底答案
+      // 无 API Key：沿用本地兜底答案逻辑
+            if (!hasActiveAIProfile(ui.config.ai)) {
         if (!ui.config.autoAnswerFallbackDefault) {
           status.answering = false;
           log.warn("[雨课堂助手][WARN][AutoAnswer] 未配置 API Key，跳过自动作答（可在设置开启「无 Key 提交兜底答案」）");
@@ -7360,81 +7545,60 @@
         }
         const parsed = makeDefaultAnswer(problem);
         log.dbg("[雨课堂助手][WARN][AutoAnswer] 无 API Key，使用本地默认答案:", JSON.stringify(parsed));
-        // 提交答案（根据时限自动选择 answer/retry 逻辑）
-                await submitAnswer(problem, parsed, {
+        await submitAnswer(problem, parsed, {
           startTime: status.startTime,
           endTime: status.endTime,
           forceRetry: false,
           autoGate: false,
-          // 延时已在 autoAnswerTime 调度阶段做过
           lessonId: repo.currentLessonId
         });
-        // 更新状态与UI
-                actions.onAnswerProblem(problem.problemId, parsed);
+        actions.onAnswerProblem(problem.problemId, parsed);
         status.done = true;
         status.answering = false;
         ui.toast("使用默认答案完成作答（未配置 API Key）", 3e3);
         showAutoAnswerPopup(problem, "（本地默认答案：无 API Key）");
         log.dbg("[雨课堂助手][INFO][AutoAnswer] 默认答案提交流程结束");
         return;
- // 提前返回，避免继续走图像+AI流程
-            }
-      const slideId = status.slideId;
-      log.dbg("[雨课堂助手][INFO][AutoAnswer] 题目所在幻灯片:", slideId);
-      log.dbg("[雨课堂助手][INFO][AutoAnswer] =================================");
-      log.dbg("[雨课堂助手][INFO][AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...");
-      let imageBase64 = await captureSlideImage(slideId);
-      // 如果获取幻灯片图片失败，回退到DOM截图
-            if (!imageBase64) {
-        log.dbg("[雨课堂助手][WARN][AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...");
-        const fallbackImage = await captureProblemForVision();
-        if (!fallbackImage) {
-          status.answering = false;
-          log.err("[雨课堂助手][ERR][AutoAnswer] 所有截图方法都失败");
-          return ui.toast("无法获取题目图像，跳过自动作答", 3e3);
-        }
-        imageBase64 = fallbackImage;
-        log.dbg("[雨课堂助手][INFO][AutoAnswer] DOM截图成功");
-      } else log.dbg("[雨课堂助手][INFO][AutoAnswer] 幻灯片图片获取成功");
-      // 构建提示
-            const hasTextInfo = problem.body && problem.body.trim();
-      const textPrompt = formatProblemForVision(problem, PROBLEM_TYPE_MAP, hasTextInfo);
-      // 调用 AI（带题型提示，解析器按题型取答案形状）
-            ui.toast("AI 正在分析题目...", 2e3);
-      const aiAnswer = await queryAIVision(imageBase64, textPrompt, ui.config.ai, {
-        problemType: problem.problemType
-      });
-      log.dbg("[雨课堂助手][INFO][AutoAnswer] AI回答:", aiAnswer);
-      // 解析答案
-            const parsed = parseAIAnswer(problem, aiAnswer);
-      log.dbg("[雨课堂助手][INFO][AutoAnswer] 解析结果:", parsed);
-      if (!parsed) {
-        status.answering = false;
-        log.err("[雨课堂助手][ERR][AutoAnswer] 解析失败，AI回答格式不正确");
-        return ui.toast("无法解析AI答案，请检查格式", 3e3);
       }
-      log.dbg("[雨课堂助手][INFO][AutoAnswer] 准备提交答案:", JSON.stringify(parsed));
-      // 提交答案
-            await submitAnswer(problem, parsed, {
-        startTime: status.startTime,
-        endTime: status.endTime,
-        forceRetry: false,
-        autoGate: false,
-        // 延时已在 autoAnswerTime 调度阶段做过
-        lessonId: repo.currentLessonId
+      ui.toast("AI 正在分析题目...", 2e3);
+      const r = await enqueueAutoAnswer(async () => {
+        const idle = await waitAIIdle();
+        if (!idle) throw new Error("AI 面板长时间占用，已跳过本次自动作答");
+        return askAIForProblem(problem, {
+          autoSubmit: true
+        });
       });
-      log.dbg("[雨课堂助手][INFO][AutoAnswer] 提交成功");
-      // 更新状态
-            actions.onAnswerProblem(problem.problemId, parsed);
-      status.done = true;
-      status.answering = false;
-      ui.toast(`自动作答完成`, 3e3);
-      showAutoAnswerPopup(problem, aiAnswer);
+      if (r?.submitInfo?.route) {
+        status.done = true;
+        log.dbg("[雨课堂助手][INFO][AutoAnswer] 工具提交成功:", r.submitInfo.route);
+        ui.toast(r.submitInfo.route === "retry" ? "自动作答完成（补交）" : "自动作答完成", 3e3);
+        showAutoAnswerPopup(problem, r.submitInfo.display || "");
+        return;
+      }
+      // 模型两次都没调用工具（或工具提交失败）
+            log.warn("[雨课堂助手][WARN][AutoAnswer] 模型未完成工具提交:", r?.submitInfo || null);
+      if (ui.config.autoAnswerFallbackDefault) {
+        const parsed = parseAIAnswer(problem, r?.res?.content || "");
+        if (parsed) {
+          const route = await submitProblemAnswer(problem, parsed, {
+            startTime: status.startTime,
+            endTime: status.endTime,
+            forceRetry: false
+          });
+          status.done = true;
+          ui.toast(route === "retry" ? "自动作答完成（补交）" : "自动作答完成", 3e3);
+          showAutoAnswerPopup(problem, r?.res?.content || "");
+          return;
+        }
+        log.warn("[雨课堂助手][WARN][AutoAnswer] 正文也无法解析出答案，放弃");
+      }
+      ui.toast("自动作答失败：模型未调用提交工具", 4e3);
     } catch (e) {
       log.err("[雨课堂助手][ERR][AutoAnswer] 失败:", e);
       log.err("[雨课堂助手][ERR][AutoAnswer] 错误堆栈:", e.stack);
-      status.answering = false;
       ui.toast(`自动作答失败: ${e.message}`, 4e3);
+    } finally {
+      status.answering = false;
     }
   }
   const actions = {
@@ -7546,23 +7710,14 @@
       return handleAutoAnswerInternal(problem);
     },
     async submit(problem, content, opts = {}) {
-      const result = this.parseManual(problem.problemType, content);
+      const result = parseManualAnswer(problem.problemType, content);
       if (!result || Array.isArray(result) && !result.length) {
         ui.toast("答案为空或无法识别（选择题为选项字母，填空每空一行/逗号分隔）", 2500);
         return null;
       }
-      const {route: route} = await submitAnswer(problem, result, {
-        lessonId: repo.currentLessonId,
-        autoGate: false,
-        // 手动提交不套自动延迟
-        startTime: opts.startTime,
-        endTime: opts.endTime,
-        forceRetry: !!opts.forceRetry
-      });
-      this.onAnswerProblem(problem.problemId, result);
-      return route;
- // 'answer' | 'retry'，UI 据此提示「提交成功」/「补交成功」
-        },
+      // 与 AI 工具调用共用同一条提交链路（含过期补交判断与本地状态更新）
+            return submitProblemAnswer(problem, result, opts);
+    },
     parseManual(problemType, content) {
       switch (problemType) {
        // 选择/投票：只取选项字母（防混入空格/标点被当成答案提交）
@@ -8076,6 +8231,167 @@
     function injectStyles() {
     gm.addStyle(css);
   }
+  // src/core/test-hooks.js
+  // 测试模式下的控制台工具：注入假题目、模拟 AI 响应、模拟提交结果。
+  // 只在 ?ykt_test=1 或 localStorage['ykt:test-mode']='1' 时安装。
+    const L = (...a) => log.info("[test]", ...a);
+  function defaultBody(type) {
+    switch (Number(type)) {
+     case 2:
+      return "测试多选题：以下哪些是编程语言？";
+
+     case 3:
+      return "测试投票题：你更喜欢哪种课堂形式？";
+
+     case 4:
+      return "测试填空题：1 + 1 = ____，2 + 2 = ____";
+
+     case 5:
+      return "测试主观题：请简述牛顿第一定律。";
+
+     default:
+      return "测试单选题：1 + 1 等于多少？";
+    }
+  }
+  function installTestHooks() {
+    if (!isTestMode()) return;
+    let seq = 0;
+    const api = {
+      /** 注入一道假题目，并设为「当前页」——AI 面板会把它当作真实题目 */
+      injectProblem(type = 1, opts = {}) {
+        const pid = opts.problemId || 91e4 + ++seq;
+        const slideId = `test-slide-${pid}`;
+        const problem = {
+          problemId: pid,
+          problemType: Number(type),
+          body: opts.body || defaultBody(type),
+          options: opts.options || [ {
+            key: "A",
+            value: "选项 A"
+          }, {
+            key: "B",
+            value: "选项 B"
+          }, {
+            key: "C",
+            value: "选项 C"
+          }, {
+            key: "D",
+            value: "选项 D"
+          } ],
+          blanks: opts.blanks || (Number(type) === 4 ? [ "第一空", "第二空" ] : [])
+        };
+        const slide = {
+          id: slideId,
+          index: 1,
+          page: 1,
+          problem: problem
+        };
+        repo.upsertSlide(slide);
+        repo.upsertProblem(problem);
+        repo.problemStatus.set(String(pid), {
+          slideId: slideId,
+          startTime: opts.startTime ?? Date.now() - 6e4,
+          endTime: opts.endTime ?? Date.now() + 10 * 60 * 1e3,
+          clockOffset: 0
+        });
+        repo.currentSlideId = slideId;
+        repo.currentLessonId = "test-lesson";
+        repo.pushEncounteredProblem(problem, slide, "test-presentation");
+        ui.updateProblemList?.();
+        L("已注入测试题", {
+          problemId: pid,
+          type: Number(type)
+        });
+        return pid;
+      },
+      /** 模拟：模型调用 submit_answer 工具 */
+      mockTool(args = {
+        answers: [ "A" ],
+        reason: "测试理由"
+      }, content = "答案是 A。") {
+        window.__yktTestMock = {
+          kind: "tool",
+          tool: args,
+          content: content
+        };
+        L("已开启模拟工具调用", args);
+      },
+      /** 模拟：模型只输出文字、不调用工具（用于验证重试/降级） */
+      mockText(content = "答案: A\n解释: 这是模拟文本回答。") {
+        window.__yktTestMock = {
+          kind: "text",
+          content: content
+        };
+        L("已开启模拟纯文本回答");
+      },
+      /** 模拟：流被截断 */
+      mockTruncated(content = "答案: A\n解释: 输出到一半") {
+        window.__yktTestMock = {
+          kind: "truncated",
+          content: content
+        };
+        L("已开启模拟流中断");
+      },
+      /** 模拟：端点不支持 tools（HTTP 400） */
+      mockNoTools(content = "答案: A\n解释: 模拟「不支持工具」时的降级回答。") {
+        window.__yktTestMock = {
+          kind: "error-tools",
+          content: content
+        };
+        L("已开启模拟「不支持工具调用」");
+      },
+      clearMock() {
+        delete window.__yktTestMock;
+        L("已清除模拟 AI 响应");
+      },
+      /** 模拟提交结果：ok / retry（补交）/ fail；不设置则走真实接口 */
+      mockSubmit(mode = "ok") {
+        window.__yktTestMockSubmit = mode;
+        L("提交模拟模式:", mode);
+      },
+      clearSubmitMock() {
+        delete window.__yktTestMockSubmit;
+        L("已恢复真实提交");
+      },
+      /** 打开 AI 面板并发起一轮「解答此页」（使用当前注入的假题目） */
+      async ask() {
+        try {
+          ui.showAIPanel?.(true);
+        } catch {}
+        return sendCurrent$1({
+          auto: true
+        });
+      },
+      /** 模拟「自动作答」：指定题目 + 直接提交（不弹确认） */
+      async askAuto() {
+        const slide = repo.slides.get(String(repo.currentSlideId));
+        const problem = slide?.problem;
+        if (!problem) throw new Error("请先 injectProblem()");
+        try {
+          ui.showAIPanel?.(true);
+        } catch {}
+        return askAIForProblem(problem, {
+          autoSubmit: true
+        });
+      },
+      /** 清空注入的测试题目 */
+      reset() {
+        for (const id of [ ...repo.problems.keys() ]) if (String(id).startsWith("91")) {
+          repo.problems.delete(id);
+          repo.problemStatus.delete(id);
+          repo.slides.delete(`test-slide-${id}`);
+        }
+        repo.encounteredProblems = repo.encounteredProblems.filter(p => !String(p.problemId).startsWith("91"));
+        repo.currentSlideId = null;
+        delete window.__yktTestMock;
+        delete window.__yktTestMockSubmit;
+        ui.updateProblemList?.();
+        L("已重置测试数据");
+      }
+    };
+    window.__yktTest = api;
+    L("测试模式已启用：window.__yktTest.injectProblem() / mockTool() / mockText() / mockSubmit()");
+  }
   // src/index.js
   // Font Awesome：内嵌 css（字体 data-URI）优先；CSP 拦时 env.js 里退回 CDN
     ensureFontAwesome();
@@ -8199,6 +8515,8 @@
   }
   (function main() {
     if (maybeAutoReloadOnMount()) return;
+    installTestHooks();
+ // 仅 ?ykt_test=1 时生效
     // 仅在页面隐藏时刷新，且间隔放宽到 3 分钟：
     // 此前是 1 分钟 + 页面可见也刷新，是「面板莫名消失 / 脚本好像失效」的根源
         startPeriodicReload({
