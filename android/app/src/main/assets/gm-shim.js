@@ -153,7 +153,7 @@
   window.GM_notification = function (opt) {
     opt = typeof opt === 'string' ? { text: opt } : (opt || {});
     if (bridge() && bridge().notify) {
-      try { bridge().notify(opt.title || 'YuketangStudio', opt.text || '', opt.image || ''); return; } catch (e) {}
+      try { bridge().notify(opt.title || 'YuketangStudio', opt.text || '', opt.image || '', opt.action || ''); return; } catch (e) {}
     }
     if ('Notification' in window) {
       try {

@@ -98,6 +98,8 @@ export function checkForUpdate({ force = false } = {}) {
         title: 'YuketangStudio 更新',
         text,
         image: '',
+        // Android 壳：点击通知直接进入「检查更新」弹窗（而不是只把 App 打开）
+        action: 'check_update',
         onclick: () => gm.uw.open(SITE_URL, '_blank'),
       });
     } catch (e) { log.dbg('[update] 通知失败', e); }

@@ -59,7 +59,7 @@ class YktBridge(private val activity: MainActivity) {
 
     // ---------- 通知 ----------
     @JavascriptInterface
-    fun notify(title: String, text: String, image: String) {
+    fun notify(title: String, text: String, image: String, action: String) {
         val mgr = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
             mgr.createNotificationChannel(
@@ -72,8 +72,16 @@ class YktBridge(private val activity: MainActivity) {
             activity.runOnUiThread { Toast.makeText(activity, "$title $text", Toast.LENGTH_LONG).show() }
             return
         }
+        // action 非空（如 check_update）→ 点击通知时让 MainActivity 执行对应动作
+        val target = Intent(activity, MainActivity::class.java).apply {
+            if (action.isNotBlank()) {
+                putExtra("ykt_action", action)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+        }
+        val reqCode = if (action.isBlank()) 0 else action.hashCode()
         val intent = PendingIntent.getActivity(
-            activity, 0, Intent(activity, MainActivity::class.java),
+            activity, reqCode, target,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         // 同标题覆盖（原先用时间戳，同类通知会无限堆叠）
