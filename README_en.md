@@ -16,6 +16,8 @@ Three classroom pains — falling behind on page turns, slides you can't keep, q
 ![Version](https://img.shields.io/badge/version-0.3.1-1d63df)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
+🌐 **Official site (China): <https://app.raymor.top/yuketangstudio/>** · 💬 QQ group: **901466023**
+
 </div>
 
 ---

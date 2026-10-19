@@ -16,6 +16,8 @@
 ![Version](https://img.shields.io/badge/version-0.4.0-1d63df)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
+🌐 **国内官网：<https://app.raymor.top/yuketangstudio/>** · 💬 讨论反馈 / 内测群：QQ 群 **901466023**
+
 </div>
 
 ---
@@ -80,11 +82,12 @@ AI 解答、PPT 多轮对话、课件导出横屏 PDF、历史课件归档。
 
 1. 安装浏览器扩展 [篡改猴 (Tampermonkey)](https://www.tampermonkey.net/)（Chrome / Edge 商店，或 Firefox 附加组件）。
 2. 打开 **[📥 YuketangStudio-latest.user.js](https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/ykt-helper/dist/YuketangStudio-latest.user.js)**，篡改猴自动弹出安装界面 → 点「安装」。
+   - 也可以直接访问 **[国内官网](https://app.raymor.top/yuketangstudio/)**，点「安装脚本（电脑）」，始终指向最新版本。
 3. 打开雨课堂并登录，页面左下角出现工具栏即成功。
 
 ### 方式三：Android 套壳 App（无需浏览器/篡改猴）
 
-1. 从 [Releases](https://github.com/RayMorTwinkle/YuketangStudio/releases) 下载 `app-release.apk` 安装。
+1. 从 [Releases](https://github.com/RayMorTwinkle/YuketangStudio/releases) 下载 `app-release.apk` 安装；或访问 **[国内官网](https://app.raymor.top/yuketangstudio/)** 点「Android 下载」。
 2. 首次打开扫码或输账号密码登录雨课堂；登录态只存在本机 WebView。
 3. 顶部工具栏：后退/前进/刷新/环境切换（长江/雨课堂/荷塘）/桌面端模式/菜单。
 4. 菜单里：多标签页（＋新建、长按关闭）、历史记录、下载管理、显示大小调节、登录态备份/还原（文件或剪贴板）。
