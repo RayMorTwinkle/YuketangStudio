@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.5.15
+// @version      0.6.0
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -571,7 +571,7 @@
     }, duration);
   }
   var tpl$7 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n    /* 工具调用：提交答案卡片 */\n    .ykt-tool-card { margin-top: 8px; border: 1px solid #cfe0ff; background: #f5f9ff; border-radius: 8px; padding: 8px 10px; }\n    .ykt-tool-card.done { border-color: #b7e4c7; background: #f0fbf4; }\n    .ykt-tool-title { font-size: 12px; font-weight: 600; color: #1d63df; margin-bottom: 4px; }\n    .ykt-tool-answer { font-size: 15px; font-weight: 600; color: #111827; word-break: break-word; white-space: pre-wrap; }\n    .ykt-tool-reason { font-size: 12px; color: #607190; margin-top: 4px; white-space: pre-wrap; }\n    .ykt-tool-actions { margin-top: 8px; }\n    .ykt-tool-submit { padding: 5px 14px; border: none; border-radius: 6px; background: #1d63df; color: #fff; cursor: pointer; font-size: 13px; }\n    .ykt-tool-submit:disabled { opacity: .6; cursor: not-allowed; }\n    .ykt-tool-status { margin-top: 6px; font-size: 12px; color: #2e7d32; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
-  const L$2 = (...a) => log.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
+  const L$3 = (...a) => log.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
   const W$2 = (...a) => log.warn("[雨课堂助手][WARN][vuex-helper]", ...a);
   const E = (...a) => log.err("[雨课堂助手][ERR][vuex-helper]", ...a);
   let _vueMissWarned = false;
@@ -657,12 +657,12 @@
       };
       const unwatch = store.watch(lastSid, (n, o) => {
         if (!n || n === o) return;
-        L$2("移动版时间线幻灯片切换", {
+        L$3("移动版时间线幻灯片切换", {
           newSid: n
         });
         callback(n, null);
       });
-      L$2("已启动移动版时间线幻灯片监听");
+      L$3("已启动移动版时间线幻灯片监听");
       return unwatch;
     }
     // 移动版实时课堂：watch「最后一个含 sid 卡片的 sid 值」——
@@ -677,18 +677,18 @@
       };
       const unwatch = store.watch(lastSid, (n, o) => {
         if (!n || n === o) return;
-        L$2("移动版时间线页面切换", {
+        L$3("移动版时间线页面切换", {
           newSid: n
         });
         callback(n, null);
       });
-      L$2("已启动移动版时间线页面监听");
+      L$3("已启动移动版时间线页面监听");
       return unwatch;
     }
     const unwatch = store.watch(state => state.currSlide, (ns, os) => {
       const newSid = ns?.sid == null ? null : String(ns.sid);
       const oldSid = os?.sid == null ? null : String(os.sid);
-      L$2("主界面页面切换", {
+      L$3("主界面页面切换", {
         oldSid: oldSid,
         newSid: newSid,
         newType: ns?.type,
@@ -700,7 +700,7 @@
     }, {
       deep: false
     });
-    L$2("已启动主界面页面切换监听");
+    L$3("已启动主界面页面切换监听");
     return unwatch;
   }
   /** 统一从各种移动版 store 形态取「幻灯片列表」：
@@ -761,7 +761,7 @@
       });
       updated++;
     }
-    if (updated) L$2("移动版幻灯片镜像进 repo:", updated, "个课件");
+    if (updated) L$3("移动版幻灯片镜像进 repo:", updated, "个课件");
     return updated;
   }
   function waitForVueReady(timeoutMs = 15e3) {
@@ -770,7 +770,7 @@
       const check = () => {
         const app = getVueApp();
         if (app && getStore(app)) {
-          L$2("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
+          L$3("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
           resolve(app);
         } else if (Date.now() - t0 >= timeoutMs) {
           W$2(`waitForVueReady: ${timeoutMs}ms 内未等到 Vue store，放弃（跟随/识别功能降级）`);
@@ -1005,6 +1005,34 @@
     if (idx >= 0) all[idx] = entry; else all.push(entry);
     storage.set("devmode.configs", all);
   }
+  // src/core/test-mode.js
+  // 测试模式：URL 带 ?ykt_test=1 或 localStorage['ykt:test-mode']='1' 时启用。
+  // 仅用于无真实课堂时验证 AI 工具调用链路，生产环境默认关闭。
+    function isTestMode() {
+    try {
+      const q = new URLSearchParams(location.search);
+      if (q.get("ykt_test") === "1") return true;
+      return localStorage.getItem("ykt:test-mode") === "1";
+    } catch {
+      return false;
+    }
+  }
+  /** 取当前测试用的假 AI 响应（未启用测试模式时永远为 null） */  function getTestMock() {
+    if (!isTestMode()) return null;
+    try {
+      return window.__yktTestMock || null;
+    } catch {
+      return null;
+    }
+  }
+  /** 取提交模拟模式（null=真实提交；'ok'|'retry'|'fail'） */  function getTestSubmitMode() {
+    if (!isTestMode()) return null;
+    try {
+      return window.__yktTestMockSubmit || null;
+    } catch {
+      return null;
+    }
+  }
   // src/ai/agnes.js
   // Agnes（OpenAI 兼容）LLM 封装：对话 / 图片 / 思考 / 流式 / 工具调用
   // 默认配置来自开发者模式解锁的内置配置（core/devmode.js），也可传参覆盖
@@ -1096,7 +1124,44 @@
       }
     };
   }
+  /** 测试模式：模拟一次流式响应（不联网、不需要 API Key） */  async function mockChat(opts, mock) {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    await sleep(120);
+    // 只有「带 tools 的请求」才报不支持——降级重发（无 tools）时正常返回文本
+        if (mock.kind === "error-tools" && opts.tools?.length) throw new Error('HTTP 400: {"error":{"message":"tools is not supported by this model"}}');
+    const text = String(mock.content || "");
+    for (const chunk of text.match(/[\s\S]{1,16}/g) || []) {
+      opts.onDelta?.(chunk);
+      await sleep(18);
+    }
+    if (mock.reasoning) opts.onReasoning?.(mock.reasoning);
+    if (mock.kind === "truncated") return {
+      content: text,
+      reasoning: "",
+      toolCalls: [],
+      truncated: true
+    };
+    if (mock.tool) return {
+      content: text,
+      reasoning: "",
+      toolCalls: [ {
+        id: "mock_call_1",
+        type: "function",
+        function: {
+          name: "submit_answer",
+          arguments: JSON.stringify(mock.tool)
+        }
+      } ]
+    };
+    return {
+      content: text,
+      reasoning: "",
+      toolCalls: []
+    };
+  }
   async function agnesChat(opts) {
+    const mock = getTestMock();
+    if (mock) return mockChat(opts, mock);
     const dev = getDevConfig() || {};
     const ov = opts.override || {};
     const baseUrl = ov.baseUrl || dev.baseUrl;
@@ -2108,6 +2173,14 @@
    * @param {{startTime?:number,endTime?:number,forceRetry?:boolean,lessonId?:any}} [opts]
    * @returns {Promise<'answer'|'retry'>}
    */  async function submitProblemAnswer(problem, result, opts = {}) {
+    // 测试模式：不请求真实接口，直接模拟结果
+    const testMode = getTestSubmitMode();
+    if (testMode) {
+      await new Promise(r => setTimeout(r, 350));
+      if (testMode === "fail") throw new Error("模拟提交失败");
+      markAnswered(problem.problemId, result);
+      return testMode === "retry" ? "retry" : "answer";
+    }
     const {route: route} = await submitAnswer(problem, result, {
       lessonId: opts.lessonId ?? repo.currentLessonId,
       autoGate: false,
@@ -2162,7 +2235,7 @@
   // 首轮「解答此页」一键触发，后续追问共享上下文。
   // 调用链：agnesChat（OpenAI 兼容流式，支持 reasoning_content 思考链与取消），
   //         override 来自当前激活的 AI Profile——任意 OpenAI 兼容端点都能用。
-    const L$1 = (...a) => log.dbg("[ai]", ...a);
+    const L$2 = (...a) => log.dbg("[ai]", ...a);
   const W$1 = (...a) => log.warn("[ai]", ...a);
   let mounted$7 = false;
   let root$6;
@@ -2311,7 +2384,7 @@
     });
     waitForVueReady().then(() => {
       watchMainPageChange((slideId, slideInfo) => {
-        L$1("主界面页面切换事件", {
+        L$2("主界面页面切换事件", {
           slideId: slideId,
           slideInfoType: slideInfo?.type,
           problemID: slideInfo?.problemID,
@@ -2324,7 +2397,7 @@
       W$1("Vue 实例初始化失败，将使用备用方案:", e);
     });
     window.addEventListener("ykt:presentation:slide-selected", ev => {
-      L$1("收到小窗选页事件", ev?.detail);
+      L$2("收到小窗选页事件", ev?.detail);
       const sid = asIdStr(ev?.detail?.slideId);
       if (sid) preferredSlideFromPresentation = {
         slideId: sid,
@@ -2663,7 +2736,7 @@
     if (toolCall) try {
       const args = normalizeToolArgs(toolCall.function?.arguments, pt);
       const reason = toolReason(toolCall.function?.arguments);
-      L$1("tool call:", {
+      L$2("tool call:", {
         problemId: problem.problemId,
         args: args,
         reason: reason
@@ -2866,7 +2939,7 @@
       content: acc.content
     });
     // 手动模式最后一次仍未调用工具：把正文解析成答案卡片，至少能一键提交（仍需二次确认）
-        if (!submitInfo && !degraded && !toolCall && isAnalyze && !autoSubmit && canSubmit && attempt >= 2) {
+        if (!submitInfo && !degraded && !toolCall && (isAnalyze || !!nudge) && !autoSubmit && canSubmit && attempt >= 2) {
       const parsed = parseAIAnswer(problem, acc.content || "");
       if (parsed) {
         const args = argsFromParsed(problemType, parsed);
@@ -2930,7 +3003,7 @@
       const attempt = opts.attempt || 1;
       const needRetry = r && !r.submitInfo && r.problem && !r.degraded && (r.isAnalyze || opts.autoSubmit) && attempt < 2;
       if (needRetry) {
-        L$1("retry: model did not call submit_answer, attempt", attempt + 1);
+        L$2("retry: model did not call submit_answer, attempt", attempt + 1);
         r = await runSend({
           ...opts,
           attempt: attempt + 1,
@@ -4208,7 +4281,7 @@
     }
     return null;
   }
-  const L = (...a) => log.dbg("[presentation]", ...a);
+  const L$1 = (...a) => log.dbg("[presentation]", ...a);
   const W = (...a) => log.warn("[presentation]", ...a);
   function $$2(sel) {
     return document.querySelector(sel);
@@ -4232,7 +4305,7 @@
         // 保留旧键以防其他模块还在用数字键；仅打印提示
             }
       const afterSample = Array.from(repo.slides.keys()).slice(0, 8);
-      L(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
+      L$1(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
     } catch (e) {
       W("normalizeRepoSlidesKeys error:", e);
     }
@@ -4379,7 +4452,7 @@
       ui.saveConfig();
       syncFilterBtn();
       ui.toast(ui.config.filterProblemsOnly ? "只显示带题目的页面" : "显示全部页面", 1500);
-      L("切换 filterProblemsOnly =", ui.config.filterProblemsOnly);
+      L$1("切换 filterProblemsOnly =", ui.config.filterProblemsOnly);
       updatePresentationList();
     });
     // 跟随当前页开关：开启时选中项自动跟随课堂翻页；手动点缩略图会脱离
@@ -4399,7 +4472,7 @@
         waitForVueReady().then(() => {
       watchMainPageChange(slideId => {
         const sid = slideId == null ? null : String(slideId);
-        L("课堂翻页事件", {
+        L$1("课堂翻页事件", {
           slideId: sid,
           followCurrent: followCurrent
         });
@@ -4419,7 +4492,7 @@
     $$2("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
     $$2("#ykt-import-history")?.addEventListener("click", openHistoryImporter);
     mounted$6 = true;
-    L("mountPresentationPanel 完成");
+    L$1("mountPresentationPanel 完成");
     // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
         host.__yksOnShow = () => updatePresentationList();
     // 不中止导出：切 tab/收起壳时 PDF 继续在后台生成（不刷新页面就不丢进度）
@@ -4441,7 +4514,7 @@
       block: "nearest",
       behavior: "smooth"
     });
-    L("跟随高亮", {
+    L$1("跟随高亮", {
       currentIdStr: currentIdStr
     });
   }
@@ -4508,7 +4581,7 @@
     }
     // 课件按 presentation_id 收集、无法可靠归属到课堂——此前按 URL lessonId 过滤是无效逻辑（恒等于全量），删掉
         const presentationsToShow = repo.presentations;
-    L("展示课件数量=", presentationsToShow.size);
+    L$1("展示课件数量=", presentationsToShow.size);
     try {
       let filled = 0, total = 0;
       for (const [, pres] of presentationsToShow) {
@@ -4523,7 +4596,7 @@
         }
       }
       const sample = Array.from(repo.slides.keys()).slice(0, 8);
-      L("[hydrate slides → repo.slides]", {
+      L$1("[hydrate slides → repo.slides]", {
         filled: filled,
         totalVisibleSlides: total,
         sampleKeys: sample
@@ -4547,7 +4620,7 @@
       cont.appendChild(titleEl);
       titleEl.querySelector(".download-btn")?.addEventListener("click", e => {
         e.stopPropagation();
-        L("点击下载课件", {
+        L$1("点击下载课件", {
           presId: String(presentation.id)
         });
         downloadPresentation(presentation);
@@ -4558,7 +4631,7 @@
       const showProblemsOnly = !!ui.config.filterProblemsOnly;
       const slidesToShow = showProblemsOnly ? slides.filter(s => s.problem) : slides;
       const currentIdStr = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
-      L("渲染课件缩略图", {
+      L$1("渲染课件缩略图", {
         presId: String(presentation.id),
         slidesTotal: slides.length,
         slidesShown: slidesToShow.length,
@@ -4592,7 +4665,7 @@
             const cross = findSlideAcrossPresentations(slideIdStr);
             if (cross) {
               repo.slides.set(slideIdStr, cross);
-              L("click-fill repo.slides <- cross", {
+              L$1("click-fill repo.slides <- cross", {
                 slideIdStr: slideIdStr
               });
             }
@@ -4630,7 +4703,7 @@
   }
   function downloadPresentation(presentation) {
     repo.currentPresentationId = String(presentation.id);
-    L("downloadPresentation -> 设置 currentPresentationId", repo.currentPresentationId);
+    L$1("downloadPresentation -> 设置 currentPresentationId", repo.currentPresentationId);
     downloadPresentationPDF();
   }
   function updateSlideView() {
@@ -4641,7 +4714,7 @@
     problemView.innerHTML = "";
     const curId = getCurrentSlideId();
     const lookup = getSlideByAny(curId);
-    L("updateSlideView", {
+    L$1("updateSlideView", {
       curId: curId,
       lookupHit: lookup.hit,
       hasInMap: !!lookup.slide
@@ -4997,7 +5070,7 @@
       if (first.done) return ui.toast("当前没有可导出的课件（等课件加载后重试）");
       pid = first.value[0];
       repo.currentPresentationId = pid;
-      L("downloadPresentationPDF: 自动回退到课件", {
+      L$1("downloadPresentationPDF: 自动回退到课件", {
         pid: pid
       });
     }
@@ -6419,7 +6492,7 @@
       if (typeof GM_info !== "undefined" && GM_info.script?.version) return GM_info.script.version;
     } catch {}
     try {
-      return "0.5.15";
+      return "0.6.0";
     } catch {}
     return "0.0.0";
   }
@@ -6532,8 +6605,8 @@
   function mountAboutPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // "0.5.15" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.5.15"}<`);
+    // "0.6.0" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.0"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-about-panel");
     const $btn = root$1.querySelector("#ykt-about-check");
@@ -8158,6 +8231,167 @@
     function injectStyles() {
     gm.addStyle(css);
   }
+  // src/core/test-hooks.js
+  // 测试模式下的控制台工具：注入假题目、模拟 AI 响应、模拟提交结果。
+  // 只在 ?ykt_test=1 或 localStorage['ykt:test-mode']='1' 时安装。
+    const L = (...a) => log.info("[test]", ...a);
+  function defaultBody(type) {
+    switch (Number(type)) {
+     case 2:
+      return "测试多选题：以下哪些是编程语言？";
+
+     case 3:
+      return "测试投票题：你更喜欢哪种课堂形式？";
+
+     case 4:
+      return "测试填空题：1 + 1 = ____，2 + 2 = ____";
+
+     case 5:
+      return "测试主观题：请简述牛顿第一定律。";
+
+     default:
+      return "测试单选题：1 + 1 等于多少？";
+    }
+  }
+  function installTestHooks() {
+    if (!isTestMode()) return;
+    let seq = 0;
+    const api = {
+      /** 注入一道假题目，并设为「当前页」——AI 面板会把它当作真实题目 */
+      injectProblem(type = 1, opts = {}) {
+        const pid = opts.problemId || 91e4 + ++seq;
+        const slideId = `test-slide-${pid}`;
+        const problem = {
+          problemId: pid,
+          problemType: Number(type),
+          body: opts.body || defaultBody(type),
+          options: opts.options || [ {
+            key: "A",
+            value: "选项 A"
+          }, {
+            key: "B",
+            value: "选项 B"
+          }, {
+            key: "C",
+            value: "选项 C"
+          }, {
+            key: "D",
+            value: "选项 D"
+          } ],
+          blanks: opts.blanks || (Number(type) === 4 ? [ "第一空", "第二空" ] : [])
+        };
+        const slide = {
+          id: slideId,
+          index: 1,
+          page: 1,
+          problem: problem
+        };
+        repo.upsertSlide(slide);
+        repo.upsertProblem(problem);
+        repo.problemStatus.set(String(pid), {
+          slideId: slideId,
+          startTime: opts.startTime ?? Date.now() - 6e4,
+          endTime: opts.endTime ?? Date.now() + 10 * 60 * 1e3,
+          clockOffset: 0
+        });
+        repo.currentSlideId = slideId;
+        repo.currentLessonId = "test-lesson";
+        repo.pushEncounteredProblem(problem, slide, "test-presentation");
+        ui.updateProblemList?.();
+        L("已注入测试题", {
+          problemId: pid,
+          type: Number(type)
+        });
+        return pid;
+      },
+      /** 模拟：模型调用 submit_answer 工具 */
+      mockTool(args = {
+        answers: [ "A" ],
+        reason: "测试理由"
+      }, content = "答案是 A。") {
+        window.__yktTestMock = {
+          kind: "tool",
+          tool: args,
+          content: content
+        };
+        L("已开启模拟工具调用", args);
+      },
+      /** 模拟：模型只输出文字、不调用工具（用于验证重试/降级） */
+      mockText(content = "答案: A\n解释: 这是模拟文本回答。") {
+        window.__yktTestMock = {
+          kind: "text",
+          content: content
+        };
+        L("已开启模拟纯文本回答");
+      },
+      /** 模拟：流被截断 */
+      mockTruncated(content = "答案: A\n解释: 输出到一半") {
+        window.__yktTestMock = {
+          kind: "truncated",
+          content: content
+        };
+        L("已开启模拟流中断");
+      },
+      /** 模拟：端点不支持 tools（HTTP 400） */
+      mockNoTools(content = "答案: A\n解释: 模拟「不支持工具」时的降级回答。") {
+        window.__yktTestMock = {
+          kind: "error-tools",
+          content: content
+        };
+        L("已开启模拟「不支持工具调用」");
+      },
+      clearMock() {
+        delete window.__yktTestMock;
+        L("已清除模拟 AI 响应");
+      },
+      /** 模拟提交结果：ok / retry（补交）/ fail；不设置则走真实接口 */
+      mockSubmit(mode = "ok") {
+        window.__yktTestMockSubmit = mode;
+        L("提交模拟模式:", mode);
+      },
+      clearSubmitMock() {
+        delete window.__yktTestMockSubmit;
+        L("已恢复真实提交");
+      },
+      /** 打开 AI 面板并发起一轮「解答此页」（使用当前注入的假题目） */
+      async ask() {
+        try {
+          ui.showAIPanel?.(true);
+        } catch {}
+        return sendCurrent$1({
+          auto: true
+        });
+      },
+      /** 模拟「自动作答」：指定题目 + 直接提交（不弹确认） */
+      async askAuto() {
+        const slide = repo.slides.get(String(repo.currentSlideId));
+        const problem = slide?.problem;
+        if (!problem) throw new Error("请先 injectProblem()");
+        try {
+          ui.showAIPanel?.(true);
+        } catch {}
+        return askAIForProblem(problem, {
+          autoSubmit: true
+        });
+      },
+      /** 清空注入的测试题目 */
+      reset() {
+        for (const id of [ ...repo.problems.keys() ]) if (String(id).startsWith("91")) {
+          repo.problems.delete(id);
+          repo.problemStatus.delete(id);
+          repo.slides.delete(`test-slide-${id}`);
+        }
+        repo.encounteredProblems = repo.encounteredProblems.filter(p => !String(p.problemId).startsWith("91"));
+        repo.currentSlideId = null;
+        delete window.__yktTestMock;
+        delete window.__yktTestMockSubmit;
+        ui.updateProblemList?.();
+        L("已重置测试数据");
+      }
+    };
+    window.__yktTest = api;
+    L("测试模式已启用：window.__yktTest.injectProblem() / mockTool() / mockText() / mockSubmit()");
+  }
   // src/index.js
   // Font Awesome：内嵌 css（字体 data-URI）优先；CSP 拦时 env.js 里退回 CDN
     ensureFontAwesome();
@@ -8281,6 +8515,8 @@
   }
   (function main() {
     if (maybeAutoReloadOnMount()) return;
+    installTestHooks();
+ // 仅 ?ykt_test=1 时生效
     // 仅在页面隐藏时刷新，且间隔放宽到 3 分钟：
     // 此前是 1 分钟 + 页面可见也刷新，是「面板莫名消失 / 脚本好像失效」的根源
         startPeriodicReload({

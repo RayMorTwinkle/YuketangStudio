@@ -716,7 +716,7 @@ async function runSendInner({
   });
 
   // 手动模式最后一次仍未调用工具：把正文解析成答案卡片，至少能一键提交（仍需二次确认）
-  if (!submitInfo && !degraded && !toolCall && isAnalyze && !autoSubmit && canSubmit && attempt >= 2) {
+  if (!submitInfo && !degraded && !toolCall && (isAnalyze || !!nudge) && !autoSubmit && canSubmit && attempt >= 2) {
     const parsed = parseAIAnswer(problem, acc.content || '');
     if (parsed) {
       const args = argsFromParsed(problemType, parsed);

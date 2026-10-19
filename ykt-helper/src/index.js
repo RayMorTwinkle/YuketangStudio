@@ -10,6 +10,7 @@ import { isStudentV3Page, runHistoryCapture } from './core/history-capture.js';
 import { log } from './core/log.js';
 import { ensureFontAwesome } from './core/env.js';
 import { checkForUpdate } from './core/update-check.js';
+import { installTestHooks } from './core/test-hooks.js';
 
 // Font Awesome：内嵌 css（字体 data-URI）优先；CSP 拦时 env.js 里退回 CDN
 ensureFontAwesome();
@@ -135,6 +136,7 @@ function whenBodyReady(fn) {
 
 (function main() {
   if (maybeAutoReloadOnMount()) return;
+  installTestHooks();   // 仅 ?ykt_test=1 时生效
   // 仅在页面隐藏时刷新，且间隔放宽到 3 分钟：
   // 此前是 1 分钟 + 页面可见也刷新，是「面板莫名消失 / 脚本好像失效」的根源
   startPeriodicReload({ intervalMs: 3 * 60 * 1000, onlyWhenHidden: true, skipLessonPages: true });

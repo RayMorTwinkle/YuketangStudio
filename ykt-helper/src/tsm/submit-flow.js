@@ -5,6 +5,7 @@
 import { submitAnswer } from './answer.js';
 import { repo } from '../state/repo.js';
 import { ui } from '../ui/ui-api.js';
+import { getTestSubmitMode } from '../core/test-mode.js';
 
 /** 把用户/AI 的文本答案转成接口需要的 result 结构 */
 export function parseManualAnswer(problemType, content) {
@@ -37,6 +38,15 @@ export function markAnswered(problemId, result) {
  * @returns {Promise<'answer'|'retry'>}
  */
 export async function submitProblemAnswer(problem, result, opts = {}) {
+  // 测试模式：不请求真实接口，直接模拟结果
+  const testMode = getTestSubmitMode();
+  if (testMode) {
+    await new Promise((r) => setTimeout(r, 350));
+    if (testMode === 'fail') throw new Error('模拟提交失败');
+    markAnswered(problem.problemId, result);
+    return testMode === 'retry' ? 'retry' : 'answer';
+  }
+
   const { route } = await submitAnswer(problem, result, {
     lessonId: opts.lessonId ?? repo.currentLessonId,
     autoGate: false, // 手动/工具提交都不套自动延迟

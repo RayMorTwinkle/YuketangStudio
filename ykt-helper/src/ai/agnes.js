@@ -5,6 +5,7 @@ import { gm } from '../core/env.js';
 import { log } from '../core/log.js';
 import { getDevConfig } from '../core/devmode.js';
 import * as telemetry from '../core/telemetry.js';
+import { getTestMock } from '../core/test-mode.js';
 
 /** 本模块日志前缀 */
 const dlog = (...args) => log.dbg('[Agnes]', ...args);
@@ -80,7 +81,40 @@ function makeSmoother(opts) {
   };
 }
 
+/** 测试模式：模拟一次流式响应（不联网、不需要 API Key） */
+async function mockChat(opts, mock) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  await sleep(120);
+  // 只有「带 tools 的请求」才报不支持——降级重发（无 tools）时正常返回文本
+  if (mock.kind === 'error-tools' && opts.tools?.length) {
+    throw new Error('HTTP 400: {"error":{"message":"tools is not supported by this model"}}');
+  }
+  const text = String(mock.content || '');
+  for (const chunk of (text.match(/[\s\S]{1,16}/g) || [])) {
+    opts.onDelta?.(chunk);
+    await sleep(18);
+  }
+  if (mock.reasoning) opts.onReasoning?.(mock.reasoning);
+  if (mock.kind === 'truncated') {
+    return { content: text, reasoning: '', toolCalls: [], truncated: true };
+  }
+  if (mock.tool) {
+    return {
+      content: text,
+      reasoning: '',
+      toolCalls: [{
+        id: 'mock_call_1',
+        type: 'function',
+        function: { name: 'submit_answer', arguments: JSON.stringify(mock.tool) },
+      }],
+    };
+  }
+  return { content: text, reasoning: '', toolCalls: [] };
+}
+
 export async function agnesChat(opts) {
+  const mock = getTestMock();
+  if (mock) return mockChat(opts, mock);
   const dev = getDevConfig() || {};
   const ov = opts.override || {};
   const baseUrl = ov.baseUrl || dev.baseUrl;
