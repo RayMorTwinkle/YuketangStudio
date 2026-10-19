@@ -14,6 +14,11 @@ import { resolveCurrentSlideImage } from '../slide-image.js';
 import { ensureMermaid, ensureMarked, ensureDOMPurify, ensureKaTeX, gm } from '../../core/env.js';
 import { escapeHtml } from '../../core/dom.js';
 import { PROBLEM_TYPE_MAP, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
+import { SUBMIT_ANSWER_TOOL, toolPromptBlock, normalizeToolArgs, toolReason, isToolUnsupportedError } from '../../ai/tools.js';
+import { captureSlideImage } from '../../capture/screenshoot.js';
+import { parseAIAnswer } from '../../tsm/ai-format.js';
+import { submitProblemAnswer } from '../../tsm/submit-flow.js';
+import { confirmDialog } from '../confirm.js';
 
 const L = (...a) => log.dbg('[ai]', ...a);
 const W = (...a) => log.warn('[ai]', ...a);
@@ -390,118 +395,349 @@ function setStreamingFlag(on) {
   } catch {}
 }
 
-async function sendCurrent({ auto = false, retryText = null } = {}) {
-  if (streaming) return;
+// ---------------- 工具调用：提交答案 ----------------
+
+/** 取指定题目所在页的图片（自动作答时题目可能已不在当前页） */
+async function resolveImageForProblem(problem) {
+  const status = repo.problemStatus.get(String(problem?.problemId));
+  const sid = status?.slideId;
+  if (sid != null) {
+    try {
+      const img = await captureSlideImage(sid);
+      if (img) return { dataUrl: img, source: 'problem-slide' };
+    } catch (e) { W('captureSlideImage fail:', e); }
+  }
+  return resolveCurrentSlideImage();
+}
+
+/** parseAIAnswer 的结果 → 卡片需要的 {content,result,display}（降级路径用） */
+function argsFromParsed(problemType, parsed) {
+  const pt = Number(problemType);
+  if (pt === 1 || pt === 2 || pt === 3) {
+    const arr = Array.isArray(parsed) ? parsed.map(String) : [];
+    return { content: arr.join(','), result: arr, display: arr.join('、') };
+  }
+  if (pt === 4) {
+    const arr = Array.isArray(parsed) ? parsed.map(String) : [String(parsed ?? '')];
+    return { content: arr.join('\n'), result: arr, display: arr.join(' | ') };
+  }
+  const text = typeof parsed === 'string' ? parsed : String(parsed?.content ?? '');
+  return { content: text, result: { content: text, pics: [] }, display: text };
+}
+
+/**
+ * 在 AI 气泡里渲染「提交答案」卡片。
+ * autoSubmit=true（自动作答）时不再二次确认，直接提交。
+ * @returns {Promise<{attempted:boolean, route?:'answer'|'retry'|null, pending?:boolean, display:string}>}
+ */
+async function renderToolCard(aiBubble, { problem, args, reason, autoSubmit, degraded = false }) {
+  const card = document.createElement('div');
+  card.className = 'ykt-tool-card';
+
+  const title = document.createElement('div');
+  title.className = 'ykt-tool-title';
+  title.textContent = degraded ? '📤 提交答案（文本解析）' : '📤 提交答案';
+  card.appendChild(title);
+
+  const ans = document.createElement('div');
+  ans.className = 'ykt-tool-answer';
+  ans.textContent = args.display;
+  card.appendChild(ans);
+
+  if (reason) {
+    const r = document.createElement('div');
+    r.className = 'ykt-tool-reason';
+    r.textContent = reason;
+    card.appendChild(r);
+  }
+
+  const bar = document.createElement('div');
+  bar.className = 'ykt-tool-actions';
+  const btn = document.createElement('button');
+  btn.className = 'ykt-tool-submit';
+  btn.textContent = autoSubmit ? '自动提交中…' : '提交';
+  bar.appendChild(btn);
+  card.appendChild(bar);
+
+  const stEl = document.createElement('div');
+  stEl.className = 'ykt-tool-status';
+  card.appendChild(stEl);
+
+  aiBubble.appendChild(card);
+  const $log = $sel('#ykt-ai-log');
+  if ($log) $log.scrollTop = $log.scrollHeight;
+
+  const doSubmit = async () => {
+    if (btn.disabled) return null;
+    const st = repo.problemStatus.get(String(problem.problemId));
+    const offset = Number.isFinite(st?.clockOffset) ? st.clockOffset : 0;
+    const endTime = Number.isFinite(st?.endTime) ? st.endTime : undefined;
+    const past = Number.isFinite(endTime) && (Date.now() + offset) >= endTime;
+
+    // 手动模式：二次确认；过期再单独确认补交
+    if (!autoSubmit) {
+      const ok = await confirmDialog(`确认提交答案：${args.display}？`, { okText: '提交' });
+      if (!ok) return null;
+      if (past) {
+        const ok2 = await confirmDialog('这道题已超过截止时间，将以补交方式提交。确定继续吗？', { okText: '补交', danger: true });
+        if (!ok2) return null;
+      }
+    }
+
+    btn.disabled = true;
+    btn.textContent = '提交中…';
+    stEl.textContent = '';
+    try {
+      const route = await submitProblemAnswer(problem, args.result, {
+        startTime: st?.startTime,
+        endTime,
+        forceRetry: past,
+      });
+      card.classList.add('done');
+      btn.textContent = '已提交';
+      stEl.textContent = route === 'retry' ? '✅ 补交成功' : '✅ 提交成功';
+      ui.toast?.(route === 'retry' ? '✅ 补交成功' : '✅ 提交成功', 2500);
+      return route;
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = '重试提交';
+      stEl.textContent = `❌ 提交失败：${e?.message || e}`;
+      return null;
+    }
+  };
+
+  btn.addEventListener('click', doSubmit);
+
+  if (autoSubmit) {
+    const route = await doSubmit();
+    return { attempted: true, route, display: args.display };
+  }
+  return { attempted: true, pending: true, display: args.display };
+}
+
+/** 处理一轮回答里的工具调用 / 降级解析 */
+async function handleToolCall({ aiBubble, problem, toolCall, autoSubmit, degraded, content }) {
+  const pt = Number(problem?.problemType);
+  if (!(pt >= 1 && pt <= 5)) return null;
+
+  if (toolCall) {
+    try {
+      const args = normalizeToolArgs(toolCall.function?.arguments, pt);
+      const reason = toolReason(toolCall.function?.arguments);
+      L('tool call:', { problemId: problem.problemId, args, reason });
+      try { window.__yktLastToolCall = { args, reason, at: Date.now() }; } catch {}
+      return await renderToolCard(aiBubble, { problem, args, reason, autoSubmit });
+    } catch (e) {
+      W('tool args invalid:', e);
+      addBubble('ai', `<span class="err">工具参数无效：${escapeHtml(e?.message || e)}</span>`);
+      return null;
+    }
+  }
+
+  // 模型不支持工具：从正文解析答案，生成同样的卡片
+  if (degraded) {
+    const parsed = parseAIAnswer(problem, content || '');
+    if (!parsed) return null;
+    const args = argsFromParsed(pt, parsed);
+    if (!args.content) return null;
+    return await renderToolCard(aiBubble, { problem, args, reason: '', autoSubmit, degraded: true });
+  }
+
+  return null;
+}
+
+/** 单轮请求：返回本轮结果，供 sendCurrent 决定是否重试 */
+async function runSendInner({
+  retryText = null,
+  problemOverride = null,
+  autoSubmit = false,
+  nudge = null,
+  useTools = true,
+  attempt = 1,
+} = {}) {
   const $input = $sel('#ykt-ai-input');
-  // retryText 非 null = 重试：用上次的文本，并弹出上一条 user 历史避免重复
-  const text = retryText !== null ? retryText : ($input?.value || '').trim();
-  if (retryText !== null) {
+  // retryText 非 null = 手动重试：用上次的文本，并弹出上一条 user 历史避免重复
+  const text = nudge ? nudge : (retryText !== null ? retryText : ($input?.value || '').trim());
+  if (retryText !== null && !nudge) {
     if (history.length && history[history.length - 1]?.role === 'user') history.pop();
   }
-  const isAnalyze = !text;                       // 空输入 = 解答此页
-  if (!text && !auto) { /* 空输入也允许：解答此页 */ }
+  const isAnalyze = !text;
   const customPrompt = ($sel('#ykt-ai-custom-prompt')?.value || '').trim();
   const attach = $sel('#ykt-ai-attach')?.checked ?? true;
 
-  lastSendText = text;
-  streaming = true;
-  setStreamingFlag(true);
-  $sel('#ykt-ai-send').disabled = true;
-  try {
-    const content = [{ type: 'text', text: text || DEFAULT_ANALYZE_PROMPT }];
-    let attachFailed = '';
-    if (attach || isAnalyze) {
-      const pending = addBubble('user', `⏳ 正在获取当前 PPT…${text ? '' : '（解答此页）'}`);
-      const { dataUrl, reason } = await resolveCurrentSlideImage();
-      pending.remove();
-      if (dataUrl) {
-        content.push({ type: 'image_url', image_url: { url: dataUrl } });
-      } else if (isAnalyze) {
-        attachFailed = reason || '未取到当前 PPT 页';
-      }
+  if (!nudge) lastSendText = text;
+
+  // 题目上下文：自动作答用传入的题目；手动模式用当前页
+  const ctxSlide = pickCurrentSlide().slide;
+  const problem = problemOverride || ctxSlide?.problem || null;
+  const problemType = Number(problem?.problemType);
+  const canSubmit = !!problem && problemType >= 1 && problemType <= 5;
+
+  // 自动作答使用独立会话：不污染用户聊天，也不会把上一题的上下文带进来
+  const conv = autoSubmit ? [] : history;
+
+  const content = [{ type: 'text', text: text || DEFAULT_ANALYZE_PROMPT }];
+  let attachFailed = '';
+  if (!nudge && (attach || isAnalyze)) {
+    const pending = addBubble('user', `⏳ 正在获取当前 PPT…${text ? '' : '（解答此页）'}`);
+    let dataUrl;
+    let reason;
+    if (problemOverride) {
+      const r = await resolveImageForProblem(problemOverride);
+      dataUrl = r?.dataUrl || '';
+      reason = r?.reason || '';
+    } else {
+      const r = await resolveCurrentSlideImage();
+      dataUrl = r?.dataUrl || '';
+      reason = r?.reason || '';
     }
+    pending.remove();
+    if (dataUrl) content.push({ type: 'image_url', image_url: { url: dataUrl } });
+    else if (isAnalyze) attachFailed = reason || '未取到当前 PPT 页';
+  }
 
-    const userText = buildUserText(pickCurrentSlide().slide?.problem, customPrompt, isAnalyze);
-    // 题干文本注入：首轮整段作为文本；追问时只追加用户输入（题干已在历史里）
-    if (isAnalyze) content[0].text = userText || DEFAULT_ANALYZE_PROMPT;
-    else if (text) content[0].text = text + (customPrompt ? `\n【用户自定义要求】\n${customPrompt}` : '');
+  if (nudge) {
+    content[0].text = nudge;
+  } else if (isAnalyze) {
+    content[0].text = buildUserText(problem, customPrompt, true) || DEFAULT_ANALYZE_PROMPT;
+  } else if (text) {
+    content[0].text = text + (customPrompt ? `\n【用户自定义要求】\n${customPrompt}` : '');
+  }
 
-    history.push({ role: 'user', content });
-    trimOldImages(1);
-    const userBubble = addBubble('user', escapeHtml(text || DEFAULT_ANALYZE_PROMPT));
-    for (const c of content) {
-      if (c.type === 'image_url') {
-        const img = document.createElement('img');
-        img.src = c.image_url.url;
-        img.alt = '当前 PPT 页';
-        userBubble.appendChild(img);
-      }
+  conv.push({ role: 'user', content });
+  if (!autoSubmit) trimOldImages(1);
+  const userBubble = addBubble('user', escapeHtml(nudge || text || DEFAULT_ANALYZE_PROMPT));
+  for (const c of content) {
+    if (c.type === 'image_url') {
+      const img = document.createElement('img');
+      img.src = c.image_url.url;
+      img.alt = '当前 PPT 页';
+      userBubble.appendChild(img);
     }
-    if (attachFailed) {
-      const warn = document.createElement('div');
-      warn.className = 'ykt-chat-warn';
-      warn.textContent = `⚠️ ${attachFailed}——本条无截图，仅依据题目文本作答`;
-      userBubble.appendChild(warn);
-    }
-    if ($input) $input.value = '';
+  }
+  if (attachFailed) {
+    const warn = document.createElement('div');
+    warn.className = 'ykt-chat-warn';
+    warn.textContent = `⚠️ ${attachFailed}——本条无截图，仅依据题目文本作答`;
+    userBubble.appendChild(warn);
+  }
+  if ($input) $input.value = '';
 
-    // AI 气泡（流式，思考中自动展开 → 正文自动折叠）
-    const aiBubble = addBubble('ai', '<em>思考中…</em>');
-    const acc = { content: '', reasoning: '' };
-    const renderer = new StreamRenderer();           // 封板/活跃区增量渲染：公式、mermaid 流中即渲染
-    let raf = 0;
-    let phase = 'waiting';
-    const paint = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        if (phase !== 'answering' && acc.content) phase = 'answering';
-        else if (phase === 'waiting' && acc.reasoning) phase = 'thinking';
-        const thinking = phase === 'thinking';
-        aiBubble.innerHTML =
-          (acc.reasoning
-            ? `<details ${thinking ? 'open' : ''}><summary>💭 思考过程${thinking ? '（进行中…）' : '（点击展开）'}</summary><div class="reasoning-body"></div></details>`
-            : '')
-          + '<div class="ykt-sr-content"></div>';
-        renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
-        renderer.update(acc.content, thinking ? '' : '<em>…</em>');
-        const rBody = aiBubble.querySelector('.reasoning-body');
-        if (rBody) { rBody.textContent = acc.reasoning; rBody.scrollTop = rBody.scrollHeight; }
-        const $log = $sel('#ykt-ai-log');
-        $log.scrollTop = $log.scrollHeight;
-      });
-    };
-
-    abortCtrl = new AbortController();
-    const ov = getOverride();
-    const res = await agnesChat({
-      messages: [{ role: "system", content: systemPrompt() }, ...history],
-      stream: true,
-      thinking: ov?.thinking !== false,   // 跟设置里的「启用思考」开关走
-      signal: abortCtrl.signal,
-      override: ov || undefined,
-      onDelta: (d) => { acc.content += d; paint(); },
-      onReasoning: (d) => { acc.reasoning += d; paint(); },
+  // AI 气泡（流式，思考中自动展开 → 正文自动折叠）
+  const aiBubble = addBubble('ai', '<em>思考中…</em>');
+  const acc = { content: '', reasoning: '' };
+  const renderer = new StreamRenderer();           // 封板/活跃区增量渲染：公式、mermaid 流中即渲染
+  let raf = 0;
+  let phase = 'waiting';
+  const paint = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      if (phase !== 'answering' && acc.content) phase = 'answering';
+      else if (phase === 'waiting' && acc.reasoning) phase = 'thinking';
+      const thinking = phase === 'thinking';
+      aiBubble.innerHTML =
+        (acc.reasoning
+          ? `<details ${thinking ? 'open' : ''}><summary>💭 思考过程${thinking ? '（进行中…）' : '（点击展开）'}</summary><div class="reasoning-body"></div></details>`
+          : '')
+        + '<div class="ykt-sr-content"></div>';
+      renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
+      renderer.update(acc.content, thinking ? '' : '<em>…</em>');
+      const rBody = aiBubble.querySelector('.reasoning-body');
+      if (rBody) { rBody.textContent = acc.reasoning; rBody.scrollTop = rBody.scrollHeight; }
+      const $log = $sel('#ykt-ai-log');
+      $log.scrollTop = $log.scrollHeight;
     });
+  };
 
-    acc.content = res.content || acc.content;
-    acc.reasoning = res.reasoning || acc.reasoning;
-    if (raf) { cancelAnimationFrame(raf); raf = 0; }   // 防止挂起的 paint 覆盖 renderRich 成果
-    aiBubble.innerHTML =
-      (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : '')
-      + '<div class="ykt-sr-content"></div>';
-    renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
-    if (acc.content) await renderer.finish(acc.content);
-    else aiBubble.querySelector('.ykt-sr-content').innerHTML = '<span class="err">（空回复）</span>';
-    // 截断提示（同 chat.js）：流未正常收尾就结束，明确告知而不是静默
-    if (res.truncated) {
-      const warn = document.createElement('div');
-      warn.className = 'ykt-chat-warn';
-      warn.textContent = '⚠️ 输出中断：连接被提前关闭（已收到的内容保留）。';
-      aiBubble.appendChild(warn);
+  abortCtrl = new AbortController();
+  const ov = getOverride();
+  // 工具只在「首轮解答」或「自动作答」时强制；追问不强制，避免反复提交
+  const mandatoryTool = useTools && canSubmit && (isAnalyze || autoSubmit);
+  const sys = systemPrompt() + (mandatoryTool ? '\n\n' + toolPromptBlock(problem, { mandatory: autoSubmit }) : '');
+  const tools = (useTools && canSubmit) ? [SUBMIT_ANSWER_TOOL] : undefined;
+
+  const call = (toolList) => agnesChat({
+    messages: [{ role: 'system', content: sys }, ...conv],
+    stream: true,
+    thinking: ov?.thinking !== false,   // 跟设置里的「启用思考」开关走
+    signal: abortCtrl.signal,
+    override: ov || undefined,
+    tools: toolList,
+    toolChoice: autoSubmit ? 'required' : 'auto',
+    onDelta: (d) => { acc.content += d; paint(); },
+    onReasoning: (d) => { acc.reasoning += d; paint(); },
+  });
+
+  let res;
+  let degraded = false;
+  try {
+    res = await call(tools);
+  } catch (e) {
+    // 端点不支持 tool calling：去掉 tools 重发一次（同一轮内降级，不占重试次数）
+    if (tools && isToolUnsupportedError(e)) {
+      degraded = true;
+      W('tool calling unsupported, degrade:', e?.message || e);
+      res = await call(undefined);
+    } else {
+      throw e;
     }
+  }
 
-    history.push({ role: 'assistant', content: acc.content || '（无内容）' });
+  acc.content = res.content || acc.content;
+  acc.reasoning = res.reasoning || acc.reasoning;
+  const toolCall = (res.toolCalls || []).find(t => t?.function?.name === 'submit_answer');
+  if (raf) { cancelAnimationFrame(raf); raf = 0; }   // 防止挂起的 paint 覆盖 renderRich 成果
+  aiBubble.innerHTML =
+    (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : '')
+    + '<div class="ykt-sr-content"></div>';
+  renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
+  if (acc.content) await renderer.finish(acc.content);
+  else if (toolCall) aiBubble.querySelector('.ykt-sr-content').innerHTML = '<span class="muted">✅ 已生成答案</span>';
+  else aiBubble.querySelector('.ykt-sr-content').innerHTML = '<span class="err">（空回复）</span>';
+
+  if (degraded) {
+    const note = document.createElement('div');
+    note.className = 'ykt-chat-warn';
+    note.textContent = '⚠️ 当前模型不支持工具调用，已降级为文本作答。';
+    aiBubble.appendChild(note);
+  }
+
+  // 截断提示（同 chat.js）：流未正常收尾就结束，明确告知而不是静默
+  if (res.truncated) {
+    const warn = document.createElement('div');
+    warn.className = 'ykt-chat-warn';
+    warn.textContent = '⚠️ 输出中断：连接被提前关闭（已收到的内容保留）。';
+    aiBubble.appendChild(warn);
+  }
+
+  let submitInfo = await handleToolCall({
+    aiBubble, problem, toolCall, autoSubmit, degraded, content: acc.content,
+  });
+
+  // 手动模式最后一次仍未调用工具：把正文解析成答案卡片，至少能一键提交（仍需二次确认）
+  if (!submitInfo && !degraded && !toolCall && isAnalyze && !autoSubmit && canSubmit && attempt >= 2) {
+    const parsed = parseAIAnswer(problem, acc.content || '');
+    if (parsed) {
+      const args = argsFromParsed(problemType, parsed);
+      if (args.content) {
+        submitInfo = await renderToolCard(aiBubble, { problem, args, reason: '', autoSubmit: false, degraded: true });
+      }
+    }
+  }
+
+  conv.push({
+    role: 'assistant',
+    content: acc.content || (submitInfo ? `（已提交答案：${submitInfo.display || ''}）` : '（无内容）'),
+  });
+
+  return { res, problem, toolCall, submitInfo, degraded, isAnalyze };
+}
+
+/** 单轮请求（带错误兜底）：失败时渲染错误气泡并返回 null */
+async function runSend(opts = {}) {
+  try {
+    return await runSendInner(opts);
   } catch (e) {
     const emsg = String(e?.message || '');
     const isTimeout = /timeout|超时/i.test(emsg);
@@ -514,18 +750,47 @@ async function sendCurrent({ auto = false, retryText = null } = {}) {
     } else {
       addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>${isTimeout ? '提示：上游响应过慢或网络中断，可点重试。' : '提示：到设置里检查 AI 配置的 API Key。'}</small>`);
     }
-    // 重试按钮绑事件（addBubble 用 innerHTML，需手动绑）
     const lastBubble = $sel('#ykt-ai-log')?.lastElementChild;
     lastBubble?.querySelector('.ykt-retry-btn')?.addEventListener('click', () => {
       lastBubble.remove();
       sendCurrent({ retryText: lastSendText });
     });
+    return null;
+  }
+}
+
+/**
+ * 发送一轮对话（对外入口）。
+ * 模型未调用工具时追加提示重试，总共最多 2 次。
+ */
+export async function sendCurrent(opts = {}) {
+  // 自动作答可能从未打开过 AI tab：先挂载（面板默认隐藏，不打扰用户）
+  if (!mounted) mountAIPanel();
+  if (streaming) {
+    ui.toast?.('AI 正在作答，请稍候', 1500);
+    return null;
+  }
+  streaming = true;
+  setStreamingFlag(true);
+  const sendBtn = $sel('#ykt-ai-send');
+  if (sendBtn) sendBtn.disabled = true;
+  try {
+    let r = await runSend(opts);
+    const attempt = opts.attempt || 1;
+    const needRetry = r && !r.submitInfo && r.problem && !r.degraded
+      && (r.isAnalyze || opts.autoSubmit) && attempt < 2;
+    if (needRetry) {
+      L('retry: model did not call submit_answer, attempt', attempt + 1);
+      r = await runSend({ ...opts, attempt: attempt + 1, nudge: '继续，记得调用工具提交答案。' });
+    }
+    return r;
   } finally {
     streaming = false;
     setStreamingFlag(false);
     abortCtrl = null;
-    $sel('#ykt-ai-send').disabled = false;
-    $sel('#ykt-ai-log').scrollTop = $sel('#ykt-ai-log').scrollHeight;
+    if (sendBtn) sendBtn.disabled = false;
+    const $log = $sel('#ykt-ai-log');
+    if ($log) $log.scrollTop = $log.scrollHeight;
   }
 }
 
@@ -538,6 +803,11 @@ export async function askAIVisionForCurrent() {
 }
 export async function askAITextOnly() {
   return sendCurrent({ auto: true });
+}
+
+/** 自动作答入口：指定题目 + 直接提交 */
+export async function askAIForProblem(problem, { autoSubmit = false } = {}) {
+  return sendCurrent({ auto: true, problemOverride: problem, autoSubmit });
 }
 
 // ---------------- Markdown / 富媒体渲染 ----------------

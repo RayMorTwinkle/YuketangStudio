@@ -5,10 +5,10 @@ import { randInt, gm } from '../core/env.js'
 import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
 import { submitAnswer } from '../tsm/answer.js';
-import { queryAIVision } from '../ai/openai.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
-import { formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
-import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  
+import { parseAIAnswer } from '../tsm/ai-format.js';
+import { submitProblemAnswer, parseManualAnswer } from '../tsm/submit-flow.js';
+import { askAIForProblem } from '../ui/panels/ai.js';
 import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 import { isMobileVersionPage, isNarrowDevice } from '../ui/toolbar.js';
@@ -68,14 +68,38 @@ export function hasActiveAIProfile(aiCfg) {
   return !!cfg.kimiApiKey;
 }
 
-// 融合模式自动答题
+// ---------------- 自动作答（AI 面板 + 工具） ----------------
+
+// 多题同时解锁时串行执行，避免抢同一条 AI 流
+let _autoAnswerChain = Promise.resolve();
+function enqueueAutoAnswer(fn) {
+  const run = _autoAnswerChain.then(fn, fn);
+  _autoAnswerChain = run.catch(() => {});
+  return run;
+}
+
+/** 等 AI 面板空闲（用户正在聊天时排队；超时放弃） */
+async function waitAIIdle(timeoutMs = 90000) {
+  const t0 = Date.now();
+  while (document.body?.dataset?.yksStreaming === '1') {
+    if (Date.now() - t0 > timeoutMs) return false;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return true;
+}
+
+/**
+ * 自动作答：走 AI 解答面板 + submit_answer 工具。
+ * - 模型调用工具 → 直接提交（不再二次确认）
+ * - 两次都没调用 → 看「无 API Key 时提交兜底答案」开关：勾选则解析正文提交，未勾选则放弃
+ */
 async function handleAutoAnswerInternal(problem) {
   const status = repo.problemStatus.get(String(problem.problemId));
   if (!status || status.answering || problem.result) {
     log.dbg('[AutoAnswer] 跳过：', {
       hasStatus: !!status,
       answering: status?.answering,
-      hasResult: !!problem.result
+      hasResult: !!problem.result,
     });
     return;
   }
@@ -88,16 +112,15 @@ async function handleAutoAnswerInternal(problem) {
   }
 
   status.answering = true;
-
   try {
     log.dbg('[雨课堂助手][INFO][AutoAnswer] =================================');
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] 开始自动答题');
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 开始自动答题（工具调用模式）');
     log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目ID:', problem.problemId);
     log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目类型:', PROBLEM_TYPE_MAP[problem.problemType]);
     log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目内容:', problem.body?.slice(0, 50) + '...');
-    
+
+    // 无 API Key：沿用本地兜底答案逻辑
     if (!hasActiveAIProfile(ui.config.ai)) {
-      // 无 API Key 时默认跳过（宁缺答不误答）；用户在设置里显式开启才提交兜底答案
       if (!ui.config.autoAnswerFallbackDefault) {
         status.answering = false;
         log.warn('[雨课堂助手][WARN][AutoAnswer] 未配置 API Key，跳过自动作答（可在设置开启「无 Key 提交兜底答案」）');
@@ -106,96 +129,63 @@ async function handleAutoAnswerInternal(problem) {
       const parsed = makeDefaultAnswer(problem);
       log.dbg('[雨课堂助手][WARN][AutoAnswer] 无 API Key，使用本地默认答案:', JSON.stringify(parsed));
 
-      // 提交答案（根据时限自动选择 answer/retry 逻辑）
       await submitAnswer(problem, parsed, {
         startTime: status.startTime,
         endTime: status.endTime,
         forceRetry: false,
-        autoGate: false,            // 延时已在 autoAnswerTime 调度阶段做过
+        autoGate: false,
         lessonId: repo.currentLessonId,
       });
 
-      // 更新状态与UI
       actions.onAnswerProblem(problem.problemId, parsed);
       status.done = true;
       status.answering = false;
 
       ui.toast('使用默认答案完成作答（未配置 API Key）', 3000);
       showAutoAnswerPopup(problem, '（本地默认答案：无 API Key）');
-
       log.dbg('[雨课堂助手][INFO][AutoAnswer] 默认答案提交流程结束');
-      return; // 提前返回，避免继续走图像+AI流程
+      return;
     }
 
-    const slideId = status.slideId;
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目所在幻灯片:', slideId);
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] =================================');
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...');
-    
-    let imageBase64 = await captureSlideImage(slideId);
-    
-    // 如果获取幻灯片图片失败，回退到DOM截图
-    if (!imageBase64) {
-      log.dbg('[雨课堂助手][WARN][AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...');
-      const fallbackImage = await captureProblemForVision();
-      
-      if (!fallbackImage) {
-        status.answering = false;
-        log.err('[雨课堂助手][ERR][AutoAnswer] 所有截图方法都失败');
-        return ui.toast('无法获取题目图像，跳过自动作答', 3000);
-      }
-      
-      imageBase64 = fallbackImage;
-      log.dbg('[雨课堂助手][INFO][AutoAnswer] DOM截图成功');
-    } else {
-      log.dbg('[雨课堂助手][INFO][AutoAnswer] 幻灯片图片获取成功');
-    }
-    
-    // 构建提示
-    const hasTextInfo = problem.body && problem.body.trim();
-    const textPrompt = formatProblemForVision(problem, PROBLEM_TYPE_MAP, hasTextInfo);
-    
-    // 调用 AI（带题型提示，解析器按题型取答案形状）
     ui.toast('AI 正在分析题目...', 2000);
-    const aiAnswer = await queryAIVision(imageBase64, textPrompt, ui.config.ai, { problemType: problem.problemType });
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] AI回答:', aiAnswer);
-    
-    // 解析答案
-    const parsed = parseAIAnswer(problem, aiAnswer);
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] 解析结果:', parsed);
-    
-    if (!parsed) {
-      status.answering = false;
-      log.err('[雨课堂助手][ERR][AutoAnswer] 解析失败，AI回答格式不正确');
-      return ui.toast('无法解析AI答案，请检查格式', 3000);
+    const r = await enqueueAutoAnswer(async () => {
+      const idle = await waitAIIdle();
+      if (!idle) throw new Error('AI 面板长时间占用，已跳过本次自动作答');
+      return askAIForProblem(problem, { autoSubmit: true });
+    });
+
+    if (r?.submitInfo?.route) {
+      status.done = true;
+      log.dbg('[雨课堂助手][INFO][AutoAnswer] 工具提交成功:', r.submitInfo.route);
+      ui.toast(r.submitInfo.route === 'retry' ? '自动作答完成（补交）' : '自动作答完成', 3000);
+      showAutoAnswerPopup(problem, r.submitInfo.display || '');
+      return;
     }
 
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] 准备提交答案:', JSON.stringify(parsed));
-    
-    // 提交答案
-    await submitAnswer(problem, parsed, {
-      startTime: status.startTime,
-      endTime: status.endTime,
-      forceRetry: false,
-      autoGate: false,              // 延时已在 autoAnswerTime 调度阶段做过
-      lessonId: repo.currentLessonId
-    });
-    
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] 提交成功');
-    
-    // 更新状态
-    actions.onAnswerProblem(problem.problemId, parsed);
-    status.done = true;
-    status.answering = false;
-    
-    ui.toast(`自动作答完成`, 3000);
-    showAutoAnswerPopup(problem, aiAnswer);
-    
+    // 模型两次都没调用工具（或工具提交失败）
+    log.warn('[雨课堂助手][WARN][AutoAnswer] 模型未完成工具提交:', r?.submitInfo || null);
+    if (ui.config.autoAnswerFallbackDefault) {
+      const parsed = parseAIAnswer(problem, r?.res?.content || '');
+      if (parsed) {
+        const route = await submitProblemAnswer(problem, parsed, {
+          startTime: status.startTime,
+          endTime: status.endTime,
+          forceRetry: false,
+        });
+        status.done = true;
+        ui.toast(route === 'retry' ? '自动作答完成（补交）' : '自动作答完成', 3000);
+        showAutoAnswerPopup(problem, r?.res?.content || '');
+        return;
+      }
+      log.warn('[雨课堂助手][WARN][AutoAnswer] 正文也无法解析出答案，放弃');
+    }
+    ui.toast('自动作答失败：模型未调用提交工具', 4000);
   } catch (e) {
     log.err('[雨课堂助手][ERR][AutoAnswer] 失败:', e);
     log.err('[雨课堂助手][ERR][AutoAnswer] 错误堆栈:', e.stack);
-    status.answering = false;
     ui.toast(`自动作答失败: ${e.message}`, 4000);
+  } finally {
+    status.answering = false;
   }
 }
 
@@ -314,20 +304,13 @@ export const actions = {
   },
 
   async submit(problem, content, opts = {}) {
-    const result = this.parseManual(problem.problemType, content);
+    const result = parseManualAnswer(problem.problemType, content);
     if (!result || (Array.isArray(result) && !result.length)) {
       ui.toast('答案为空或无法识别（选择题为选项字母，填空每空一行/逗号分隔）', 2500);
       return null;
     }
-    const { route } = await submitAnswer(problem, result, {
-      lessonId: repo.currentLessonId,
-      autoGate: false,               // 手动提交不套自动延迟
-      startTime: opts.startTime,
-      endTime: opts.endTime,
-      forceRetry: !!opts.forceRetry, // 过期题补交走 /problem/retry
-    });
-    this.onAnswerProblem(problem.problemId, result);
-    return route;   // 'answer' | 'retry'，UI 据此提示「提交成功」/「补交成功」
+    // 与 AI 工具调用共用同一条提交链路（含过期补交判断与本地状态更新）
+    return submitProblemAnswer(problem, result, opts);
   },
 
   parseManual(problemType, content) {

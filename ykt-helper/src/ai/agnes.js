@@ -45,6 +45,7 @@ function sseParser(onEvent) {
  * @param {(delta:string)=>void} [opts.onReasoning]    流式思考增量
  * @param {boolean} [opts.thinking]     是否开启思考（默认 true，reasoning_effort 取配置）
  * @param {Array}  [opts.tools]         工具定义
+ * @param {string} [opts.toolChoice]    'auto' | 'required'（默认 auto）
  * @param {Object} [opts.override]      { baseUrl, apiKey, model, reasoningEffort } 覆盖内置配置
  * @param {number} [opts.timeoutMs]
  * @returns {Promise<{content:string, reasoning:string, toolCalls?:Array, usage?:Object}>}
@@ -101,7 +102,11 @@ export async function agnesChat(opts) {
 
   const body = { model, messages: opts.messages };
   if (thinking && effort && effort !== 'off') body.reasoning_effort = effort;
-  if (opts.tools && opts.tools.length) { body.tools = opts.tools; body.tool_choice = 'auto'; }
+  if (opts.tools && opts.tools.length) {
+    body.tools = opts.tools;
+    // auto：模型自行决定；required：强制调用（自动作答用，保证一定会提交）
+    body.tool_choice = opts.toolChoice || 'auto';
+  }
   const stream = !!opts.stream;
   if (stream) body.stream = true;
 
