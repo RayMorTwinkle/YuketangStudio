@@ -49,6 +49,15 @@ function deadlineText(ms) {
   return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+const TYPE_CODE = {
+  SingleChoice: 1,
+  MultipleChoice: 2,
+  Judgement: 3,
+  Judgment: 3,
+  FillBlank: 4,
+  Subjective: 5,
+};
+
 function typeText(t) {
   const map = {
     FillBlank: '填空题', SingleChoice: '单选题', MultipleChoice: '多选题',
@@ -115,9 +124,13 @@ function renderQuestions() {
     <div class="ap-qhead">
       <button type="button" id="ykt-ap-back">← 返回作业列表</button>
       <b>${escapeHtml(viewTitle || '当前试卷')}</b>
+      ${viewAssignment?.oldId ? '<button type="button" id="ykt-ap-goto-submit">去交卷</button>' : ''}
     </div>
     <div class="quiz-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
   $('#ykt-ap-back')?.addEventListener('click', showListView);
+  $('#ykt-ap-goto-submit')?.addEventListener('click', () => {
+    if (viewAssignment?.oldId) location.href = oldUrl(viewAssignment);
+  });
 }
 
 function renderCurrentCard() {
@@ -242,14 +255,20 @@ async function aiForQuestion(index) {
     setStatus(`正在准备第 ${index + 1} 题的题图…`);
     const dataUrl = await quizQuestionDataUrl(viewData, index, 2);
     const p = viewData.Slides[index].Problem || {};
+    const code = TYPE_CODE[p.Type] || 0;
+    const choice = code >= 1 && code <= 3;   // 选择题/判断题才启用「暂存答案」工具
+    const quizId = String(viewAssignment?.oldId || window.quizID || '');
     ui.showAIPanel?.(true);
     await askAIForProblem({
-      problemId: `quiz_${viewAssignment?.oldId || window.quizID || 'x'}_${index}`,
-      problemType: 4,
+      problemId: `quiz_${quizId}_${index}`,
+      problemType: code || 4,
       body: `第 ${index + 1} 题（${typeText(p.Type)}，${p.Score ?? ''} 分）`,
       options: [],
       __imageDataUrl: dataUrl,
-      __noSubmit: true,
+      __noSubmit: !choice,
+      __submitTarget: choice ? 'quiz' : undefined,
+      __quizId: quizId,
+      __problemId: p.ProblemID,
     });
     setStatus('');
   } catch (e) {

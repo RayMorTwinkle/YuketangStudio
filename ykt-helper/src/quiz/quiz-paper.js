@@ -267,3 +267,28 @@ export async function quizQuestionDataUrl(data, index, scale = 2) {
   const canvas = await composeQuestion(data, index, scale);
   return canvas.toDataURL('image/jpeg', 0.9);
 }
+
+
+/**
+ * 作业单题暂存（不会交卷）。
+ * POST /v/quiz/cache_each_result/{quizId}/ { results:[{problemID,result,time}] }
+ */
+export async function cacheQuizAnswer({ quizId, problemId, result }) {
+  const token = (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || '';
+  const res = Array.isArray(result) ? result.join('') : String(result ?? '');
+  const payload = {
+    results: [{ problemID: problemId, result: res, time: Math.ceil(Date.now() / 1000) }],
+  };
+  const r = await fetch(`${location.origin}/v/quiz/cache_each_result/${quizId}/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'X-CSRFToken': decodeURIComponent(token) } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.success === false) throw new Error(j.msg || `HTTP ${r.status}`);
+  return j;
+}

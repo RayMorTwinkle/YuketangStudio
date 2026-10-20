@@ -8,6 +8,7 @@ import tpl from './ai.html';
 import { log } from '../../core/log.js';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
+import { cacheQuizAnswer } from '../../quiz/quiz-paper.js';
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { resolveCurrentSlideImage } from '../slide-image.js';
@@ -438,9 +439,12 @@ async function renderToolCard(aiBubble, { problem, args, reason, autoSubmit, deg
   const card = document.createElement('div');
   card.className = 'ykt-tool-card';
 
+  const isQuiz = problem?.__submitTarget === 'quiz';
   const title = document.createElement('div');
   title.className = 'ykt-tool-title';
-  title.textContent = degraded ? '📤 提交答案（文本解析）' : '📤 提交答案';
+  title.textContent = isQuiz
+    ? '📥 暂存答案（作业）'
+    : (degraded ? '📤 提交答案（文本解析）' : '📤 提交答案');
   card.appendChild(title);
 
   const ans = document.createElement('div');
@@ -459,7 +463,7 @@ async function renderToolCard(aiBubble, { problem, args, reason, autoSubmit, deg
   bar.className = 'ykt-tool-actions';
   const btn = document.createElement('button');
   btn.className = 'ykt-tool-submit';
-  btn.textContent = autoSubmit ? '自动提交中…' : '提交';
+  btn.textContent = autoSubmit ? '自动提交中…' : (isQuiz ? '暂存' : '提交');
   bar.appendChild(btn);
   card.appendChild(bar);
 
@@ -473,6 +477,29 @@ async function renderToolCard(aiBubble, { problem, args, reason, autoSubmit, deg
 
   const doSubmit = async () => {
     if (btn.disabled) return null;
+    // 作业题：只暂存单题，不交卷、不弹提交确认
+    if (isQuiz) {
+      btn.disabled = true;
+      btn.textContent = '暂存中…';
+      stEl.textContent = '';
+      try {
+        await cacheQuizAnswer({
+          quizId: problem.__quizId,
+          problemId: problem.__problemId,
+          result: args.result,
+        });
+        card.classList.add('done');
+        btn.textContent = '已暂存';
+        stEl.textContent = '✅ 已暂存（未交卷）';
+        ui.toast?.('✅ 已暂存，未交卷', 2500);
+        return 'cache';
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '重试暂存';
+        stEl.textContent = `❌ 暂存失败：${e?.message || e}`;
+        return null;
+      }
+    }
     const st = repo.problemStatus.get(String(problem.problemId));
     const offset = Number.isFinite(st?.clockOffset) ? st.clockOffset : 0;
     const endTime = Number.isFinite(st?.endTime) ? st.endTime : undefined;
@@ -575,7 +602,8 @@ async function runSendInner({
   const ctxSlide = pickCurrentSlide().slide;
   const problem = problemOverride || ctxSlide?.problem || null;
   const problemType = Number(problem?.problemType);
-  const canSubmit = !!problem && !problem.__noSubmit && problemType >= 1 && problemType <= 5;
+  const canSubmit = !!problem && !problem.__noSubmit
+    && (problem.__submitTarget === 'quiz' || (problemType >= 1 && problemType <= 5));
 
   // 自动作答使用独立会话：不污染用户聊天，也不会把上一题的上下文带进来
   const conv = autoSubmit ? [] : history;

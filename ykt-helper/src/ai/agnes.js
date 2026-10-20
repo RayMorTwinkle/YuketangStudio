@@ -16,6 +16,8 @@ export function makeChatUrl(baseUrl) {
   let base = String(baseUrl || '').replace(/\/+$/, '');
   if (!base) base = 'https://api.agnes-ai.cn/v1';
   if (base.includes('/chat/completions')) return base;
+  // 火山方舟：/api/v3 或 /api/plan/v3 直接接 /chat/completions（没有 /v1）
+  if (/\/api\/(plan\/)?v\d+$/i.test(base)) return base + '/chat/completions';
   if (base.includes('/v1')) return base + '/chat/completions';
   if (base.includes('/openai')) return base + '/v1/chat/completions';
   return base + '/v1/chat/completions';

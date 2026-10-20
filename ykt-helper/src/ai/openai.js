@@ -46,16 +46,11 @@ function getActiveProfile(aiCfg) {
 
 function makeChatUrl(profile) {
   let base = (profile.baseUrl || 'https://api.deepseek.com').replace(/\/+$/,'');
-  if (!base.includes('/chat/completions')) {
-    if (base.includes('/v1')) {
-      base = base + '/chat/completions';
-    } else if (base.includes('/openai')) {
-      base = base + '/v1/chat/completions';
-    } else {
-      base = base + '/v1/chat/completions';
-    }
-  }
-  return base;
+  if (base.includes('/chat/completions')) return base;
+  if (/\/api\/(plan\/)?v\d+$/i.test(base)) return base + '/chat/completions';
+  if (base.includes('/v1')) return base + '/chat/completions';
+  if (base.includes('/openai')) return base + '/v1/chat/completions';
+  return base + '/v1/chat/completions';
 }
 
 // -----------------------------------------------
