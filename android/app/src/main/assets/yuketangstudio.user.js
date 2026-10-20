@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.6.10
+// @version      0.6.11
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -1023,55 +1023,6 @@
     const mime = v.startsWith("iVBORw0KGgo") ? "image/png" : v.startsWith("R0lGOD") ? "image/gif" : v.startsWith("UklGR") ? "image/webp" : "image/jpeg";
     return `data:${mime};base64,${v}`;
   }
-  // src/ai/dsml.js
-  // DeepSeek V4 的 DSML 工具调用文本解析。
-  // 部分自定义端点/网关不会把 DSML 转成 OpenAI 的 tool_calls，而是把标记漏进 content，
-  // 表现为「模型明明调了工具，客户端却认为它没调」。
-    const OPEN_RE = /<[｜|]{1,2}DSML[｜|]{1,2}\s*/gi;
-  const CLOSE_RE = /<\/[｜|]{1,2}DSML[｜|]{1,2}\s*/gi;
-  function normalize(text) {
-    return String(text || "").replace(OPEN_RE, "<DSML ").replace(CLOSE_RE, "</DSML ");
-  }
-  /** 从 content/reasoning 文本里解析 DSML 工具调用，返回 OpenAI 格式的 toolCalls */  function parseDsmlToolCalls(text) {
-    const s = normalize(text);
-    if (!/<DSML\s+invoke/i.test(s)) return [];
-    const out = [];
-    const invokeRe = /<DSML\s+invoke\s+name="([^"]+)"\s*>([\s\S]*?)(?:<\/DSML\s+invoke>|$)/gi;
-    let m;
-    while (m = invokeRe.exec(s)) {
-      const name = m[1];
-      const body = m[2] || "";
-      const args = {};
-      const paramRe = /<DSML\s+parameter\s+name="([^"]+)"(?:\s+string="(true|false)")?\s*>([\s\S]*?)(?:<\/DSML\s+parameter>|$)/gi;
-      let p;
-      while (p = paramRe.exec(body)) {
-        const key = p[1];
-        const isString = p[2] !== "false";
-        const raw = String(p[3] || "").trim();
-        if (isString) args[key] = raw; else try {
-          args[key] = JSON.parse(raw);
-        } catch {
-          args[key] = raw;
-        }
-      }
-      out.push({
-        id: `dsml_${out.length + 1}`,
-        type: "function",
-        function: {
-          name: name,
-          arguments: JSON.stringify(args)
-        }
-      });
-    }
-    return out;
-  }
-  /** 去掉正文里的 DSML 标记，避免展示给用户 */  function stripDsml(text) {
-    let s = normalize(text);
-    s = s.replace(/<DSML\s+(?:tool_?calls|calls)>[\s\S]*?<\/DSML\s+(?:tool_?calls|calls)>/gi, "");
-    s = s.replace(/<DSML\s+invoke[\s\S]*?<\/DSML\s+invoke>/gi, "");
-    s = s.replace(/<\/?DSML[^>]*>/gi, "");
-    return s.trim();
-  }
   // src/core/telemetry.js
   // 匿名使用统计：installId（首启生成 UUID）+ 平台 + 版本 + 是否用码 +
   // 当日调用次数 + 首字时间/总时长聚合 → POST /yuketangstudio/telemetry
@@ -1482,17 +1433,6 @@
       toolCalls: []
     };
   }
-  /** 部分自定义端点把 DSML 工具调用漏进正文：从 content/reasoning 里补解析，并去掉标记 */  function finalizeResult(r) {
-    if (!r) return r;
-    const raw = `${r.content || ""}\n${r.reasoning || ""}`;
-    if (!(Array.isArray(r.toolCalls) && r.toolCalls.length)) {
-      const dsml = parseDsmlToolCalls(raw);
-      if (dsml.length) r.toolCalls = dsml;
-    }
-    if (r.content && /DSML/i.test(r.content)) r.content = stripDsml(r.content);
-    if (r.reasoning && /DSML/i.test(r.reasoning)) r.reasoning = stripDsml(r.reasoning);
-    return r;
-  }
   async function agnesChat(opts) {
     const mock = getTestMock();
     if (mock) return mockChat(opts, mock);
@@ -1562,7 +1502,7 @@
       const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
       smooth.end();
       recordTele();
-      return finalizeResult(r);
+      return r;
     } catch (e) {
       if (!shouldFallback(e)) {
         smooth.abort();
@@ -1573,7 +1513,7 @@
         const r = await gmXhrStream(url, apiKey, body, o2, timeoutMs);
         smooth.end();
         recordTele();
-        return finalizeResult(r);
+        return r;
       } catch (e2) {
         smooth.abort();
         throw e2;
@@ -1583,13 +1523,13 @@
         try {
       const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
       recordTele();
-      return finalizeResult(r);
+      return r;
     } catch (e) {
       if (!shouldFallback(e)) throw e;
       dlog("fetch failed, fallback to GM_xhr:", e?.message || e);
       const r = await gmXhrOnce(url, apiKey, body, timeoutMs, o2);
       recordTele();
-      return finalizeResult(r);
+      return r;
     }
   }
   function pickDelta(obj, opts, acc) {
@@ -7016,7 +6956,7 @@
       if (typeof GM_info !== "undefined" && GM_info.script?.version) return GM_info.script.version;
     } catch {}
     try {
-      return "0.6.10";
+      return "0.6.11";
     } catch {}
     return "0.0.0";
   }
@@ -7191,8 +7131,8 @@
   function mountAboutPanel() {
     if (mounted$2) return root$2;
     const host = document.createElement("div");
-    // "0.6.10" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.10"}<`);
+    // "0.6.11" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.11"}<`);
     document.body.appendChild(host.firstElementChild);
     root$2 = document.getElementById("ykt-about-panel");
     const $btn = root$2.querySelector("#ykt-about-check");
