@@ -30,7 +30,7 @@ function show() {
       <div class="ykt-ob-title">👋 欢迎使用 YuketangStudio</div>
       <div class="ykt-ob-sub">第一次用？30 秒了解 3 个入口；如果你已经会用，完全可以跳过。</div>
       <ul class="ykt-ob-list">
-        <li><b>工具栏</b>：左下角（手机端是左侧竖排；作业页会多一个「作业」按钮）</li>
+        <li><b>工具栏</b>：左下角（手机端是左侧竖排的 3 个按钮）</li>
         <li><b>历史课件下载</b>：主面板 →「课件」</li>
         <li><b>PPT 问答</b>：主面板 →「对话」</li>
       </ul>

@@ -399,6 +399,10 @@ function setStreamingFlag(on) {
 
 /** 取指定题目所在页的图片（自动作答时题目可能已不在当前页） */
 async function resolveImageForProblem(problem) {
+  // 作业题：调用方直接传入拼好的题图（没有课堂 slide 可截）
+  if (problem?.__imageDataUrl) {
+    return { dataUrl: ensureImageUrl(problem.__imageDataUrl), source: 'quiz-image' };
+  }
   const status = repo.problemStatus.get(String(problem?.problemId));
   const sid = status?.slideId;
   if (sid != null) {
@@ -571,7 +575,7 @@ async function runSendInner({
   const ctxSlide = pickCurrentSlide().slide;
   const problem = problemOverride || ctxSlide?.problem || null;
   const problemType = Number(problem?.problemType);
-  const canSubmit = !!problem && problemType >= 1 && problemType <= 5;
+  const canSubmit = !!problem && !problem.__noSubmit && problemType >= 1 && problemType <= 5;
 
   // 自动作答使用独立会话：不污染用户聊天，也不会把上一题的上下文带进来
   const conv = autoSubmit ? [] : history;
