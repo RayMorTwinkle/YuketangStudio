@@ -870,22 +870,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 下载完成 → 拉起系统安装器（package installer） */
+    /**
+     * 下载完成 → 拉起系统安装器。
+     * 优先用我们自己的 FileProvider：部分国产 ROM 的安装器读不了
+     * DownloadManager 的 content://downloads/... URI，会直接闪退。
+     * FileProvider 不可用时再退回 DownloadManager URI。
+     */
     private fun installApk(downloadId: Long) {
         try {
-            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-            val uri = dm.getUriForDownloadedFile(downloadId) ?: run {
-                toast("没找到已下载的安装包")
+            val name = prefs.getString("apkDl.name", "") ?: ""
+            val path = apkDownloadPath(name)
+            val file = java.io.File(path)
+            if (path.isNotBlank() && file.exists() && file.length() > 0 && file.canRead()) {
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    this, "$packageName.fileprovider", file,
+                )
+                launchInstaller(uri, path)
                 return
             }
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            val uri = dm.getUriForDownloadedFile(downloadId)
+            if (uri != null) {
+                launchInstaller(uri, path)
+            } else {
+                toast("没找到已下载的安装包")
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "拉起安装器失败", e)
+            toast("无法打开安装器：${e.message ?: e.javaClass.simpleName}")
+        }
+    }
+
+    private fun launchInstaller(uri: Uri, path: String) {
+        try {
             startActivity(Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             })
-            Log.i(TAG, "拉起安装器 id=$downloadId")
-        } catch (e: Exception) {
-            Log.e(TAG, "拉起安装器失败", e)
-            toast("无法打开安装器：${e.message}")
+            Log.i(TAG, "拉起安装器: $uri")
+        } catch (e: Throwable) {
+            Log.e(TAG, "启动安装器失败", e)
+            toast("没有可用的安装器，安装包位置：$path")
         }
     }
 
@@ -925,7 +950,7 @@ class MainActivity : AppCompatActivity() {
         updatePoll = null
     }
 
-    /** 每 500ms 查询 DownloadManager，刷新进度与按钮 */
+    /** 轮询进行中的下载；完成后自动重开页面，把安装包归到「已下载」 */
     private fun startUpdatePoll(
         progressBar: ProgressBar?,
         tvPercent: TextView?,
@@ -933,83 +958,47 @@ class MainActivity : AppCompatActivity() {
         actionBtn: Button?,
     ) {
         stopUpdatePoll()
-        val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
         val run = object : Runnable {
             override fun run() {
                 val id = prefs.getLong("apkDl.id", -1L)
-                if (id <= 0) {
-                    tvStatus?.text = "还没有下载过更新包"
-                    actionBtn?.text = "检查更新"
-                    actionBtn?.isEnabled = true
-                    actionBtn?.setOnClickListener { checkAppUpdate() }
-                    return
-                }
-
-                var status = -1
-                var soFar = 0L
-                var total = -1L
-                var reason = 0
-                try {
-                    dm.query(DownloadManager.Query().setFilterById(id))?.use { c ->
-                        if (c.moveToFirst()) {
-                            status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                            soFar = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                            total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                            reason = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "查询下载进度失败", e)
-                }
-
-                when (status) {
+                if (id <= 0) return
+                val info = queryDownload(id) ?: return
+                when (info.status) {
                     DownloadManager.STATUS_RUNNING -> {
-                        progressBar?.isIndeterminate = total <= 0
-                        if (total > 0) {
-                            val pct = ((soFar * 100) / total).toInt().coerceIn(0, 100)
+                        progressBar?.isIndeterminate = info.total <= 0
+                        if (info.total > 0) {
+                            val pct = ((info.soFar * 100) / info.total).toInt().coerceIn(0, 100)
                             progressBar?.progress = pct
-                            tvPercent?.text = "$pct%  ·  ${fmtSize(soFar)} / ${fmtSize(total)}"
+                            tvPercent?.text = "$pct%  ·  ${fmtSize(info.soFar)} / ${fmtSize(info.total)}"
                         } else {
                             tvPercent?.text = "下载中…"
                         }
-                        tvStatus?.text = "正在下载新版本…"
-                        actionBtn?.text = "下载中…"
-                        actionBtn?.isEnabled = false
+                        tvStatus?.text = "正在下载…"
+                        actionBtn?.text = "取消"
                     }
                     DownloadManager.STATUS_PENDING -> {
                         tvStatus?.text = "等待下载…"
-                        actionBtn?.text = "等待中…"
-                        actionBtn?.isEnabled = false
+                        actionBtn?.text = "取消"
                     }
                     DownloadManager.STATUS_PAUSED -> {
-                        tvStatus?.text = "已暂停，可在通知栏继续下载"
-                        actionBtn?.text = "已暂停"
-                        actionBtn?.isEnabled = false
+                        tvStatus?.text = "已暂停，可在通知栏继续"
+                        actionBtn?.text = "取消"
                     }
                     DownloadManager.STATUS_SUCCESSFUL -> {
                         progressBar?.isIndeterminate = false
                         progressBar?.progress = 100
-                        tvPercent?.text = "100%  ·  ${fmtSize(if (total > 0) total else soFar)}"
-                        tvStatus?.text = "下载完成，可以安装"
-                        actionBtn?.text = "安装"
-                        actionBtn?.isEnabled = true
-                        actionBtn?.setOnClickListener { installApk(id) }
+                        tvPercent?.text = "100%"
+                        tvStatus?.text = "下载完成"
                         stopUpdatePoll()
+                        uiHandler.postDelayed({
+                            if (updateSheet?.isShowing == true) showDownloads()
+                        }, 500)
                         return
                     }
                     DownloadManager.STATUS_FAILED -> {
-                        tvStatus?.text = "下载失败：${downloadFailReason(reason)}"
-                        actionBtn?.text = "重试下载"
-                        actionBtn?.isEnabled = true
-                        actionBtn?.setOnClickListener { retryApkDownload() }
+                        tvStatus?.text = "下载失败：${downloadFailReason(info.reason)}"
                         stopUpdatePoll()
                         return
-                    }
-                    else -> {
-                        tvStatus?.text = "下载记录已失效，可重新下载"
-                        actionBtn?.text = "重新下载"
-                        actionBtn?.isEnabled = true
-                        actionBtn?.setOnClickListener { retryApkDownload() }
                     }
                 }
                 uiHandler.postDelayed(this, 500)
@@ -1573,41 +1562,82 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 下载管理：更新包（进度/路径/安装）+ 已下载文件列表 */
+    private data class DlInfo(val status: Int, val soFar: Long, val total: Long, val reason: Int)
+
+    private fun queryDownload(id: Long): DlInfo? {
+        return try {
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            dm.query(DownloadManager.Query().setFilterById(id))?.use { c ->
+                if (!c.moveToFirst()) return@use null
+                DlInfo(
+                    c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
+                    c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                    c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)),
+                    c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "查询下载状态失败", e)
+            null
+        }
+    }
+
+    private fun sectionTitle(parent: LinearLayout, text: String) {
+        parent.addView(TextView(this).apply {
+            this.text = text
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(TEXT_SEC)
+            setPadding(dp(16), dp(10), dp(16), dp(4))
+        })
+    }
+
+    private fun emptyHint(parent: LinearLayout, text: String) {
+        parent.addView(TextView(this).apply {
+            this.text = text
+            textSize = 13f
+            setTextColor(TEXT_SEC)
+            setPadding(dp(16), dp(6), dp(16), dp(12))
+        })
+    }
+
+    /** 下载管理：只分「正在下载」和「已下载」两个区域 */
     private fun showDownloads() {
-        // 先关掉上一次打开的下载管理（重试下载会再次调用这里），避免面板叠加
         updateSheet?.dismiss()
-        val files = listDownloadedFiles()
         val apkId = prefs.getLong("apkDl.id", -1L)
-        val version = prefs.getString("apkDl.version", "") ?: ""
-        val name = prefs.getString("apkDl.name", "") ?: ""
-        val path = apkDownloadPath(name)
+        val apkName = prefs.getString("apkDl.name", "") ?: ""
+        val apkPath = apkDownloadPath(apkName)
+        val info = if (apkId > 0) queryDownload(apkId) else null
+        // 下载中/失败时 DownloadManager 可能已经建了目标文件，别让它同时出现在「已下载」
+        val hidePartial = info != null && info.status != DownloadManager.STATUS_SUCCESSFUL
+        val files = listDownloadedFiles().filter { !(hidePartial && it.name == apkName) }
 
         var progressBar: ProgressBar? = null
         var tvPercent: TextView? = null
         var tvStatus: TextView? = null
-        var tvPath: TextView? = null
         var actionBtn: Button? = null
 
         val sheet = showSheet("下载管理") { layout ->
-            if (apkId > 0) {
+            // ===== 正在下载 =====
+            sectionTitle(layout, "正在下载")
+            if (info == null || info.status == DownloadManager.STATUS_SUCCESSFUL) {
+                emptyHint(layout, "暂无进行中的下载")
+            } else {
                 layout.addView(TextView(this).apply {
-                    text = "更新包" + if (version.isNotBlank()) " v$version" else ""
-                    textSize = 15f
+                    text = apkName.ifBlank { "更新包" }
+                    textSize = 14f
                     setTypeface(typeface, Typeface.BOLD)
                     setTextColor(TXT)
-                    setPadding(dp(16), dp(6), dp(16), dp(2))
+                    setPadding(dp(16), dp(2), dp(16), dp(2))
                 })
-
                 progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
                     max = 100
                     progress = 0
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ).apply { setMargins(dp(16), dp(10), dp(16), dp(2)) }
+                    ).apply { setMargins(dp(16), dp(8), dp(16), dp(2)) }
                 }
                 layout.addView(progressBar)
-
                 tvPercent = TextView(this).apply {
                     text = "—"
                     textSize = 12f
@@ -1615,84 +1645,78 @@ class MainActivity : AppCompatActivity() {
                     setPadding(dp(16), dp(2), dp(16), dp(2))
                 }
                 layout.addView(tvPercent)
-
                 tvStatus = TextView(this).apply {
-                    text = "准备中…"
+                    text = if (info.status == DownloadManager.STATUS_FAILED) {
+                        "下载失败：${downloadFailReason(info.reason)}"
+                    } else {
+                        "准备中…"
+                    }
                     textSize = 13f
                     setTextColor(TXT)
                     setPadding(dp(16), dp(2), dp(16), dp(6))
                 }
                 layout.addView(tvStatus)
 
-                layout.addView(TextView(this).apply {
-                    text = "安装包保存位置"
-                    textSize = 12f
-                    setTextColor(TEXT_SEC)
-                    setPadding(dp(16), dp(10), dp(16), dp(2))
-                })
-
-                tvPath = TextView(this).apply {
-                    text = path.ifBlank { "—" }
-                    textSize = 12f
-                    setTextColor(TXT)
-                    setTextIsSelectable(true)
-                    setPadding(dp(16), dp(2), dp(16), dp(2))
-                }
-                layout.addView(tvPath)
-
-                val btnRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    setPadding(dp(16), dp(12), dp(16), dp(4))
-                }
                 actionBtn = Button(this).apply {
-                    text = "下载中…"
-                    isEnabled = false
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    text = if (info.status == DownloadManager.STATUS_FAILED) "重试" else "取消"
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { setMargins(dp(16), dp(2), dp(16), dp(8)) }
                 }
-                val copyBtn = Button(this).apply {
-                    text = "复制路径"
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        marginStart = dp(8)
-                    }
-                    setOnClickListener {
-                        val p = tvPath?.text?.toString().orEmpty()
-                        if (p.isBlank() || p == "—") return@setOnClickListener toast("暂无路径")
-                        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
-                            .setPrimaryClip(ClipData.newPlainText("apk-path", p))
-                        toast("已复制保存路径")
+                if (info.status == DownloadManager.STATUS_FAILED) {
+                    actionBtn?.setOnClickListener { retryApkDownload() }
+                } else {
+                    actionBtn?.setOnClickListener {
+                        runCatching {
+                            (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).remove(apkId)
+                        }
+                        stopUpdatePoll()
+                        toast("已取消下载")
+                        showDownloads()
                     }
                 }
-                btnRow.addView(actionBtn)
-                btnRow.addView(copyBtn)
-                layout.addView(btnRow)
-
-                layout.addView(TextView(this).apply {
-                    text = "安装失败时，可用文件管理器打开上面的目录手动安装。"
-                    textSize = 11f
-                    setTextColor(TEXT_SEC)
-                    setPadding(dp(16), dp(4), dp(16), dp(8))
-                })
-                sheetDivider(layout)
+                layout.addView(actionBtn)
             }
+            sheetDivider(layout)
 
-            layout.addView(TextView(this).apply {
-                text = "已下载文件"
-                textSize = 13f
-                setTextColor(TEXT_SEC)
-                setPadding(dp(16), dp(10), dp(16), dp(4))
-            })
+            // ===== 已下载 =====
+            sectionTitle(layout, "已下载")
             if (files.isEmpty()) {
-                layout.addView(TextView(this).apply {
-                    text = "暂无下载文件"
-                    textSize = 13f
-                    setTextColor(TEXT_SEC)
-                    setPadding(dp(16), dp(8), dp(16), dp(16))
-                })
+                emptyHint(layout, "暂无已下载文件")
             } else {
                 files.forEach { f ->
+                    val isApk = f.name.endsWith(".apk", true)
                     val date = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(f.lastModified()))
-                    sheetRow(layout, "📄", f.name, "${fmtSize(f.length())} · $date") { openDownloadedFile(f) }
+                    val sub = "${fmtSize(f.length())} · $date" + if (isApk) " · 点击安装" else ""
+                    sheetRow(layout, if (isApk) "📦" else "📄", f.name, sub) { openDownloadedFile(f) }
                 }
+            }
+
+            // 安装包目录：安装失败时方便去文件管理器手动找
+            if (apkPath.isNotBlank() && files.any { it.name.endsWith(".apk", true) }) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(16), dp(8), dp(16), dp(4))
+                }
+                row.addView(TextView(this).apply {
+                    text = "安装包目录：$apkPath"
+                    textSize = 11f
+                    setTextColor(TEXT_SEC)
+                    setTextIsSelectable(true)
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                row.addView(Button(this).apply {
+                    text = "复制"
+                    textSize = 11f
+                    setPadding(dp(6), 0, dp(6), 0)
+                    setOnClickListener {
+                        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
+                            .setPrimaryClip(ClipData.newPlainText("apk-path", apkPath))
+                        toast("已复制安装包目录")
+                    }
+                })
+                layout.addView(row)
             }
         }
 
@@ -1702,7 +1726,10 @@ class MainActivity : AppCompatActivity() {
             if (activeSheet === sheet) activeSheet = null
             updateSheet = null
         }
-        if (apkId > 0) startUpdatePoll(progressBar, tvPercent, tvStatus, actionBtn)
+        if (info != null && info.status != DownloadManager.STATUS_SUCCESSFUL
+            && info.status != DownloadManager.STATUS_FAILED) {
+            startUpdatePoll(progressBar, tvPercent, tvStatus, actionBtn)
+        }
     }
 
     private fun listDownloadedFiles(): List<java.io.File> {
