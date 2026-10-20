@@ -59,10 +59,14 @@ export function mountAboutPanel() {
     }
   };
 
-  // 讨论群号一键复制（WebView 里 clipboard 可能不可用，copyText 已做回退）
+  // 讨论群号 / 官网地址一键复制（WebView 里 clipboard 可能不可用，copyText 已做回退）
   root.querySelector('#ykt-about-qq-copy')?.addEventListener('click', async () => {
     const ok = await copyText('901466023');
     ui.toast?.(ok ? '已复制群号 901466023' : '复制失败，请手动输入 901466023', 2200);
+  });
+  root.querySelector('#ykt-about-site-copy')?.addEventListener('click', async () => {
+    const ok = await copyText('https://app.raymor.top/yuketangstudio/');
+    ui.toast?.(ok ? '已复制官网地址，发给朋友吧' : '复制失败，请手动输入官网地址', 2200);
   });
 
   $btn.addEventListener('click', runCheck);
