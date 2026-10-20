@@ -197,7 +197,7 @@ export async function agnesChat(opts) {
   } catch (e) {
     if (!shouldFallback(e)) throw e;
     dlog('fetch failed, fallback to GM_xhr:', e?.message || e);
-    const r = await gmXhrOnce(url, apiKey, body, timeoutMs);
+    const r = await gmXhrOnce(url, apiKey, body, timeoutMs, o2);
     recordTele();
     return r;
   }
@@ -221,7 +221,19 @@ function pickDelta(obj, opts, acc) {
   }
 }
 
+/** 等待/排队提示：8s / 25s / 60s 三档；返回清理函数 */
+function armWaitTimers(opts) {
+  const timers = [];
+  if (opts?.onWait) {
+    [8000, 25000, 60000].forEach((ms) => timers.push(setTimeout(() => {
+      try { opts.onWait(ms); } catch {}
+    }, ms)));
+  }
+  return () => { while (timers.length) clearTimeout(timers.pop()); };
+}
+
 async function fetchStream(url, apiKey, body, opts, timeoutMs) {
+  const clearWait = armWaitTimers(opts);
   const ctrl = new AbortController();
   // abort 的 reason 必须带 AbortError 名——否则外层 catch 识别不出中止，
   // 会掉进 GM_xhr 兜底再发一次请求
@@ -259,6 +271,7 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify(body),
     });
+    clearWait();   // 收到响应头 = 排队结束
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
     if (!body.stream) {
       const data = await res.json();
@@ -300,6 +313,7 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
     }
     return acc;
   } finally {
+    clearWait();
     clearTimeout(timer);
     opts.signal?.removeEventListener('abort', onAbort);
   }
@@ -307,6 +321,7 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
 
 function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
   return new Promise((resolve, reject) => {
+    const clearWait = armWaitTimers(opts);
     const acc = { content: '', reasoning: '', toolCalls: [] };
     let seen = 0;
     let sawDone = false;
@@ -332,7 +347,7 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
         reject(Object.assign(new Error(msg), { name: 'AbortError' }));
       }, ms);
     };
-    const finish = (fn, v) => { if (settled) return; settled = true; clearTimeout(watchdog); fn(v); };
+    const finish = (fn, v) => { if (settled) return; settled = true; clearTimeout(watchdog); clearWait(); fn(v); };
 
     arm(90000, '等待首字超时（90s）');
     const handle = gm.xhr({
@@ -342,6 +357,7 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       data: JSON.stringify(body),
       onprogress: (res) => {
+        clearWait();
         const text = res.responseText || '';
         const chunk = text.slice(seen);
         seen = text.length;
@@ -349,6 +365,7 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
         feed(chunk);
       },
       onload: (res) => {
+        clearWait();
         if (res.status !== 200) return finish(reject, new Error(`HTTP ${res.status}: ${(res.responseText || '').slice(0, 200)}`));
         // 兜底：progress 可能漏最后一段（补个 \n 把半行 data: 喂完）
         const text = res.responseText || '';
@@ -365,8 +382,9 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
   });
 }
 
-function gmXhrOnce(url, apiKey, body, timeoutMs) {
+function gmXhrOnce(url, apiKey, body, timeoutMs, opts) {
   return new Promise((resolve, reject) => {
+    const clearWait = armWaitTimers(opts);
     gm.xhr({
       method: 'POST',
       url,
@@ -374,6 +392,7 @@ function gmXhrOnce(url, apiKey, body, timeoutMs) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       data: JSON.stringify(body),
       onload: (res) => {
+        clearWait();
         if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || '').slice(0, 200)}`));
         try {
           const data = JSON.parse(res.responseText);
@@ -381,8 +400,8 @@ function gmXhrOnce(url, apiKey, body, timeoutMs) {
           resolve({ content: m.content || '', reasoning: m.reasoning_content || m.reasoning || '', toolCalls: m.tool_calls, usage: data.usage });
         } catch (e) { reject(new Error('响应解析失败: ' + e.message)); }
       },
-      onerror: () => reject(new Error('网络错误')),
-      ontimeout: () => reject(new Error('请求超时')),
+      onerror: () => { clearWait(); reject(new Error('网络错误')); },
+      ontimeout: () => { clearWait(); reject(new Error('请求超时')); },
     });
   });
 }

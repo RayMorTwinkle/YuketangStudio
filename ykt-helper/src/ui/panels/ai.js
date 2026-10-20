@@ -625,6 +625,17 @@ async function runSendInner({
 
   // AI 气泡（流式，思考中自动展开 → 正文自动折叠）
   const aiBubble = addBubble('ai', '<em>思考中…</em>');
+  // 等待期间的「取消」按钮（放在气泡外，避免被 paint 的 innerHTML 冲掉）
+  let waitText = '思考中…';
+  const waitActions = document.createElement('div');
+  waitActions.style.cssText = 'display:flex;gap:8px;align-items:center;margin:-4px 0 8px 2px';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = '取消';
+  cancelBtn.style.cssText = 'padding:2px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:12px';
+  cancelBtn.addEventListener('click', () => abortStreaming('用户取消'));
+  waitActions.appendChild(cancelBtn);
+  aiBubble.insertAdjacentElement('afterend', waitActions);
   const acc = { content: '', reasoning: '' };
   const renderer = new StreamRenderer();           // 封板/活跃区增量渲染：公式、mermaid 流中即渲染
   let raf = 0;
@@ -642,7 +653,7 @@ async function runSendInner({
           : '')
         + '<div class="ykt-sr-content"></div>';
       renderer.attach(aiBubble.querySelector('.ykt-sr-content'));
-      renderer.update(acc.content, thinking ? '' : '<em>…</em>');
+      renderer.update(acc.content, thinking ? '' : `<em>${waitText}</em>`);
       const rBody = aiBubble.querySelector('.reasoning-body');
       if (rBody) { rBody.textContent = acc.reasoning; rBody.scrollTop = rBody.scrollHeight; }
       const $log = $sel('#ykt-ai-log');
@@ -667,6 +678,15 @@ async function runSendInner({
     toolChoice: autoSubmit ? 'required' : 'auto',
     onDelta: (d) => { acc.content += d; paint(); },
     onReasoning: (d) => { acc.reasoning += d; paint(); },
+    onWait: (ms) => {
+      if (acc.content || acc.reasoning) return;
+      waitText = ms >= 60000
+        ? '等待时间较长，可取消后重试…'
+        : ms >= 25000
+          ? '上游较忙，仍在排队…'
+          : '正在排队，请稍候…';
+      aiBubble.innerHTML = `<em>${waitText}</em>`;
+    },
   });
 
   let res;
@@ -682,6 +702,8 @@ async function runSendInner({
     } else {
       throw e;
     }
+  } finally {
+    waitActions.remove();
   }
 
   acc.content = res.content || acc.content;
@@ -747,6 +769,8 @@ async function runSend(opts = {}) {
       : '';
     if (aborted) {
       addBubble('ai', `<span class="muted">（已中断：${escapeHtml(emsg || '请求被中止')}）</span>${retryBtn}`);
+    } else if (/HTTP 429/.test(emsg)) {
+      addBubble('ai', `<span class="err">当前使用人数较多，请稍后重试</span>${retryBtn}<br/><small>上游已限流，稍等几秒再点重试。</small>`);
     } else {
       addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>${isTimeout ? '提示：上游响应过慢或网络中断，可点重试。' : '提示：到设置里检查 AI 配置的 API Key。'}</small>`);
     }
