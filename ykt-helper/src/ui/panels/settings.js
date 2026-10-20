@@ -296,10 +296,10 @@ export function mountSettingsPanel() {
     const id = `p_${Date.now().toString(36)}`;
     const newP = {
       id,
-      name: '新配置',
-      baseUrl: '',     // 留空让用户填——写死半成品 URL 容易原样保存出 404
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com',   // 默认模板：多数人用 DeepSeek
       apiKey: '',
-      model: '',
+      model: 'deepseek-flash',
       visionModel: '',
       thinking: true,  // 默认开启思考
       reasoningEffort: 'medium',

@@ -31,21 +31,21 @@ function getActiveProfile(aiCfg) {
     if (!legacyKey) return null;
     return {
       id: 'legacy',
-      name: 'Kimi Legacy',
-      baseUrl: 'https://api.moonshot.cn/v1/chat/completions',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com',
       apiKey: legacyKey,
-      model: 'moonshot-v1-8k',
-      visionModel: 'moonshot-v1-8k-vision-preview',
+      model: 'deepseek-flash',
+      visionModel: '',
     };
   }
   const activeId = cfg.activeProfileId;
   const p = profiles.find(p => p.id === activeId) || profiles[0];
   // 不原地改 profile（p 是 config 里的对象）——补默认 baseUrl 走浅拷贝
-  return { ...p, baseUrl: p.baseUrl || 'https://api.moonshot.cn/v1/chat/completions' };
+  return { ...p, baseUrl: p.baseUrl || 'https://api.deepseek.com' };
 }
 
 function makeChatUrl(profile) {
-  let base = (profile.baseUrl || 'https://api.moonshot.cn/v1/chat/completions').replace(/\/+$/,'');
+  let base = (profile.baseUrl || 'https://api.deepseek.com').replace(/\/+$/,'');
   if (!base.includes('/chat/completions')) {
     if (base.includes('/v1')) {
       base = base + '/chat/completions';

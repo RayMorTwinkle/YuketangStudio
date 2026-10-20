@@ -50,7 +50,7 @@ async function tryCloudUnlock(code) {
     if (!d?.ok) return null;
     return {
       cfg: {
-        name: `云端·${d.profile || 'agnes'}`,
+        name: '云端模型',
         baseUrl: CLOUD_BASE,
         apiKey: code,
         model: '',            // 空 → svc 用该码对应 profile 的默认模型
