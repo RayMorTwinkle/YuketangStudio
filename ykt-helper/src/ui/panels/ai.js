@@ -12,7 +12,7 @@ import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from 
 import { agnesChat } from '../../ai/agnes.js';
 import { resolveCurrentSlideImage } from '../slide-image.js';
 import { ensureMermaid, ensureMarked, ensureDOMPurify, ensureKaTeX, gm } from '../../core/env.js';
-import { escapeHtml } from '../../core/dom.js';
+import { escapeHtml, ensureImageUrl } from '../../core/dom.js';
 import { PROBLEM_TYPE_MAP, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 import { SUBMIT_ANSWER_TOOL, toolPromptBlock, normalizeToolArgs, toolReason, isToolUnsupportedError } from '../../ai/tools.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
@@ -404,7 +404,7 @@ async function resolveImageForProblem(problem) {
   if (sid != null) {
     try {
       const img = await captureSlideImage(sid);
-      if (img) return { dataUrl: img, source: 'problem-slide' };
+      if (img) return { dataUrl: ensureImageUrl(img), source: 'problem-slide' };
     } catch (e) { W('captureSlideImage fail:', e); }
   }
   return resolveCurrentSlideImage();
@@ -592,7 +592,7 @@ async function runSendInner({
       reason = r?.reason || '';
     }
     pending.remove();
-    if (dataUrl) content.push({ type: 'image_url', image_url: { url: dataUrl } });
+    if (dataUrl) content.push({ type: 'image_url', image_url: { url: ensureImageUrl(dataUrl) } });
     else if (isAnalyze) attachFailed = reason || '未取到当前 PPT 页';
   }
 
@@ -610,7 +610,7 @@ async function runSendInner({
   for (const c of content) {
     if (c.type === 'image_url') {
       const img = document.createElement('img');
-      img.src = c.image_url.url;
+      img.src = ensureImageUrl(c.image_url.url);
       img.alt = '当前 PPT 页';
       userBubble.appendChild(img);
     }

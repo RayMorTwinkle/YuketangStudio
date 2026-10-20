@@ -3,6 +3,7 @@
 // 默认配置来自开发者模式解锁的内置配置（core/devmode.js），也可传参覆盖
 import { gm } from '../core/env.js';
 import { log } from '../core/log.js';
+import { ensureImageUrl } from '../core/dom.js';
 import { getDevConfig } from '../core/devmode.js';
 import * as telemetry from '../core/telemetry.js';
 import { getTestMock } from '../core/test-mode.js';
@@ -409,7 +410,7 @@ function gmXhrOnce(url, apiKey, body, timeoutMs, opts) {
 /** 便捷方法：单轮提问（可选图片 dataURL 数组），返回 {content, reasoning} */
 export async function agnesAsk(prompt, { images = [], thinking = true, override, onDelta, onReasoning } = {}) {
   const content = [{ type: 'text', text: prompt }];
-  for (const dataUrl of images) content.push({ type: 'image_url', image_url: { url: dataUrl } });
+  for (const dataUrl of images) content.push({ type: 'image_url', image_url: { url: ensureImageUrl(dataUrl) } });
   return agnesChat({
     messages: [{ role: 'user', content }],
     thinking,

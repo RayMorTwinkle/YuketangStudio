@@ -7,7 +7,7 @@ import { fetchAsDataURL } from '../../core/env.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { repo } from '../../state/repo.js';
 import { mdToHtml, getOverride, warmupRichAssets, StreamRenderer } from './ai.js';
-import { escapeHtml } from '../../core/dom.js';
+import { escapeHtml, ensureImageUrl } from '../../core/dom.js';
 import { resolveCurrentSlideImage, slideImageUrl } from '../slide-image.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT } from '../../core/types.js';
 
@@ -318,7 +318,7 @@ async function sendCurrent({ retryText = null } = {}) {
       const { dataUrl, reason } = await resolveCurrentSlideImage();
       pending.remove();
       if (dataUrl) {
-        content.push({ type: 'image_url', image_url: { url: dataUrl } });
+        content.push({ type: 'image_url', image_url: { url: ensureImageUrl(dataUrl) } });
       } else {
         // 明确告知用户本条没有附图，而不是静默降级
         attachFailed = reason || '未取到当前 PPT 页';
@@ -326,7 +326,7 @@ async function sendCurrent({ retryText = null } = {}) {
     }
     // 手动附件（加号添加的 PPT 页 / 上传图片）
     for (const att of attachments) {
-      content.push({ type: 'image_url', image_url: { url: att } });
+      content.push({ type: 'image_url', image_url: { url: ensureImageUrl(att) } });
     }
 
     history.push({ role: 'user', content });
