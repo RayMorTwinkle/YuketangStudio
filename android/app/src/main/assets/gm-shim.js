@@ -124,7 +124,30 @@
       });
     }).catch(function (err) {
       if (timer) clearTimeout(timer);
-      // fetch 失败（多为 CORS/私域 CDN）→ 走原生 OkHttp 兜底（不带页面 cookie）
+      // fetch 失败（CORS/预检）→ 原生 HTTP 兜底：支持 POST + 自定义头 + 二进制
+      if (bridge() && bridge().fetchRequest) {
+        var cbId2 = '__yktFetchCb' + Math.random().toString(36).slice(2);
+        var binary = opt.responseType === 'blob' || opt.responseType === 'arraybuffer';
+        window[cbId2] = function (ok, status, body, errMsg) {
+          delete window[cbId2];
+          if (!ok) { opt.onerror && opt.onerror({ status: status || 0, error: errMsg || 'native fetch failed' }); return; }
+          var resp = body;
+          if (binary) {
+            try {
+              var bin = atob(body);
+              var bytes = new Uint8Array(bin.length);
+              for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              resp = opt.responseType === 'arraybuffer' ? bytes.buffer : new Blob([bytes]);
+            } catch (e) { opt.onerror && opt.onerror({ status: 0, error: String(e) }); return; }
+          }
+          opt.onload && opt.onload({ status: status, statusText: '', response: resp, responseText: binary ? '' : body, responseHeaders: {}, readyState: 4 });
+        };
+        try {
+          bridge().fetchRequest(method, url, JSON.stringify(headers), opt.data || '', binary, cbId2);
+          return;
+        } catch (e) {}
+      }
+      // 旧 GET 兜底（保留兼容）
       if (bridge() && bridge().fetchBinary) {
         var cbId = '__yktFetchCb' + Math.random().toString(36).slice(2);
         window[cbId] = function (ok, status, b64, errMsg) {

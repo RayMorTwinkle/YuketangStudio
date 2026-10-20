@@ -1,5 +1,11 @@
 # 更新日志
 
+0.6.7:
+
+- 📱 **Android 自定义供应商修复**：壳内 `GM_xmlhttpRequest` 增加原生 HTTP 代理（支持 POST / 自定义头 / 二进制），Ark 等预检不允许 `Authorization` 的接口在手机上也能正常调用
+- 🖼 云端 ark 模型换成 `glm-5.3-flash`（支持图片），图片请求只路由到 vision 供应商
+- 🔁 0.6.6 的云端模型限制、更新直链、官网测试版入口一并进入稳定版
+
 0.6.6:
 
 - 📄 **作业/试卷工具（老版界面）**：解析 `/v/quiz/quiz_info/` 的 `quizData`，逐题拼图导出 JPG / ZIP / PDF / 长图

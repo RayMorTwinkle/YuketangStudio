@@ -258,6 +258,49 @@ class YktBridge(private val activity: MainActivity) {
         }
     }
 
+    /**
+     * GM_xmlhttpRequest 的 CORS 兜底（支持任意 method / headers / body）：
+     * Ark 等上游的预检不允许 Authorization 头，页面 fetch 会被拦截，
+     * 这里走原生 HttpURLConnection，返回文本或 base64（binary=true）。
+     */
+    @JavascriptInterface
+    fun fetchRequest(method: String, url: String, headersJson: String, body: String, binary: Boolean, callbackId: String) {
+        io.execute {
+            var conn: HttpURLConnection? = null
+            try {
+                val m = method.uppercase()
+                conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = m
+                    connectTimeout = 15000
+                    readTimeout = 180000
+                    instanceFollowRedirects = true
+                    doInput = true
+                }
+                runCatching {
+                    val headers = JSONObject(headersJson)
+                    for (k in headers.keys()) conn.setRequestProperty(k, headers.optString(k))
+                }
+                if (body.isNotEmpty() && m != "GET" && m != "HEAD") {
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                }
+                val code = conn.responseCode
+                val bytes = (if (code in 200..299) conn.inputStream else conn.errorStream)?.readBytes() ?: ByteArray(0)
+                if (binary) {
+                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    activity.evalOnAll("window['$callbackId'] && window['$callbackId'](true,$code,${JSONObject.quote(b64)},'')")
+                } else {
+                    val text = String(bytes, Charsets.UTF_8)
+                    activity.evalOnAll("window['$callbackId'] && window['$callbackId'](true,$code,${JSONObject.quote(text)},'')")
+                }
+            } catch (e: Exception) {
+                activity.evalOnAll("window['$callbackId'] && window['$callbackId'](false,0,'',${JSONObject.quote(e.message ?: "error")})")
+            } finally {
+                conn?.disconnect()
+            }
+        }
+    }
+
     @JavascriptInterface
     fun log(msg: String) = activity.log(msg)
 }
