@@ -25,8 +25,8 @@ export function getChannel() {
 export function setChannel(ch) {
   storage.set(K_CHANNEL, ch === 'beta' ? 'beta' : 'stable');
 }
-function latestUrl() {
-  return LATEST_URL + '?channel=' + getChannel();
+function latestUrl(channel) {
+  return LATEST_URL + '?channel=' + channel;
 }
 
 /** 语义化版本比较：a>b → 1；a<b → -1；等 → 0（容忍非数字段） */
@@ -54,42 +54,62 @@ export function curVersion() {
  * @returns {Promise<{ok:boolean, cur:string, latest?:string, hasUpdate?:boolean,
  *                    notes?:string, site?:string, error?:string}>}
  */
-export function fetchLatest() {
-  const cur = curVersion();
+function fetchOne(channel) {
   return new Promise((resolve) => {
     let settled = false;
     const done = (v) => { if (!settled) { settled = true; resolve(v); } };
     try {
       gm.xhr({
         method: 'GET',
-        url: latestUrl(),
+        url: latestUrl(channel),
         timeout: 10000,
         onload(r) {
           if (r.status < 200 || r.status >= 300) {
-            return done({ ok: false, cur, error: `服务器返回 ${r.status}` });
+            return done({ ok: false, error: `服务器返回 ${r.status}` });
           }
           try {
             const d = JSON.parse(r.responseText || '{}');
-            if (!d?.version) return done({ ok: false, cur, error: '响应缺少版本号' });
-            done({
-              ok: true,
-              cur,
-              latest: d.version,
-              hasUpdate: cmpVer(d.version, cur) > 0,
-              notes: d.notes || '',
-              site: SITE_URL,
-            });
+            if (!d?.version) return done({ ok: false, error: '响应缺少版本号' });
+            done({ ok: true, latest: d.version, notes: d.notes || '', channel });
           } catch {
-            done({ ok: false, cur, error: '响应不是合法 JSON' });
+            done({ ok: false, error: '响应不是合法 JSON' });
           }
         },
-        onerror() { done({ ok: false, cur, error: '网络错误，无法连接更新服务器' }); },
-        ontimeout() { done({ ok: false, cur, error: '请求超时（10s）' }); },
+        onerror() { done({ ok: false, error: '网络错误，无法连接更新服务器' }); },
+        ontimeout() { done({ ok: false, error: '请求超时（10s）' }); },
       });
     } catch (e) {
-      done({ ok: false, cur, error: String(e?.message || e) });
+      done({ ok: false, error: String(e?.message || e) });
     }
   });
+}
+
+/**
+ * 拉取最新版本元数据。
+ * 稳定渠道只查 stable；测试渠道同时查 beta + stable，取版本更高的一边
+ * （测试渠道的用户也能收到稳定渠道的更新）。
+ */
+export async function fetchLatest() {
+  const cur = curVersion();
+  const ch = getChannel();
+  if (ch === 'beta') {
+    const [b, s] = await Promise.all([fetchOne('beta'), fetchOne('stable')]);
+    if (!b.ok && !s.ok) return { ok: false, cur, error: b.error || s.error || '检查失败' };
+    let pick = b.ok ? b : s;
+    if (b.ok && s.ok && cmpVer(s.latest, b.latest) > 0) pick = s;
+    return {
+      ok: true, cur, latest: pick.latest,
+      hasUpdate: cmpVer(pick.latest, cur) > 0,
+      notes: pick.notes, site: SITE_URL, channel: pick.channel,
+    };
+  }
+  const s = await fetchOne('stable');
+  if (!s.ok) return { ok: false, cur, error: s.error };
+  return {
+    ok: true, cur, latest: s.latest,
+    hasUpdate: cmpVer(s.latest, cur) > 0,
+    notes: s.notes, site: SITE_URL, channel: 'stable',
+  };
 }
 
 /**

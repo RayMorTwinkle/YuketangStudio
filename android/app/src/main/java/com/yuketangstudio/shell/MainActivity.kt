@@ -773,6 +773,29 @@ class MainActivity : AppCompatActivity() {
      * 与脚本的 update-check.js 共用同一份元数据，版本号单一来源。
      * 有新版 → 对话框提供「下载并安装」（DownloadManager + 安装器）或「用浏览器打开」。
      */
+    private data class LatestMeta(val version: String, val apk: String, val notes: String, val channel: String)
+
+    private fun fetchLatestMeta(channel: String): LatestMeta? {
+        return try {
+            val conn = (java.net.URL("$LATEST_URL?channel=$channel").openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 10000
+                readTimeout = 10000
+                instanceFollowRedirects = true
+            }
+            val code = conn.responseCode
+            val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() } ?: ""
+            conn.disconnect()
+            if (code !in 200..299) return null
+            val obj = org.json.JSONObject(body)
+            val v = obj.optString("version").ifBlank { null } ?: return null
+            LatestMeta(v, obj.optString("apk"), obj.optString("notes"), channel)
+        } catch (e: Exception) {
+            Log.e(TAG, "拉取 $channel 渠道更新失败", e)
+            null
+        }
+    }
+
     private fun checkAppUpdate() {
         val cur = BuildConfig.VERSION_NAME
         val dlg = AlertDialog.Builder(this)
@@ -787,27 +810,26 @@ class MainActivity : AppCompatActivity() {
             var apkUrl: String? = null
             var latest: String? = null
             try {
-                val conn = (java.net.URL("$LATEST_URL?channel=$updateChannel").openConnection() as java.net.HttpURLConnection).apply {
-                    connectTimeout = 10000
-                    readTimeout = 10000
-                    instanceFollowRedirects = true
+                // 测试渠道同时看 beta + stable，取版本更高的一边；
+                // 稳定渠道只看 stable
+                val stable = fetchLatestMeta("stable")
+                val beta = if (updateChannel == "beta") fetchLatestMeta("beta") else null
+                val chosen = when {
+                    beta != null && stable != null -> if (isNewer(beta.version, stable.version)) beta else stable
+                    beta != null -> beta
+                    else -> stable
                 }
-                val code = conn.responseCode
-                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                    ?.bufferedReader()?.use { it.readText() } ?: ""
-                conn.disconnect()
-                if (code !in 200..299) {
-                    message = "服务器返回 $code"
+                if (chosen == null) {
+                    message = "检查失败：无法连接更新服务器"
                 } else {
-                    val obj = org.json.JSONObject(body)
-                    latest = obj.optString("version").ifBlank { null }
-                    apkUrl = obj.optString("apk").ifBlank { null }
-                    val notes = obj.optString("notes")
+                    latest = chosen.version
+                    apkUrl = chosen.apk.ifBlank { null }
+                    val chLabel = if (chosen.channel == "beta") " · 测试渠道" else ""
                     message = when {
-                        latest == null -> "响应缺少版本号"
-                        isNewer(latest, cur) ->
-                            "发现新版本 v$latest（当前 v$cur）" + if (notes.isNotBlank()) "\n\n$notes" else ""
-                        else -> "已是最新版本（服务器 v$latest）"
+                        isNewer(chosen.version, cur) ->
+                            "发现新版本 v${chosen.version}（当前 v$cur）$chLabel" +
+                                if (chosen.notes.isNotBlank()) "\n\n${chosen.notes}" else ""
+                        else -> "已是最新版本（服务器 v${chosen.version}）$chLabel"
                     }
                 }
             } catch (e: Exception) {

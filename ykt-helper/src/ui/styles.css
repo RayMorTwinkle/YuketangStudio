@@ -505,3 +505,47 @@ body.ykt-debug-outline .ykt-panel::after {
 html.ykt-in-iframe body.ykt-debug-outline #ykt-helper-toolbar::after,
 html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f97316; }
 :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) .mjx-svg { color: currentColor; }
+
+/* ===== 首次使用引导 ===== */
+.ykt-onboarding{
+  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 50);
+  background: rgba(0,0,0,.35);
+  display: flex; align-items: flex-end; justify-content: flex-start;
+  padding: 0 16px 68px 16px;
+}
+.ykt-ob-card{
+  width: min(430px, calc(100vw - 32px));
+  background: #fff; color: var(--ykt-fg);
+  border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.25);
+  padding: 18px 18px 14px; line-height: 1.6;
+}
+.ykt-ob-title{ font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.ykt-ob-sub{ font-size: 12px; color: var(--ykt-muted); margin-bottom: 10px; }
+.ykt-ob-list{ margin: 0 0 10px; padding-left: 18px; font-size: 13px; }
+.ykt-ob-list li{ margin: 4px 0; }
+.ykt-ob-tip{
+  font-size: 11px; color: var(--ykt-muted);
+  background: #f6f8fb; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px;
+}
+.ykt-ob-actions{ display: flex; gap: 8px; justify-content: flex-end; }
+.ykt-ob-actions button{
+  padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 12px;
+  border: 1px solid var(--ykt-border-strong); background: #fff; color: var(--ykt-fg);
+}
+#ykt-ob-ok{ background: var(--ykt-accent); border-color: var(--ykt-accent); color: #fff; }
+
+/* 引导期间把工具栏抬到遮罩之上，并脉冲高亮 */
+#ykt-helper-toolbar.ykt-ob-raised{
+  z-index: calc(var(--ykt-z) + 60);
+  animation: yktObPulse 1.8s ease-in-out infinite;
+}
+@keyframes yktObPulse{
+  0%,100%{ box-shadow: 0 0 0 3px #4f8ef7, 0 0 0 9px rgba(79,142,247,.18); }
+  50%    { box-shadow: 0 0 0 3px #4f8ef7, 0 0 0 14px rgba(79,142,247,.08); }
+}
+
+@media (max-width: 560px){
+  .ykt-onboarding{ padding: 0 10px 12px 64px; }
+  .ykt-ob-card{ width: 100%; padding: 16px 14px 12px; }
+  .ykt-ob-list{ font-size: 12.5px; }
+}

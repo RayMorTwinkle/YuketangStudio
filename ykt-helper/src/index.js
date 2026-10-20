@@ -4,6 +4,7 @@ import { installXHRInterceptor } from './net/xhr-interceptor.js';
 import  './net/fetch-interceptor.js';
 import { injectStyles } from './ui/styles.js';
 import { installToolbar } from './ui/toolbar.js';
+import { maybeShowOnboarding } from './ui/onboarding.js';
 import * as telemetry from './core/telemetry.js';
 import { actions } from './state/actions.js';
 import { ui } from './ui/ui-api.js';
@@ -156,6 +157,7 @@ function whenBodyReady(fn) {
     if (!inIframe) {
       try { ui._mountAll?.(); } catch (e) { log.err('[mount] panels failed', e); }
       try { installToolbar(); } catch (e) { log.err('[mount] toolbar failed', e); }
+      try { maybeShowOnboarding(); } catch (e) { log.err('[onboarding] failed', e); }
     } else {
       log.dbg('[mount] iframe 内跳过 UI 挂载:', window.location.pathname);
     }
