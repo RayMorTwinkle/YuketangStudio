@@ -18,6 +18,8 @@
 
 🌐 **国内官网：<https://app.raymor.top/yuketangstudio/>** · 💬 讨论反馈 / 内测群：QQ 群 **901466023**
 
+⭐ **如果这个项目对你有帮助，欢迎点个 Star 支持一下！**
+
 </div>
 
 ---
