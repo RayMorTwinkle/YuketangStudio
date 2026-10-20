@@ -680,11 +680,11 @@ async function runSendInner({
     onReasoning: (d) => { acc.reasoning += d; paint(); },
     onWait: (ms) => {
       if (acc.content || acc.reasoning) return;
-      waitText = ms >= 60000
-        ? '等待时间较长，可取消后重试…'
-        : ms >= 25000
-          ? '上游较忙，仍在排队…'
-          : '正在排队，请稍候…';
+      waitText = ms >= 20000
+        ? '等待时间较长，可取消后重试'
+        : ms >= 10000
+          ? '排队时间较长，上游可能繁忙…'
+          : '正在排队…';
       aiBubble.innerHTML = `<em>${waitText}</em>`;
     },
   });
@@ -771,6 +771,8 @@ async function runSend(opts = {}) {
       addBubble('ai', `<span class="muted">（已中断：${escapeHtml(emsg || '请求被中止')}）</span>${retryBtn}`);
     } else if (/HTTP 429/.test(emsg)) {
       addBubble('ai', `<span class="err">当前使用人数较多，请稍后重试</span>${retryBtn}<br/><small>上游已限流，稍等几秒再点重试。</small>`);
+    } else if (isTimeout) {
+      addBubble('ai', `<span class="err">等待超时，请重试</span>${retryBtn}<br/><small>30 秒内没有返回首字，可点重试或稍后再试。</small>`);
     } else {
       addBubble('ai', `<span class="err">出错了：${escapeHtml(e?.message || String(e))}</span>${retryBtn}<br/><small>${isTimeout ? '提示：上游响应过慢或网络中断，可点重试。' : '提示：到设置里检查 AI 配置的 API Key。'}</small>`);
     }

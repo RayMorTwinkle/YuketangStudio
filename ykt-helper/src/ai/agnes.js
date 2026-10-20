@@ -145,9 +145,9 @@ export async function agnesChat(opts) {
   if (stream) body.stream = true;
 
   const url = makeChatUrl(baseUrl);
-  // 流式不再用总时长：首字 90s + 「最后字符后 15s」空闲超时（见 fetchStream）。
+  // 流式不再用总时长：首字 30s + 「最后字符后 15s」空闲超时（见 fetchStream）。
   // 非流式仍走 120s 总超时。
-  const timeoutMs = opts.timeoutMs || 120000;
+  const timeoutMs = opts.timeoutMs || 30000;
   dlog('request', { url, model, stream, thinking });
 
   // 遥测计时：t0 请求发出，tFirst 首字节（reasoning 或 content），tEnd 流结束
@@ -225,7 +225,7 @@ function pickDelta(obj, opts, acc) {
 function armWaitTimers(opts) {
   const timers = [];
   if (opts?.onWait) {
-    [8000, 25000, 60000].forEach((ms) => timers.push(setTimeout(() => {
+    [3000, 10000, 20000].forEach((ms) => timers.push(setTimeout(() => {
       try { opts.onWait(ms); } catch {}
     }, ms)));
   }
@@ -240,10 +240,10 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
   const mkAbort = (msg) => Object.assign(new Error(msg), { name: 'AbortError' });
   // 流式超时语义（2026-10-18 改）：不再用「固定总时长」——长回答/长思考会被误杀。
   // 改为两段：
-  //   ① 首字超时 90s：请求发出后等第一个 token（思考型模型可能想很久）
+  //   ① 首字超时 30s：请求发出后等第一个 token；超过则提示重试
   //   ② 空闲超时 15s：只要还有数据就不算超时；吐出最后一个字符后 15s 无新数据才判中断
   // 非流式仍走总超时（没有"最后一个字符"这个概念）。
-  const FIRST_BYTE_MS = 90000;
+  const FIRST_BYTE_MS = 30000;
   const IDLE_AFTER_DATA_MS = 15000;
   let timer;
   let gotData = false;
@@ -251,8 +251,8 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
     clearTimeout(timer);
     timer = setTimeout(() => ctrl.abort(mkAbort(msg)), ms);
   };
-  if (body.stream) arm(FIRST_BYTE_MS, '等待首字超时（90s）');
-  else arm(timeoutMs, '请求超时');
+  if (body.stream) arm(FIRST_BYTE_MS, '等待超时，请重试');
+  else arm(timeoutMs, '等待超时，请重试');
   // 每收到一段数据：进入「最后字符后 15s」倒计时
   const bumpIdle = () => {
     if (!body.stream) return;
@@ -334,7 +334,7 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
     });
 
     // GM_xhr 的 timeout 是固定总时长，无法表达「最后字符后 15s」。
-    // 这里自建看门狗：onprogress 每次推进重置为 15s，首字前给 90s。
+    // 这里自建看门狗：onprogress 每次推进重置为 15s，首字前给 30s。
     // GM_xhr 的 timeout 设 0（不启用），完全交给看门狗，避免长回答被总时长误杀。
     let watchdog = 0;
     let settled = false;
@@ -349,7 +349,7 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
     };
     const finish = (fn, v) => { if (settled) return; settled = true; clearTimeout(watchdog); clearWait(); fn(v); };
 
-    arm(90000, '等待首字超时（90s）');
+    arm(30000, '等待超时，请重试');
     const handle = gm.xhr({
       method: 'POST',
       url,
