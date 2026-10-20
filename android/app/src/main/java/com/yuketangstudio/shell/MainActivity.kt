@@ -217,6 +217,10 @@ class MainActivity : AppCompatActivity() {
         intent.removeExtra("ykt_action")
         Log.i(TAG, "通知 action: $action")
         if (action == "check_update") {
+            if (isUpdateSnoozed()) {
+                Log.i(TAG, "自动检查更新已暂停（剩余 ${updateSnoozeDaysLeft()} 天）")
+                return
+            }
             binding.root.postDelayed({
                 if (!isFinishing && !isDestroyed) checkAppUpdate()
             }, 600)
@@ -674,6 +678,31 @@ class MainActivity : AppCompatActivity() {
     // 检查更新（外壳侧，不依赖脚本运行）
     // ============================================================
 
+    // ---------- 自动检查更新暂停（30 天） ----------
+    private fun updateSnoozeUntil(): Long = prefs.getLong("update.snoozeUntil", 0L)
+    fun isUpdateSnoozed(): Boolean = System.currentTimeMillis() < updateSnoozeUntil()
+    private fun updateSnoozeDaysLeft(): Int {
+        val left = updateSnoozeUntil() - System.currentTimeMillis()
+        return if (left <= 0) 0 else ((left + 86_400_000L - 1) / 86_400_000L).toInt()
+    }
+    private fun setUpdateSnooze(days: Int) {
+        val until = System.currentTimeMillis() + days * 86_400_000L
+        prefs.edit().putLong("update.snoozeUntil", until).apply()
+        syncUpdateSnoozeToScript(until)
+        toast("未来 $days 天不再自动检查更新")
+    }
+    private fun clearUpdateSnooze() {
+        prefs.edit().remove("update.snoozeUntil").apply()
+        syncUpdateSnoozeToScript(0L)
+        toast("已恢复自动检查更新")
+    }
+    /** 同步给用户脚本（新版本读取后连 /latest 都不再请求；旧版本无副作用） */
+    private fun syncUpdateSnoozeToScript(until: Long) {
+        activeWebView?.evaluateJavascript(
+            "try{GM_setValue('ykt-helper:update.snoozeUntil',$until)}catch(e){}", null
+        )
+    }
+
     /**
      * 拉 svc /latest 元数据，和 BuildConfig.VERSION_NAME 比对。
      * 与脚本的 update-check.js 共用同一份元数据，版本号单一来源。
@@ -724,9 +753,26 @@ class MainActivity : AppCompatActivity() {
             val hasUpdate = latest != null && isNewer(latest, cur) && !apkUrl.isNullOrBlank()
             runOnUiThread {
                 if (dlg.isShowing) dlg.dismiss()
-                AlertDialog.Builder(this)
+                val snoozed = isUpdateSnoozed()
+                val extra = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(24), dp(2), dp(24), 0)
+                }
+                val snoozeBtn = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+                    text = if (snoozed) {
+                        "已暂停自动检查（剩余 ${updateSnoozeDaysLeft()} 天）· 点击恢复"
+                    } else {
+                        "未来 30 天不再自动检查更新"
+                    }
+                    textSize = 13f
+                    setTextColor(if (snoozed) 0xFF1a7f37.toInt() else 0xFF6b7280.toInt())
+                    setPadding(0, dp(4), 0, dp(4))
+                }
+                extra.addView(snoozeBtn)
+                val dlg2 = AlertDialog.Builder(this)
                     .setTitle("检查更新")
                     .setMessage(message)
+                    .setView(extra)
                     .apply {
                         if (hasUpdate) {
                             setPositiveButton("下载并安装") { _, _ -> downloadAndInstall(apkUrl!!, latest!!) }
@@ -737,7 +783,12 @@ class MainActivity : AppCompatActivity() {
                         }
                         setNegativeButton("关闭", null)
                     }
-                    .show()
+                    .create()
+                snoozeBtn.setOnClickListener {
+                    if (isUpdateSnoozed()) clearUpdateSnooze() else setUpdateSnooze(30)
+                    dlg2.dismiss()
+                }
+                dlg2.show()
             }
         }.start()
     }

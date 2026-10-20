@@ -60,6 +60,8 @@ class YktBridge(private val activity: MainActivity) {
     // ---------- 通知 ----------
     @JavascriptInterface
     fun notify(title: String, text: String, image: String, action: String) {
+        // 「30 天不再自动检查」期间：更新通知直接丢弃（其它通知不受影响）
+        if (action == "check_update" && activity.isUpdateSnoozed()) return
         val mgr = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
             mgr.createNotificationChannel(

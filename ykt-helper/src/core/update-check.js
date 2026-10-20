@@ -86,6 +86,9 @@ export function fetchLatest() {
  */
 export function checkForUpdate({ force = false } = {}) {
   const now = Date.now();
+  // Android 壳「30 天不再自动检查」：壳写入 update.snoozeUntil，自动检查直接跳过
+  const snoozeUntil = Number(storage.get('update.snoozeUntil')) || 0;
+  if (!force && now < snoozeUntil) { log.dbg('[update] 自动检查已暂停'); return; }
   if (!force && now - (storage.get('update.lastCheck') || 0) < THROTTLE_MS) return;
   storage.set('update.lastCheck', now);
   fetchLatest().then((d) => {
