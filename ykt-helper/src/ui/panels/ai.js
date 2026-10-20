@@ -753,7 +753,9 @@ async function runSendInner({
   if (degraded) {
     const note = document.createElement('div');
     note.className = 'ykt-chat-warn';
-    note.textContent = '⚠️ 当前模型不支持工具调用，已降级为文本作答。';
+    note.textContent = toolCall
+      ? '⚠️ 端点不支持 tools 参数，已从模型输出中解析到工具调用。'
+      : '⚠️ 当前模型不支持工具调用，已降级为文本作答。';
     aiBubble.appendChild(note);
   }
 

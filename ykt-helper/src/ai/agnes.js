@@ -4,6 +4,7 @@
 import { gm } from '../core/env.js';
 import { log } from '../core/log.js';
 import { ensureImageUrl } from '../core/dom.js';
+import { parseDsmlToolCalls, stripDsml } from './dsml.js';
 import { getDevConfig } from '../core/devmode.js';
 import * as telemetry from '../core/telemetry.js';
 import { getTestMock } from '../core/test-mode.js';
@@ -115,6 +116,19 @@ async function mockChat(opts, mock) {
   return { content: text, reasoning: '', toolCalls: [] };
 }
 
+/** 部分自定义端点把 DSML 工具调用漏进正文：从 content/reasoning 里补解析，并去掉标记 */
+function finalizeResult(r) {
+  if (!r) return r;
+  const raw = `${r.content || ''}\n${r.reasoning || ''}`;
+  if (!(Array.isArray(r.toolCalls) && r.toolCalls.length)) {
+    const dsml = parseDsmlToolCalls(raw);
+    if (dsml.length) r.toolCalls = dsml;
+  }
+  if (r.content && /DSML/i.test(r.content)) r.content = stripDsml(r.content);
+  if (r.reasoning && /DSML/i.test(r.reasoning)) r.reasoning = stripDsml(r.reasoning);
+  return r;
+}
+
 export async function agnesChat(opts) {
   const mock = getTestMock();
   if (mock) return mockChat(opts, mock);
@@ -181,14 +195,14 @@ export async function agnesChat(opts) {
     try {
       const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
       smooth.end(); recordTele();
-      return r;
+      return finalizeResult(r);
     } catch (e) {
       if (!shouldFallback(e)) { smooth.abort(); throw e; }
       dlog('fetch stream failed, fallback to GM_xhr:', e?.message || e);
       try {
         const r = await gmXhrStream(url, apiKey, body, o2, timeoutMs);
         smooth.end(); recordTele();
-        return r;
+        return finalizeResult(r);
       } catch (e2) { smooth.abort(); throw e2; }
     }
   }
@@ -196,13 +210,13 @@ export async function agnesChat(opts) {
   try {
     const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
     recordTele();
-    return r;
+    return finalizeResult(r);
   } catch (e) {
     if (!shouldFallback(e)) throw e;
     dlog('fetch failed, fallback to GM_xhr:', e?.message || e);
     const r = await gmXhrOnce(url, apiKey, body, timeoutMs, o2);
     recordTele();
-    return r;
+    return finalizeResult(r);
   }
 }
 

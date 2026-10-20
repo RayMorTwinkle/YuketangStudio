@@ -1,5 +1,11 @@
 # 更新日志
 
+0.6.10:
+
+- 🧰 **兼容 DeepSeek DSML 工具调用**：部分自定义端点不把 DSML 转成 `tool_calls`，客户端现在会从正文/思考链解析 `submit_answer` 调用，并去掉 DSML 标记
+- ⚠️ 降级提示更准确：端点不支持 `tools` 但能从文本解析到工具调用时，不再误报「不支持工具调用」
+- ✅ 新增 `scripts/test-dsml.mjs` 回归测试
+
 0.6.9:
 
 - 🔗 **自定义渠道 URL 支持火山方舟**：`/api/v3` 与 `/api/plan/v3` 自动补 `/chat/completions`，不再错误拼成 `/v1/chat/completions`

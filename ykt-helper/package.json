@@ -8,7 +8,7 @@
     "dev": "rollup -c -w",
     "lint": "eslint src scripts",
     "lint:fix": "eslint src scripts --fix",
-    "test": "node scripts/test-pdf-dedup.mjs && node scripts/test-activities-paging.mjs && node scripts/test-tools.mjs",
+    "test": "node scripts/test-pdf-dedup.mjs && node scripts/test-activities-paging.mjs && node scripts/test-tools.mjs && node scripts/test-dsml.mjs",
     "check": "npm run lint && npm run build && npm test",
     "postbuild": "node -e \"const fs=require('fs');const pkg=require('./package.json');const f='YuketangStudio-'+pkg.version+'.user.js';if(!fs.existsSync('dist/'+f))throw new Error('产物缺失: '+f);fs.copyFileSync('dist/'+f,'dist/YuketangStudio-latest.user.js');console.log('✅ Build done: dist/'+f+' (+ YuketangStudio-latest.user.js)')\""
   },
