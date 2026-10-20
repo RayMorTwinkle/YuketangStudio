@@ -1,7 +1,7 @@
 // src/core/telemetry.js
 // 匿名使用统计：installId（首启生成 UUID）+ 平台 + 版本 + 是否用码 +
 // 当日调用次数 + 首字时间/总时长聚合 → POST /yuketangstudio/telemetry
-// 开关存 storage['telemetry.enabled']（默认关）；「开」时立即 ping 一次
+// 开关存 storage['telemetry.enabled']（0.6.2 起默认开，可在设置里关闭）；启动时上报一次
 import { storage } from './storage.js';
 import { gm } from './env.js';
 
@@ -11,7 +11,42 @@ const K_ID = 'telemetry.installId';
 const K_DAY = 'telemetry.day';     // { date, calls, ttft:{sum,max,n}, dur:{sum,max,n}, pinged }
 
 export function enabled() {
-  return storage.get(K_ENABLED) === true;
+  // 0.6.2 起默认开启：只有用户明确关掉（存 false）才不上报
+  return storage.get(K_ENABLED) !== false;
+}
+
+const K_MIGRATED = 'telemetry.defaultOnMigrated';
+
+/**
+ * 一次性迁移：旧版本开关默认关，很多用户从未动过 → 本版统一打开。
+ * 只跑一次；用户之后仍可在设置里手动关闭（关掉后不会再被强制打开）。
+ */
+export function migrateDefaultOn() {
+  if (storage.get(K_MIGRATED)) return false;
+  storage.set(K_MIGRATED, true);
+  storage.set(K_ENABLED, true);
+  return true;
+}
+
+const K_LAST_PING = 'telemetry.lastPingAt';
+const K_LAST_PING_DAY = 'telemetry.lastPingDay';
+const STARTUP_PING_GAP = 60 * 1000;
+
+/**
+ * 启动上报：每次脚本启动（页面加载）都上报一次。
+ * 同一页面内的多个 iframe / 60s 内连续刷新合并成一次，避免刷接口。
+ */
+export function pingOnStartup() {
+  if (!enabled()) return;
+  const now = Date.now();
+  const last = Number(storage.get(K_LAST_PING)) || 0;
+  const lastDay = storage.get(K_LAST_PING_DAY) || '';
+  const d = today();
+  // 跨天必定上报；同一天 60s 内合并
+  if (lastDay === d && now - last < STARTUP_PING_GAP) return;
+  storage.set(K_LAST_PING, now);
+  storage.set(K_LAST_PING_DAY, d);
+  ping().catch(() => {});
 }
 export function setEnabled(v) {
   storage.set(K_ENABLED, !!v);

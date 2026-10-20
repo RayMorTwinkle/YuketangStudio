@@ -4,6 +4,7 @@ import { installXHRInterceptor } from './net/xhr-interceptor.js';
 import  './net/fetch-interceptor.js';
 import { injectStyles } from './ui/styles.js';
 import { installToolbar } from './ui/toolbar.js';
+import * as telemetry from './core/telemetry.js';
 import { actions } from './state/actions.js';
 import { ui } from './ui/ui-api.js';
 import { isStudentV3Page, runHistoryCapture } from './core/history-capture.js'; 
@@ -159,6 +160,9 @@ function whenBodyReady(fn) {
       log.dbg('[mount] iframe 内跳过 UI 挂载:', window.location.pathname);
     }
   });
+
+  // 遥测：旧版默认关 → 0.6.2 一次性打开；每次启动上报一次（60s 内合并）
+  try { telemetry.migrateDefaultOn(); telemetry.pingOnStartup(); } catch {}
 
   // 每次使用自动检查更新（15min 节流，失败静默）
   try { checkForUpdate(); } catch {}

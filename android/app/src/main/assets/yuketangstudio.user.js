@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.6.1
+// @version      0.6.2
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -783,14 +783,43 @@
   // src/core/telemetry.js
   // 匿名使用统计：installId（首启生成 UUID）+ 平台 + 版本 + 是否用码 +
   // 当日调用次数 + 首字时间/总时长聚合 → POST /yuketangstudio/telemetry
-  // 开关存 storage['telemetry.enabled']（默认关）；「开」时立即 ping 一次
+  // 开关存 storage['telemetry.enabled']（0.6.2 起默认开，可在设置里关闭）；启动时上报一次
     const ENDPOINT = "https://api.raymor.top/yuketangstudio/telemetry";
   const K_ENABLED = "telemetry.enabled";
   const K_ID = "telemetry.installId";
   const K_DAY = "telemetry.day";
  // { date, calls, ttft:{sum,max,n}, dur:{sum,max,n}, pinged }
     function enabled() {
-    return storage.get(K_ENABLED) === true;
+    // 0.6.2 起默认开启：只有用户明确关掉（存 false）才不上报
+    return storage.get(K_ENABLED) !== false;
+  }
+  const K_MIGRATED = "telemetry.defaultOnMigrated";
+  /**
+   * 一次性迁移：旧版本开关默认关，很多用户从未动过 → 本版统一打开。
+   * 只跑一次；用户之后仍可在设置里手动关闭（关掉后不会再被强制打开）。
+   */  function migrateDefaultOn() {
+    if (storage.get(K_MIGRATED)) return false;
+    storage.set(K_MIGRATED, true);
+    storage.set(K_ENABLED, true);
+    return true;
+  }
+  const K_LAST_PING = "telemetry.lastPingAt";
+  const K_LAST_PING_DAY = "telemetry.lastPingDay";
+  const STARTUP_PING_GAP = 60 * 1e3;
+  /**
+   * 启动上报：每次脚本启动（页面加载）都上报一次。
+   * 同一页面内的多个 iframe / 60s 内连续刷新合并成一次，避免刷接口。
+   */  function pingOnStartup() {
+    if (!enabled()) return;
+    const now = Date.now();
+    const last = Number(storage.get(K_LAST_PING)) || 0;
+    const lastDay = storage.get(K_LAST_PING_DAY) || "";
+    const d = today();
+    // 跨天必定上报；同一天 60s 内合并
+        if (lastDay === d && now - last < STARTUP_PING_GAP) return;
+    storage.set(K_LAST_PING, now);
+    storage.set(K_LAST_PING_DAY, d);
+    ping().catch(() => {});
   }
   function setEnabled(v) {
     storage.set(K_ENABLED, !!v);
@@ -6397,9 +6426,9 @@
       ensureAIProfiles(ui.config.ai);
       syncFormFromConfig();
       storage.set("kimiApiKey", "");
-      // 遥测开关不在 config 里（独立 storage key），一并复位
-            setEnabled(false);
-      if ($telemetry) $telemetry.checked = false;
+      // 遥测开关不在 config 里（独立 storage key），一并复位（默认开）
+            setEnabled(true);
+      if ($telemetry) $telemetry.checked = true;
       ui.saveConfig();
       ui.updateAutoAnswerBtn();
       ui.toast("设置已重置");
@@ -6497,7 +6526,7 @@
       if (typeof GM_info !== "undefined" && GM_info.script?.version) return GM_info.script.version;
     } catch {}
     try {
-      return "0.6.1";
+      return "0.6.2";
     } catch {}
     return "0.0.0";
   }
@@ -6612,8 +6641,8 @@
   function mountAboutPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // "0.6.1" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.1"}<`);
+    // "0.6.2" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.2"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-about-panel");
     const $btn = root$1.querySelector("#ykt-about-check");
@@ -6908,12 +6937,23 @@
         // 2) 自定义悬浮弹窗
                 const wrapper = document.createElement("div");
         wrapper.className = "ykt-problem-notify";
+        // 手机端左下角有纵向工具栏（3 个按钮），弹窗要给左侧留出避让空间，
+        // 否则固定 bottom/right 的弹窗会横跨整屏、左侧被工具栏压住。
+                const narrow = (() => {
+          try {
+            return window.matchMedia?.("(max-width: 560px)").matches || navigator.maxTouchPoints > 0 && window.innerWidth <= 820;
+          } catch {
+            return false;
+          }
+        })();
         // 内联样式，避免依赖外部CSS
                 Object.assign(wrapper.style, {
           position: "fixed",
-          right: "20px",
-          bottom: "24px",
-          maxWidth: "380px",
+          right: narrow ? "10px" : "20px",
+          left: narrow ? "64px" : "auto",
+          // 让开左侧工具栏（8px + 48px + 8px）
+          bottom: narrow ? "16px" : "24px",
+          maxWidth: narrow ? "none" : "380px",
           background: "rgba(20,20,20,0.92)",
           color: "#fff",
           borderRadius: "12px",
@@ -8586,6 +8626,11 @@
         }
       } else log.dbg("[mount] iframe 内跳过 UI 挂载:", window.location.pathname);
     });
+    // 遥测：旧版默认关 → 0.6.2 一次性打开；每次启动上报一次（60s 内合并）
+        try {
+      migrateDefaultOn();
+      pingOnStartup();
+    } catch {}
     // 每次使用自动检查更新（15min 节流，失败静默）
         try {
       checkForUpdate();

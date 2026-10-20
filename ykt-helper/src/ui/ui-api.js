@@ -156,12 +156,21 @@ export const ui = {
       // 2) 自定义悬浮弹窗
       const wrapper = document.createElement('div');
       wrapper.className = 'ykt-problem-notify';
+      // 手机端左下角有纵向工具栏（3 个按钮），弹窗要给左侧留出避让空间，
+      // 否则固定 bottom/right 的弹窗会横跨整屏、左侧被工具栏压住。
+      const narrow = (() => {
+        try {
+          return window.matchMedia?.('(max-width: 560px)').matches ||
+            (navigator.maxTouchPoints > 0 && window.innerWidth <= 820);
+        } catch { return false; }
+      })();
       // 内联样式，避免依赖外部CSS
       Object.assign(wrapper.style, {
         position: 'fixed',
-        right: '20px',
-        bottom: '24px',
-        maxWidth: '380px',
+        right: narrow ? '10px' : '20px',
+        left: narrow ? '64px' : 'auto',     // 让开左侧工具栏（8px + 48px + 8px）
+        bottom: narrow ? '16px' : '24px',
+        maxWidth: narrow ? 'none' : '380px',
         background: 'rgba(20,20,20,0.92)',
         color: '#fff',
         borderRadius: '12px',

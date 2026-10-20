@@ -434,9 +434,9 @@ export function mountSettingsPanel() {
     syncFormFromConfig();
     storage.set('kimiApiKey', '');
 
-    // 遥测开关不在 config 里（独立 storage key），一并复位
-    telemetry.setEnabled(false);
-    if ($telemetry) $telemetry.checked = false;
+    // 遥测开关不在 config 里（独立 storage key），一并复位（默认开）
+    telemetry.setEnabled(true);
+    if ($telemetry) $telemetry.checked = true;
 
     ui.saveConfig();
     ui.updateAutoAnswerBtn();
