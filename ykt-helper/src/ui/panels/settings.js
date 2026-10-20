@@ -40,6 +40,8 @@ function ensureAIProfiles(configAI) {
   // 迁移：thinking 未定义的老配置默认开启（保持原有行为不变）
   for (const p of configAI.profiles) {
     if (typeof p.thinking !== 'boolean') p.thinking = true;
+    // 旧版云端 profile 名称（云端·agnes / 云端·xxx）统一改为「云端模型」
+    if (p && typeof p.name === 'string' && p.name.startsWith('云端·')) p.name = '云端模型';
   }
 }
 
