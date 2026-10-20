@@ -212,8 +212,8 @@ class MainActivity : AppCompatActivity() {
         intent.removeExtra("ykt_action")
         Log.i(TAG, "通知 action: $action")
         if (action == "check_update") {
-            if (isUpdateSnoozed()) {
-                Log.i(TAG, "自动检查更新已暂停（剩余 ${updateSnoozeDaysLeft()} 天）")
+            if (!autoCheckAllowed()) {
+                Log.i(TAG, "自动检查更新已关闭/暂停")
                 return
             }
             binding.root.postDelayed({
@@ -399,7 +399,10 @@ class MainActivity : AppCompatActivity() {
                         "m.setAttribute('content','width=1440');})();", null
                     )
                 }
-                if (view === activeWebView) syncUpdateChannelToScript()
+                if (view === activeWebView) {
+                    syncUpdateChannelToScript()
+                    syncUpdatePolicyToScript()
+                }
                 val o = originOf(url)
                 if (o != null && pendingRestoreLs.containsKey(o)) {
                     val js = pendingRestoreLs.remove(o)!!
@@ -675,28 +678,117 @@ class MainActivity : AppCompatActivity() {
     // 检查更新（外壳侧，不依赖脚本运行）
     // ============================================================
 
-    // ---------- 自动检查更新暂停（30 天） ----------
+    // ---------- 自动检查更新策略 ----------
+    private var updateAutoCheck: Boolean
+        get() = prefs.getBoolean("update.autoCheck", true)
+        set(v) { prefs.edit().putBoolean("update.autoCheck", v).apply() }
+    private var updateSkipRemaining: Int
+        get() = prefs.getInt("update.skipRemaining", 0)
+        set(v) { prefs.edit().putInt("update.skipRemaining", v).apply() }
+    private var updateLastSkippedVersion: String
+        get() = prefs.getString("update.lastSkippedVersion", "") ?: ""
+        set(v) { prefs.edit().putString("update.lastSkippedVersion", v).apply() }
+
     private fun updateSnoozeUntil(): Long = prefs.getLong("update.snoozeUntil", 0L)
     fun isUpdateSnoozed(): Boolean = System.currentTimeMillis() < updateSnoozeUntil()
+    fun isUpdateAutoCheckEnabled(): Boolean = updateAutoCheck
     private fun updateSnoozeDaysLeft(): Int {
         val left = updateSnoozeUntil() - System.currentTimeMillis()
         return if (left <= 0) 0 else ((left + 86_400_000L - 1) / 86_400_000L).toInt()
     }
     private fun setUpdateSnooze(days: Int) {
-        val until = System.currentTimeMillis() + days * 86_400_000L
-        prefs.edit().putLong("update.snoozeUntil", until).apply()
-        syncUpdateSnoozeToScript(until)
-        toast("未来 $days 天不再自动检查更新")
+        prefs.edit().putLong("update.snoozeUntil", System.currentTimeMillis() + days * 86_400_000L).apply()
     }
     private fun clearUpdateSnooze() {
         prefs.edit().remove("update.snoozeUntil").apply()
-        syncUpdateSnoozeToScript(0L)
-        toast("已恢复自动检查更新")
     }
-    /** 同步给用户脚本（新版本读取后连 /latest 都不再请求；旧版本无副作用） */
-    private fun syncUpdateSnoozeToScript(until: Long) {
+    private fun autoCheckAllowed(): Boolean = updateAutoCheck && !isUpdateSnoozed()
+
+    private fun autoCheckSummary(): String {
+        if (!updateAutoCheck) return "已彻底关闭"
+        if (isUpdateSnoozed()) return "暂停中（剩余 ${updateSnoozeDaysLeft()} 天）"
+        if (updateSkipRemaining > 0) return "跳过将来 ${updateSkipRemaining} 个版本"
+        return "开启"
+    }
+
+    /** 跳过版本计数：新版本首次出现扣 1；返回 true 表示这条更新通知应丢弃 */
+    fun consumeUpdateSkip(title: String, text: String): Boolean {
+        val skip = updateSkipRemaining
+        if (skip <= 0) return false
+        val v = Regex("v(\\d+(?:\\.\\d+)+)").find("$title $text")?.groupValues?.get(1) ?: ""
+        if (v.isNotEmpty() && v != updateLastSkippedVersion) {
+            updateLastSkippedVersion = v
+            updateSkipRemaining = skip - 1
+            // notify() 来自 JS 桥线程，evaluateJavascript 必须切回 UI 线程
+            runOnUiThread { syncUpdatePolicyToScript() }
+        }
+        return true
+    }
+
+    private fun pickAutoCheckPolicy() {
+        val labels = arrayOf(
+            "开启自动检查更新",
+            "跳过将来 3 个版本",
+            "7 天不检查",
+            "30 天不检查",
+            "彻底关闭",
+        )
+        val current = when {
+            !updateAutoCheck -> 4
+            isUpdateSnoozed() -> if (updateSnoozeDaysLeft() <= 7) 2 else 3
+            updateSkipRemaining > 0 -> 1
+            else -> 0
+        }
+        AlertDialog.Builder(this)
+            .setTitle("自动检查更新")
+            .setSingleChoiceItems(labels, current) { d, which ->
+                when (which) {
+                    0 -> {
+                        updateAutoCheck = true
+                        clearUpdateSnooze()
+                        updateSkipRemaining = 0
+                        updateLastSkippedVersion = ""
+                    }
+                    1 -> {
+                        updateAutoCheck = true
+                        clearUpdateSnooze()
+                        updateSkipRemaining = 3
+                        updateLastSkippedVersion = ""
+                    }
+                    2 -> {
+                        updateAutoCheck = true
+                        clearUpdateSnooze()
+                        setUpdateSnooze(7)
+                    }
+                    3 -> {
+                        updateAutoCheck = true
+                        clearUpdateSnooze()
+                        setUpdateSnooze(30)
+                    }
+                    4 -> {
+                        updateAutoCheck = false
+                        clearUpdateSnooze()
+                        updateSkipRemaining = 0
+                    }
+                }
+                syncUpdatePolicyToScript()
+                d.dismiss()
+                toast("自动检查更新：" + autoCheckSummary())
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 同步策略给用户脚本（脚本检查更新走同一套规则） */
+    private fun syncUpdatePolicyToScript() {
+        val v = updateLastSkippedVersion.replace("'", "")
         activeWebView?.evaluateJavascript(
-            "try{GM_setValue('ykt-helper:update.snoozeUntil',$until)}catch(e){}", null
+            "try{" +
+                "GM_setValue('ykt-helper:update.autoCheck',${updateAutoCheck});" +
+                "GM_setValue('ykt-helper:update.snoozeUntil',${updateSnoozeUntil()});" +
+                "GM_setValue('ykt-helper:update.skipRemaining',${updateSkipRemaining});" +
+                "GM_setValue('ykt-helper:update.lastSkippedVersion','$v');" +
+                "}catch(e){}", null
         )
     }
 
@@ -727,6 +819,7 @@ class MainActivity : AppCompatActivity() {
             sheetDivider(layout)
             sheetRow(layout, "🔄", "检查更新", "当前 v${BuildConfig.VERSION_NAME}") { checkAppUpdate() }
             sheetRow(layout, "📡", "更新渠道", if (updateChannel == "beta") "测试版（尝鲜）" else "稳定版（推荐）") { pickUpdateChannel() }
+            sheetRow(layout, "🔔", "自动检查更新", autoCheckSummary()) { pickAutoCheckPolicy() }
             sheetRow(layout, "🌐", "打开官网", "app.raymor.top/yuketangstudio") { openUrl(site) }
             sheetRow(layout, "📋", "复制官网地址", "发给朋友") { copyTextToClipboard(site, "已复制官网地址") }
             sheetRow(layout, "⭐", "打开 GitHub", "github.com/RayMorTwinkle/YuketangStudio") { openUrl(github) }
@@ -840,26 +933,9 @@ class MainActivity : AppCompatActivity() {
             val hasUpdate = latest != null && isNewer(latest, cur) && !apkUrl.isNullOrBlank()
             runOnUiThread {
                 if (dlg.isShowing) dlg.dismiss()
-                val snoozed = isUpdateSnoozed()
-                val extra = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(24), dp(2), dp(24), 0)
-                }
-                val snoozeBtn = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
-                    text = if (snoozed) {
-                        "已暂停自动检查（剩余 ${updateSnoozeDaysLeft()} 天）· 点击恢复"
-                    } else {
-                        "未来 30 天不再自动检查更新"
-                    }
-                    textSize = 13f
-                    setTextColor(if (snoozed) 0xFF1a7f37.toInt() else 0xFF6b7280.toInt())
-                    setPadding(0, dp(4), 0, dp(4))
-                }
-                extra.addView(snoozeBtn)
-                val dlg2 = AlertDialog.Builder(this)
+                AlertDialog.Builder(this)
                     .setTitle("检查更新")
                     .setMessage(message)
-                    .setView(extra)
                     .apply {
                         if (hasUpdate) {
                             setPositiveButton("下载并安装") { _, _ -> downloadAndInstall(apkUrl!!, latest!!) }
@@ -870,12 +946,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         setNegativeButton("关闭", null)
                     }
-                    .create()
-                snoozeBtn.setOnClickListener {
-                    if (isUpdateSnoozed()) clearUpdateSnooze() else setUpdateSnooze(30)
-                    dlg2.dismiss()
-                }
-                dlg2.show()
+                    .show()
             }
         }.start()
     }

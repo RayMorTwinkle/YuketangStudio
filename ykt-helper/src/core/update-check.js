@@ -118,7 +118,8 @@ export async function fetchLatest() {
  */
 export function checkForUpdate({ force = false } = {}) {
   const now = Date.now();
-  // Android 壳「30 天不再自动检查」：壳写入 update.snoozeUntil，自动检查直接跳过
+  // Android 壳的「自动检查更新」策略（彻底关闭 / 暂停 / 跳过版本）
+  if (!force && storage.get('update.autoCheck') === false) { log.dbg('[update] 自动检查已关闭'); return; }
   const snoozeUntil = Number(storage.get('update.snoozeUntil')) || 0;
   if (!force && now < snoozeUntil) { log.dbg('[update] 自动检查已暂停'); return; }
   if (!force && now - (storage.get('update.lastCheck') || 0) < THROTTLE_MS) return;
@@ -126,6 +127,17 @@ export function checkForUpdate({ force = false } = {}) {
   fetchLatest().then((d) => {
     if (!d.ok) { log.dbg('[update] 检查失败（静默）', d.error); return; }
     if (!d.hasUpdate) { log.dbg(`[update] 已是最新 v${d.cur}`); return; }
+    // 跳过将来 N 个版本：同一版本只扣一次
+    const skip = Number(storage.get('update.skipRemaining')) || 0;
+    if (skip > 0) {
+      const last = storage.get('update.lastSkippedVersion') || '';
+      if (last !== d.latest) {
+        storage.set('update.skipRemaining', skip - 1);
+        storage.set('update.lastSkippedVersion', d.latest);
+      }
+      log.dbg(`[update] 跳过 v${d.latest}（剩余 ${Math.max(0, skip - 1)} 个版本）`);
+      return;
+    }
     log.dbg(`[update] 发现新版本 v${d.latest}（当前 v${d.cur}）`);
     const text = `雨课堂助手新版本 v${d.latest}（当前 v${d.cur}）${d.notes ? '：' + String(d.notes).slice(0, 40) : ''}`;
     try {
