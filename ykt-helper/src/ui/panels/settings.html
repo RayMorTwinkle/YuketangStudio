@@ -46,9 +46,10 @@
         <div class="setting-item">
           <label for="ykt-ai-model">模型 ID:</label>
           <input type="text" id="ykt-ai-model" list="ykt-ai-model-list" placeholder="例如：deepseek-flash / gpt-4o-mini">
-          <button id="ykt-ai-model-fetch" type="button" style="padding:3px 10px">获取云端模型</button>
+          <button id="ykt-ai-model-fetch" type="button" style="padding:3px 10px">获取模型列表</button>
           <datalist id="ykt-ai-model-list"></datalist>
         </div>
+        <small id="ykt-ai-model-hint" style="display:none;opacity:.6">云端模型由服务端按渠道自动分配，无需填写</small>
 
         <div class="setting-item">
           <label class="checkbox-label">

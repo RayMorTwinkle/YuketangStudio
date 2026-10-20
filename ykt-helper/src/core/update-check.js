@@ -70,7 +70,7 @@ function fetchOne(channel) {
           try {
             const d = JSON.parse(r.responseText || '{}');
             if (!d?.version) return done({ ok: false, error: '响应缺少版本号' });
-            done({ ok: true, latest: d.version, notes: d.notes || '', channel });
+            done({ ok: true, latest: d.version, notes: d.notes || '', channel, userscript: d.userscript || '', apk: d.apk || '' });
           } catch {
             done({ ok: false, error: '响应不是合法 JSON' });
           }
@@ -101,6 +101,7 @@ export async function fetchLatest() {
       ok: true, cur, latest: pick.latest,
       hasUpdate: cmpVer(pick.latest, cur) > 0,
       notes: pick.notes, site: SITE_URL, channel: pick.channel,
+      userscript: pick.userscript || '', apk: pick.apk || '',
     };
   }
   const s = await fetchOne('stable');
@@ -109,6 +110,7 @@ export async function fetchLatest() {
     ok: true, cur, latest: s.latest,
     hasUpdate: cmpVer(s.latest, cur) > 0,
     notes: s.notes, site: SITE_URL, channel: 'stable',
+    userscript: s.userscript || '', apk: s.apk || '',
   };
 }
 
@@ -147,7 +149,7 @@ export function checkForUpdate({ force = false } = {}) {
         image: '',
         // Android 壳：点击通知直接进入「检查更新」弹窗（而不是只把 App 打开）
         action: 'check_update',
-        onclick: () => gm.uw.open(SITE_URL, '_blank'),
+        onclick: () => gm.uw.open(d.userscript || SITE_URL, '_blank'),
       });
     } catch (e) { log.dbg('[update] 通知失败', e); }
   });

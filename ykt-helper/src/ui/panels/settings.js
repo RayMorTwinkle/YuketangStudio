@@ -72,6 +72,19 @@ export function mountSettingsPanel() {
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
   const $modelFetch = root.querySelector('#ykt-ai-model-fetch');
   const $modelList = root.querySelector('#ykt-ai-model-list');
+  const $modelHint = root.querySelector('#ykt-ai-model-hint');
+
+  // 云端配置：模型由服务端按渠道分配，禁用模型输入与获取按钮
+  function applyCloudModelState() {
+    const cloud = /api\.raymor\.top\/yuketangstudio/i.test($baseUrl?.value || '');
+    if ($model) {
+      $model.disabled = cloud;
+      $model.placeholder = cloud ? '云端自动分配' : '例如：deepseek-chat / gpt-4o-mini';
+    }
+    if ($visionModel) $visionModel.disabled = cloud;
+    if ($modelFetch) $modelFetch.style.display = cloud ? 'none' : '';
+    if ($modelHint) $modelHint.style.display = cloud ? '' : 'none';
+  }
   const $thinking = root.querySelector('#ykt-ai-thinking');
   const $effort = root.querySelector('#ykt-ai-effort');
   const $apiEye = root.querySelector('#ykt-apikey-eye');
@@ -124,6 +137,7 @@ export function mountSettingsPanel() {
     $visionModel.value = p.visionModel || '';
     if ($thinking) $thinking.checked = p.thinking !== false;
     if ($effort) $effort.value = p.reasoningEffort || 'medium';
+    applyCloudModelState();
   }
 
   // 初始化 Profile 下拉框
@@ -296,31 +310,36 @@ export function mountSettingsPanel() {
     }
   });
 
-  // 获取云端模型列表（填进 datalist，输入框仍可手填）
+  // 获取模型列表：仅自定义渠道；云端由服务端按渠道分配
+  $baseUrl?.addEventListener('input', applyCloudModelState);
+  $baseUrl?.addEventListener('change', applyCloudModelState);
+
   $modelFetch?.addEventListener('click', async () => {
-    const base = ($baseUrl?.value || '').trim();
-    const key = ($api?.value || '').trim();
-    const isCloud = /api\.raymor\.top\/yuketangstudio/i.test(base);
-    const code = (isCloud && key) ? key : (getDevConfig()?.apiKey || '');
-    if (!code) {
-      ui.toast?.('请先解锁云端模型（或填写云端配置的解锁码）');
+    const base = ($baseUrl?.value || '').trim().replace(/\/+$/, '');
+    if (!base) { ui.toast?.('先填写 URL'); return; }
+    if (/api\.raymor\.top\/yuketangstudio/i.test(base)) {
+      ui.toast?.('云端模型由服务端按渠道自动分配');
       return;
     }
+    let url;
+    if (base.includes('/chat/completions')) url = base.replace(/\/chat\/completions.*$/, '/models');
+    else if (/\/v\d+$/.test(base)) url = base + '/models';
+    else url = base + '/v1/models';
+    const key = ($api?.value || '').trim();
+    const headers = key ? { Authorization: 'Bearer ' + key } : {};
     const oldText = $modelFetch.textContent;
     $modelFetch.disabled = true;
     $modelFetch.textContent = '获取中…';
-    const url = 'https://api.raymor.top/yuketangstudio/models';
-    const body = JSON.stringify({ code });
     let data = null;
     try {
-      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      const r = await fetch(url, { headers });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       data = await r.json();
     } catch (e) {
       try {
         data = await new Promise((resolve, reject) => {
           gm.xhr({
-            method: 'POST', url, headers: { 'Content-Type': 'application/json' }, data: body, timeout: 10000,
+            method: 'GET', url, headers, timeout: 10000,
             onload: (res) => { try { resolve(JSON.parse(res.responseText || '{}')); } catch (err) { reject(err); } },
             onerror: reject, ontimeout: reject,
           });
@@ -334,14 +353,11 @@ export function mountSettingsPanel() {
     }
     $modelFetch.disabled = false;
     $modelFetch.textContent = oldText;
-    if (!data?.ok || !Array.isArray(data.models)) {
-      ui.toast?.('获取失败：返回格式异常');
-      return;
-    }
-    $modelList.innerHTML = data.models
-      .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.provider || '')}</option>`)
-      .join('');
-    ui.toast?.(`已获取 ${data.models.length} 个云端模型，点模型输入框选择`, 2600);
+    const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []);
+    const ids = list.map(m => String(m?.id || '')).filter(Boolean);
+    if (!ids.length) { ui.toast?.('没有获取到模型'); return; }
+    $modelList.innerHTML = ids.map(id => `<option value="${escapeHtml(id)}"></option>`).join('');
+    ui.toast?.(`已获取 ${ids.length} 个模型，点模型输入框选择`, 2600);
   });
 
   // 添加 profile

@@ -26,6 +26,7 @@ export function mountAboutPanel() {
   const $dl = root.querySelector('#ykt-about-download');
 
   let checking = false;
+  let lastResult = null;
 
   const setStatus = (text, kind = 'muted') => {
     $status.textContent = text;
@@ -45,6 +46,7 @@ export function mountAboutPanel() {
         return;
       }
       if (d.hasUpdate) {
+        lastResult = d;
         setStatus(`发现新版本 v${d.latest}${d.notes ? ` · ${d.notes}` : ''}`, 'update');
         $actions.style.display = 'flex';
       } else {
@@ -87,7 +89,9 @@ export function mountAboutPanel() {
 
   $btn.addEventListener('click', runCheck);
   $dl.addEventListener('click', () => {
-    try { gm.uw.open('https://app.raymor.top/yuketangstudio/', '_blank'); }
+    // 直接导向当前渠道的脚本下载链接（测试渠道不会再跳到只有稳定版的官网）
+    const url = lastResult?.userscript || 'https://app.raymor.top/yuketangstudio/';
+    try { gm.uw.open(url, '_blank'); }
     catch { /* 打不开就静默：页面上已有 GitHub 链接 */ }
   });
 
