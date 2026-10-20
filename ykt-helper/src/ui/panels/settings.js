@@ -1,6 +1,7 @@
 // settings.js (new version)
 import tpl from './settings.html';
 import { log } from '../../core/log.js';
+import { escapeHtml } from '../../core/dom.js';
 import { ui, copyText } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
@@ -69,6 +70,8 @@ export function mountSettingsPanel() {
   const $api = root.querySelector('#kimi-api-key');
   const $model = root.querySelector('#ykt-ai-model');
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
+  const $modelFetch = root.querySelector('#ykt-ai-model-fetch');
+  const $modelList = root.querySelector('#ykt-ai-model-list');
   const $thinking = root.querySelector('#ykt-ai-thinking');
   const $effort = root.querySelector('#ykt-ai-effort');
   const $apiEye = root.querySelector('#ykt-apikey-eye');
@@ -291,6 +294,54 @@ export function mountSettingsPanel() {
     } finally {
       $apiTest.disabled = false;
     }
+  });
+
+  // 获取云端模型列表（填进 datalist，输入框仍可手填）
+  $modelFetch?.addEventListener('click', async () => {
+    const base = ($baseUrl?.value || '').trim();
+    const key = ($api?.value || '').trim();
+    const isCloud = /api\.raymor\.top\/yuketangstudio/i.test(base);
+    const code = (isCloud && key) ? key : (getDevConfig()?.apiKey || '');
+    if (!code) {
+      ui.toast?.('请先解锁云端模型（或填写云端配置的解锁码）');
+      return;
+    }
+    const oldText = $modelFetch.textContent;
+    $modelFetch.disabled = true;
+    $modelFetch.textContent = '获取中…';
+    const url = 'https://api.raymor.top/yuketangstudio/models';
+    const body = JSON.stringify({ code });
+    let data = null;
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      data = await r.json();
+    } catch (e) {
+      try {
+        data = await new Promise((resolve, reject) => {
+          gm.xhr({
+            method: 'POST', url, headers: { 'Content-Type': 'application/json' }, data: body, timeout: 10000,
+            onload: (res) => { try { resolve(JSON.parse(res.responseText || '{}')); } catch (err) { reject(err); } },
+            onerror: reject, ontimeout: reject,
+          });
+        });
+      } catch (e2) {
+        $modelFetch.disabled = false;
+        $modelFetch.textContent = oldText;
+        ui.toast?.('获取失败：' + (e2?.message || e2));
+        return;
+      }
+    }
+    $modelFetch.disabled = false;
+    $modelFetch.textContent = oldText;
+    if (!data?.ok || !Array.isArray(data.models)) {
+      ui.toast?.('获取失败：返回格式异常');
+      return;
+    }
+    $modelList.innerHTML = data.models
+      .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.provider || '')}</option>`)
+      .join('');
+    ui.toast?.(`已获取 ${data.models.length} 个云端模型，点模型输入框选择`, 2600);
   });
 
   // 添加 profile
