@@ -87,17 +87,13 @@ class MainActivity : AppCompatActivity() {
     private var desktopMode
         get() = prefs.getBoolean("desktopMode", false)
         set(v) { prefs.edit().putBoolean("desktopMode", v).apply() }
-    private var scaleMobile       // 移动端页面缩放 50-100
-        get() = prefs.getInt("scaleMobile", 100)
-        set(v) { prefs.edit().putInt("scaleMobile", v).apply() }
-    private var scaleDesktop      // 桌面端页面缩放 50-100
-        get() = prefs.getInt("scaleDesktop", 70)
-        set(v) { prefs.edit().putInt("scaleDesktop", v).apply() }
+    // 更新渠道：stable（默认，老版本没有该字段也走 stable）/ beta
+    private var updateChannel
+        get() = prefs.getString("updateChannel", "stable") ?: "stable"
+        set(v) { prefs.edit().putString("updateChannel", v).apply() }
     private var envIndex
         get() = prefs.getInt("envIndex", 0)
         set(v) { prefs.edit().putInt("envIndex", v).apply() }
-
-    private val currentScale get() = if (desktopMode) scaleDesktop else scaleMobile
 
     enum class Env(val label: String, val origin: String) {
         CHANGJIANG("长江雨课堂", "https://changjiang.yuketang.cn"),
@@ -163,7 +159,6 @@ class MainActivity : AppCompatActivity() {
 
         configureToolbar()
         registerUpdateReceiver()
-        configureZoomBar()
         askNotificationPermission()
         newTab(homeUrl())
         status(if (desktopMode) "桌面端" else "移动端")
@@ -245,7 +240,6 @@ class MainActivity : AppCompatActivity() {
     override fun onBackPressed() {
         val wv = activeWebView
         when {
-            binding.zoomBar.visibility == View.VISIBLE -> toggleZoomBar()
             wv?.canGoBack() == true -> wv.goBack()
             else -> super.onBackPressed()
         }
@@ -358,8 +352,6 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             applyDesktopMode(this)
         }
-        // 整体页面缩放（layout viewport），须在任何 loadUrl 前设置
-        wv.setInitialScale(currentScale)
         wv.addJavascriptInterface(bridge, "YktBridge")
 
         val combined = shimAsset + "\n;\n" + scriptAsset
@@ -399,6 +391,15 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 CookieManager.getInstance().flush()
+                // 桌面端固定 1440px 视口；双指缩放由 WebSettings 支持
+                if (desktopMode) {
+                    view.evaluateJavascript(
+                        "(function(){var m=document.querySelector('meta[name=viewport]');" +
+                        "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');document.head.appendChild(m);}" +
+                        "m.setAttribute('content','width=1440');})();", null
+                    )
+                }
+                if (view === activeWebView) syncUpdateChannelToScript()
                 val o = originOf(url)
                 if (o != null && pendingRestoreLs.containsKey(o)) {
                     val js = pendingRestoreLs.remove(o)!!
@@ -491,6 +492,10 @@ class MainActivity : AppCompatActivity() {
         settings.userAgentString = if (desktopMode) DESKTOP_UA else WebSettings.getDefaultUserAgent(this)
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
+        // 桌面端固定 1440px 视口（见 onPageFinished 注入），用双指缩放代替页面缩放
+        settings.setSupportZoom(true)
+        settings.builtInZoomControls = true
+        settings.displayZoomControls = false
     }
 
     // ============================================================
@@ -525,17 +530,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleDesktopMode() {
         desktopMode = !desktopMode
-        val scale = if (desktopMode) 70 else 100     // 用户要求：桌面端自动 70%
-        if (desktopMode) scaleDesktop = scale else scaleMobile = scale
-        tabs.forEach {
-            applyDesktopMode(it.webView.settings)
-            it.webView.setInitialScale(scale)
-        }
-        binding.zoomSeek.progress = scale - 50
-        binding.zoomLabel.text = "$scale%"
+        tabs.forEach { applyDesktopMode(it.webView.settings) }
         activeWebView?.loadUrl(homeUrl())
-        status(if (desktopMode) "桌面端 70%" else "移动端")
-        Log.i(TAG, "切换模式 → ${if (desktopMode) "桌面端" else "移动端"} scale=$scale")
+        status(if (desktopMode) "桌面端 1440px" else "移动端")
+        Log.i(TAG, "切换模式 → ${if (desktopMode) "桌面端 1440px" else "移动端"}")
     }
 
     /**
@@ -652,7 +650,6 @@ class MainActivity : AppCompatActivity() {
             sheetDivider(layout)
             sheetRow(layout, if (desktopMode) "🖥️" else "📱", "切换${if (desktopMode) "移动" else "桌面"}端",
                 "桌面端自动 70% 缩放") { toggleDesktopMode() }
-            sheetRow(layout, "🔍", "页面缩放", "当前 ${currentScale}%（50–100%）") { toggleZoomBar() }
             sheetDivider(layout)
             sheetRow(layout, "📜", "历史记录") { showHistory() }
             sheetRow(layout, "📥", "下载管理") { showDownloads() }
@@ -729,6 +726,7 @@ class MainActivity : AppCompatActivity() {
             })
             sheetDivider(layout)
             sheetRow(layout, "🔄", "检查更新", "当前 v${BuildConfig.VERSION_NAME}") { checkAppUpdate() }
+            sheetRow(layout, "📡", "更新渠道", if (updateChannel == "beta") "测试版（尝鲜）" else "稳定版（推荐）") { pickUpdateChannel() }
             sheetRow(layout, "🌐", "打开官网", "app.raymor.top/yuketangstudio") { openUrl(site) }
             sheetRow(layout, "📋", "复制官网地址", "发给朋友") { copyTextToClipboard(site, "已复制官网地址") }
             sheetRow(layout, "⭐", "打开 GitHub", "github.com/RayMorTwinkle/YuketangStudio") { openUrl(github) }
@@ -736,6 +734,27 @@ class MainActivity : AppCompatActivity() {
             sheetDivider(layout)
             sheetRow(layout, "📄", "开源协议", "MIT License") { openUrl("$github/blob/main/LICENSE") }
         }
+    }
+
+    private fun pickUpdateChannel() {
+        val labels = arrayOf("稳定版（推荐）", "测试版（尝鲜）")
+        AlertDialog.Builder(this)
+            .setTitle("更新渠道")
+            .setSingleChoiceItems(labels, if (updateChannel == "beta") 1 else 0) { d, which ->
+                updateChannel = if (which == 1) "beta" else "stable"
+                syncUpdateChannelToScript()
+                d.dismiss()
+                toast(if (which == 1) "已切换到测试渠道" else "已切换到稳定渠道")
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 同步给用户脚本：脚本检查更新也走同一渠道 */
+    private fun syncUpdateChannelToScript() {
+        activeWebView?.evaluateJavascript(
+            "try{GM_setValue('ykt-helper:update.channel','$updateChannel')}catch(e){}", null
+        )
     }
 
     private fun openUrl(url: String) {
@@ -768,7 +787,7 @@ class MainActivity : AppCompatActivity() {
             var apkUrl: String? = null
             var latest: String? = null
             try {
-                val conn = (java.net.URL(LATEST_URL).openConnection() as java.net.HttpURLConnection).apply {
+                val conn = (java.net.URL("$LATEST_URL?channel=$updateChannel").openConnection() as java.net.HttpURLConnection).apply {
                     connectTimeout = 10000
                     readTimeout = 10000
                     instanceFollowRedirects = true
@@ -1862,8 +1881,6 @@ class MainActivity : AppCompatActivity() {
         // prefs 全量导出（含默认值，保证还原后行为一致）
         val prefsJson = JSONObject()
             .put("desktopMode", desktopMode)
-            .put("scaleMobile", scaleMobile)
-            .put("scaleDesktop", scaleDesktop)
             .put("envIndex", envIndex)
         val accountsArr = JSONArray()
         AccountStore.all(this).forEach { accountsArr.put(it.toJson()) }
@@ -2049,44 +2066,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // 页面缩放
-    // ============================================================
-
-    private fun configureZoomBar() {
-        binding.zoomSeek.max = 50            // 50%–100%
-        binding.zoomSeek.progress = currentScale - 50
-        binding.zoomLabel.text = "${currentScale}%"
-        binding.zoomSeek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
-                binding.zoomLabel.text = "${p + 50}%"
-            }
-            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
-                // 松手才应用（setInitialScale 必须 reload 才生效，拖动中应用会打断流式）
-                applyScale(sb?.progress?.plus(50) ?: 100)
-            }
-        })
-        binding.zoomReset.setOnClickListener {
-            binding.zoomSeek.progress = 50
-            binding.zoomLabel.text = "100%"
-            applyScale(100)
-        }
-        binding.zoomDone.setOnClickListener { toggleZoomBar() }
-    }
-
-    private fun applyScale(scale: Int) {
-        if (desktopMode) scaleDesktop = scale else scaleMobile = scale
-        tabs.forEach { it.webView.setInitialScale(scale) }
-        activeWebView?.reload()
-        status("缩放 ${scale}%")
-        Log.i(TAG, "页面缩放 → $scale% (${if (desktopMode) "桌面" else "移动"}端)")
-    }
-
-    private fun toggleZoomBar() {
-        binding.zoomBar.visibility =
-            if (binding.zoomBar.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-    }
-
     // ============================================================
     // 收集页 / 桥接
     // ============================================================

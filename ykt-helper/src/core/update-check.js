@@ -16,6 +16,18 @@ import { log } from './log.js';
 const LATEST_URL = 'https://api.raymor.top/yuketangstudio/latest';
 const SITE_URL = 'https://app.raymor.top/yuketangstudio/';
 const THROTTLE_MS = 15 * 60 * 1000;
+const K_CHANNEL = 'update.channel';
+
+/** 更新渠道：stable（默认）/ beta；只影响检查更新 */
+export function getChannel() {
+  return storage.get(K_CHANNEL) === 'beta' ? 'beta' : 'stable';
+}
+export function setChannel(ch) {
+  storage.set(K_CHANNEL, ch === 'beta' ? 'beta' : 'stable');
+}
+function latestUrl() {
+  return LATEST_URL + '?channel=' + getChannel();
+}
 
 /** 语义化版本比较：a>b → 1；a<b → -1；等 → 0（容忍非数字段） */
 export function cmpVer(a, b) {
@@ -50,7 +62,7 @@ export function fetchLatest() {
     try {
       gm.xhr({
         method: 'GET',
-        url: LATEST_URL,
+        url: latestUrl(),
         timeout: 10000,
         onload(r) {
           if (r.status < 200 || r.status >= 300) {

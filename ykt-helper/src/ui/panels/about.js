@@ -1,7 +1,7 @@
 // src/ui/panels/about.js
 // 关于页：版本信息 + 手动检查更新（对比 svc /latest 元数据）
 import tpl from './about.html';
-import { fetchLatest } from '../../core/update-check.js';
+import { fetchLatest, getChannel, setChannel } from '../../core/update-check.js';
 import { gm } from '../../core/env.js';
 import { ui, copyText } from '../ui-api.js';
 import { log } from '../../core/log.js';
@@ -68,6 +68,22 @@ export function mountAboutPanel() {
     const ok = await copyText('https://app.raymor.top/yuketangstudio/');
     ui.toast?.(ok ? '已复制官网地址，发给朋友吧' : '复制失败，请手动输入官网地址', 2200);
   });
+
+  // 更新渠道（稳定 / 测试）
+  const $chLabel = root.querySelector('#ykt-about-channel-label');
+  const $chBtn = root.querySelector('#ykt-about-channel-toggle');
+  const refreshChannel = () => {
+    const ch = getChannel();
+    if ($chLabel) $chLabel.textContent = ch === 'beta' ? '测试版' : '稳定版';
+    if ($chBtn) $chBtn.textContent = ch === 'beta' ? '切换到稳定版' : '切换到测试版';
+  };
+  $chBtn?.addEventListener('click', () => {
+    setChannel(getChannel() === 'beta' ? 'stable' : 'beta');
+    refreshChannel();
+    ui.toast?.(getChannel() === 'beta' ? '已切换到测试渠道' : '已切换到稳定渠道', 2200);
+    runCheck();
+  });
+  refreshChannel();
 
   $btn.addEventListener('click', runCheck);
   $dl.addEventListener('click', () => {
