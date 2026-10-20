@@ -45,10 +45,10 @@
 
         <div class="setting-item">
           <label for="ykt-ai-model">模型 ID:</label>
-          <input type="text" id="ykt-ai-model" list="ykt-ai-model-list" placeholder="例如：deepseek-flash / gpt-4o-mini">
+          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-chat / gpt-4o-mini">
           <button id="ykt-ai-model-fetch" type="button" style="padding:3px 10px">获取模型列表</button>
-          <datalist id="ykt-ai-model-list"></datalist>
         </div>
+        <div id="ykt-ai-model-options" class="ykt-model-options" style="display:none"></div>
         <small id="ykt-ai-model-hint" style="display:none;opacity:.6">云端模型由服务端按渠道自动分配，无需填写</small>
 
         <div class="setting-item">
@@ -75,7 +75,7 @@
           <summary>高级选项</summary>
           <div class="setting-item">
             <label for="ykt-ai-vision-model">图像模型 ID:</label>
-            <input type="text" id="ykt-ai-vision-model" list="ykt-ai-model-list" placeholder="默认不填则与模型相同">
+            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">
             <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>
           </div>
         </details>

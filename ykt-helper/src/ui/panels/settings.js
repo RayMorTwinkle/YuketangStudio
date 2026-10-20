@@ -71,7 +71,7 @@ export function mountSettingsPanel() {
   const $model = root.querySelector('#ykt-ai-model');
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
   const $modelFetch = root.querySelector('#ykt-ai-model-fetch');
-  const $modelList = root.querySelector('#ykt-ai-model-list');
+  const $modelOptions = root.querySelector('#ykt-ai-model-options');
   const $modelHint = root.querySelector('#ykt-ai-model-hint');
 
   // 云端配置：模型由服务端按渠道分配，禁用模型输入与获取按钮
@@ -84,6 +84,7 @@ export function mountSettingsPanel() {
     if ($visionModel) $visionModel.disabled = cloud;
     if ($modelFetch) $modelFetch.style.display = cloud ? 'none' : '';
     if ($modelHint) $modelHint.style.display = cloud ? '' : 'none';
+    if (cloud && $modelOptions) $modelOptions.style.display = 'none';
   }
   const $thinking = root.querySelector('#ykt-ai-thinking');
   const $effort = root.querySelector('#ykt-ai-effort');
@@ -137,6 +138,7 @@ export function mountSettingsPanel() {
     $visionModel.value = p.visionModel || '';
     if ($thinking) $thinking.checked = p.thinking !== false;
     if ($effort) $effort.value = p.reasoningEffort || 'medium';
+    if ($modelOptions) $modelOptions.style.display = 'none';
     applyCloudModelState();
   }
 
@@ -354,10 +356,25 @@ export function mountSettingsPanel() {
     $modelFetch.disabled = false;
     $modelFetch.textContent = oldText;
     const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []);
-    const ids = list.map(m => String(m?.id || '')).filter(Boolean);
-    if (!ids.length) { ui.toast?.('没有获取到模型'); return; }
-    $modelList.innerHTML = ids.map(id => `<option value="${escapeHtml(id)}"></option>`).join('');
-    ui.toast?.(`已获取 ${ids.length} 个模型，点模型输入框选择`, 2600);
+    const items = list.map(m => ({
+      id: String(m?.id || ''),
+      label: String(m?.name || m?.owned_by || ''),
+    })).filter(x => x.id);
+    if (!items.length) { ui.toast?.('没有获取到模型'); return; }
+    $modelOptions.innerHTML = items.map(x =>
+      `<div class="opt" data-id="${escapeHtml(x.id)}"><span>${escapeHtml(x.id)}</span><span class="provider">${escapeHtml(x.label)}</span></div>`
+    ).join('');
+    $modelOptions.style.display = 'block';
+    $modelOptions.querySelectorAll('.opt').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.getAttribute('data-id') || '';
+        $model.value = id;
+        $model.dispatchEvent(new Event('change', { bubbles: true }));
+        $modelOptions.style.display = 'none';
+        ui.toast?.(`已选择模型：${id}`, 1800);
+      });
+    });
+    ui.toast?.(`已获取 ${items.length} 个模型，点列表选择`, 2600);
   });
 
   // 添加 profile
