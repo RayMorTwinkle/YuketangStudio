@@ -131,6 +131,7 @@ export function mountQuizPanel() {
     <div class="panel-body">
       <div class="quiz-meta" id="ykt-quiz-meta"></div>
       <div class="quiz-actions">
+        <button type="button" id="ykt-quiz-assign">📚 本课作业</button>
         <button type="button" id="ykt-quiz-zip">下载全部 JPG（ZIP）</button>
         <button type="button" id="ykt-quiz-pdf">生成 PDF</button>
         <button type="button" id="ykt-quiz-long">生成长图</button>
@@ -144,6 +145,9 @@ export function mountQuizPanel() {
   renderList(data);
 
   root.querySelector('.quiz-close')?.addEventListener('click', () => root.classList.remove('visible'));
+  root.querySelector('#ykt-quiz-assign')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('ykt:open-assign', { detail: { quizId: String(window.quizID || '') } }));
+  });
   root.querySelector('#ykt-quiz-zip')?.addEventListener('click', () => runBusy('正在打包 ZIP…', () => downloadAllZip(data)));
   root.querySelector('#ykt-quiz-pdf')?.addEventListener('click', () => runBusy('正在生成 PDF…', () => downloadPdf(data)));
   root.querySelector('#ykt-quiz-long')?.addEventListener('click', () => runBusy('正在生成长图…', () => downloadLongImage(data)));

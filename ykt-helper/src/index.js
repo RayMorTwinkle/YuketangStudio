@@ -6,6 +6,7 @@ import { injectStyles } from './ui/styles.js';
 import { installToolbar } from './ui/toolbar.js';
 import { maybeShowOnboarding } from './ui/onboarding.js';
 import { mountQuizPanel } from './ui/panels/quiz-panel.js';
+import { mountAssignPanel } from './ui/panels/assign-panel.js';
 import * as telemetry from './core/telemetry.js';
 import { actions } from './state/actions.js';
 import { ui } from './ui/ui-api.js';
@@ -159,6 +160,7 @@ function whenBodyReady(fn) {
       try { ui._mountAll?.(); } catch (e) { log.err('[mount] panels failed', e); }
       try { installToolbar(); } catch (e) { log.err('[mount] toolbar failed', e); }
       try { mountQuizPanel(); } catch (e) { log.err('[quiz] mount failed', e); }
+      try { mountAssignPanel(); } catch (e) { log.err('[assign] mount failed', e); }
       try { maybeShowOnboarding(); } catch (e) { log.err('[onboarding] failed', e); }
     } else {
       log.dbg('[mount] iframe 内跳过 UI 挂载:', window.location.pathname);

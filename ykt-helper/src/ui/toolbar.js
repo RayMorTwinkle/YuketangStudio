@@ -30,11 +30,12 @@ export function installToolbar() {
   const bar = document.createElement('div');
   bar.id = 'ykt-helper-toolbar';
   const isQuiz = /^\/v\/quiz\/quiz_info\/\d+/.test(location.pathname);
+  const isCourse = /^\/v2\/web\//.test(location.pathname) || /^\/m\/v2/.test(location.pathname);
   bar.innerHTML = `
     <span id="ykt-btn-shell" class="btn" title="YuketangStudio 主面板"><i class="fas fa-briefcase"></i></span>
     <span id="ykt-btn-bell" class="btn" title="习题提醒"><i class="fas fa-bell"></i></span>
     <span id="ykt-btn-auto-answer" class="btn" title="自动作答"><i class="fas fa-magic-wand-sparkles"></i></span>
-    ${isQuiz ? '<span id="ykt-btn-quiz" class="btn" title="作业工具"><i class="fas fa-file-lines"></i></span>' : ''}
+    ${(isQuiz || isCourse) ? '<span id="ykt-btn-quiz" class="btn" title="作业工具"><i class="fas fa-file-lines"></i></span>' : ''}
   `;
   document.body.appendChild(bar);
 
@@ -58,7 +59,8 @@ export function installToolbar() {
 
   // 作业工具（仅作业页显示）
   bar.querySelector('#ykt-btn-quiz')?.addEventListener('click', () => {
-    window.dispatchEvent(new Event('ykt:open-quiz'));
+    if (isQuiz) window.dispatchEvent(new Event('ykt:open-quiz'));
+    else window.dispatchEvent(new Event('ykt:open-assign'));
   });
 
   // 自动作答开关

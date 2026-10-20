@@ -3,6 +3,7 @@ import { gm } from '../core/env.js';
 import { log } from '../core/log.js';
 import { storage } from '../core/storage.js';
 import { DEFAULT_CONFIG } from '../core/types.js';
+import { repo } from '../state/repo.js';
 import { toast } from './toast.js';
 import * as AIPanel from './panels/ai.js';
 import * as PresPanel from './panels/presentation.js';
@@ -252,6 +253,29 @@ export const ui = {
       head.appendChild(closeBtn);
       body.appendChild(head);
       body.appendChild(detail);
+
+      // 实时倒计时：用服务端时钟（clockOffset）换算，每秒刷新
+      const pid = String(problem?.problemId ?? problem?.id ?? '');
+      const st = pid ? repo.problemStatus.get(pid) : null;
+      const endTime = Number(st?.endTime ?? problem?.endTime);
+      if (Number.isFinite(endTime) && endTime > 0) {
+        const cd = document.createElement('div');
+        cd.style.cssText = 'margin-top:8px;font-size:12px;opacity:.85;font-variant-numeric:tabular-nums';
+        body.appendChild(cd);
+        const offset = Number(st?.clockOffset) || 0;
+        const tick = () => {
+          const remain = Math.max(0, Math.floor((endTime - (Date.now() + offset)) / 1000));
+          const mm = String(Math.floor(remain / 60)).padStart(2, '0');
+          const ss = String(remain % 60).padStart(2, '0');
+          cd.textContent = remain > 0 ? `⏱ 剩余 ${mm}:${ss}` : '⏱ 已结束';
+          if (remain <= 0) { clearInterval(cd.__t); cd.__t = null; }
+        };
+        cd.__t = setInterval(tick, 1000);
+        tick();
+        const oldRemove = wrapper.remove.bind(wrapper);
+        wrapper.remove = () => { if (cd.__t) clearInterval(cd.__t); oldRemove(); };
+      }
+
       wrapper.appendChild(body);
 
       document.body.appendChild(wrapper);

@@ -194,20 +194,7 @@ function buildEditor(rowEl, e, prob, state) {
     }
   };
 
-  if (state === 'expired') {
-    const btnRetry = document.createElement('button');
-    btnRetry.className = 'danger';
-    btnRetry.textContent = '⏰ 补交';
-    btnRetry.onclick = async () => {
-      const ok = await confirmBox('这道题已过截止时间，将以补交方式提交（服务端会记录补交标记）。确定继续吗？');
-      if (ok) doSubmit(true);
-    };
-    bar.appendChild(btnRetry);
-    const tag = document.createElement('span');
-    tag.style.cssText = 'font-size:11px;color:#b91c1c;';
-    tag.textContent = '已过期，只能补交';
-    bar.appendChild(tag);
-  } else {
+  if (state !== 'expired') {
     const btn = document.createElement('button');
     btn.className = 'primary';
     btn.textContent = '提交答案';
@@ -219,6 +206,21 @@ function buildEditor(rowEl, e, prob, state) {
       tag.textContent = `已作答：${existingText.slice(0, 30)}`;
       bar.appendChild(tag);
     }
+  }
+  // 补交按钮常态显示（过期/未过期都能走补交通道；提交前二次确认）
+  const btnRetry = document.createElement('button');
+  btnRetry.className = 'danger';
+  btnRetry.textContent = '⏰ 补交';
+  btnRetry.onclick = async () => {
+    const ok = await confirmBox('将以补交方式提交（服务端会记录补交标记）。确定继续吗？');
+    if (ok) doSubmit(true);
+  };
+  bar.appendChild(btnRetry);
+  if (state === 'expired') {
+    const tag = document.createElement('span');
+    tag.style.cssText = 'font-size:11px;color:#b91c1c;';
+    tag.textContent = '已过期';
+    bar.appendChild(tag);
   }
   editor.appendChild(bar);
   return editor;
@@ -308,6 +310,14 @@ export function mountProblemListPanel() {
 
   // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
   $('#ykt-pl-filter')?.addEventListener('change', () => updateProblemList());
+  $('#ykt-pl-refresh')?.addEventListener('click', () => updateProblemList());
+
+  // 状态（进行中/已过期）随时间变化：每 10s 重算一次；展开编辑区时不刷新，避免打断输入
+  setInterval(() => {
+    try {
+      if (root && root.offsetParent !== null && expandedEditors.size === 0) updateProblemList();
+    } catch { /* ignore */ }
+  }, 10000);
 
   mounted = true;
   hydrateProblemsFromPresentations();

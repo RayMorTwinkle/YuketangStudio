@@ -579,3 +579,29 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
 #ykt-quiz-panel .quiz-ai-loading{ color: var(--ykt-muted); }
 #ykt-quiz-panel .quiz-ai-err{ color: #cf222e; }
 #ykt-quiz-panel .quiz-empty{ padding: 12px 16px; color: var(--ykt-muted); font-size: 13px; }
+
+/* ===== 本课作业面板 ===== */
+#ykt-assign-panel .ap-toolbar{ display:flex; gap:8px; padding:10px 16px 6px; }
+#ykt-assign-panel .ap-toolbar select{
+  flex:1; min-width:0; padding:6px 8px; font-size:13px;
+  border:1px solid var(--ykt-border-strong); border-radius:6px; background:#fff; color:var(--ykt-fg);
+}
+#ykt-assign-panel .ap-toolbar button,
+#ykt-assign-panel .ap-actions button{
+  padding:6px 10px; border:1px solid var(--ykt-border-strong); border-radius:6px;
+  background:#fff; cursor:pointer; font-size:12px; color:var(--ykt-fg);
+}
+#ykt-assign-panel .ap-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:4px 16px 8px; font-size:12px; }
+#ykt-assign-panel .ap-actions button:hover{ border-color:var(--ykt-accent); color:var(--ykt-accent); }
+#ykt-assign-panel .ap-status{ padding:0 16px 8px; font-size:12px; color:var(--ykt-muted); min-height:16px; }
+#ykt-assign-panel .ap-row{ display:flex; gap:8px; align-items:center; padding:8px 16px; border-top:1px solid var(--ykt-border); }
+#ykt-assign-panel .ap-main{ flex:1 1 auto; min-width:0; }
+#ykt-assign-panel .ap-title{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#ykt-assign-panel .ap-meta{ font-size:11px; color:var(--ykt-muted); margin-top:2px; }
+#ykt-assign-panel .ap-links{ display:flex; gap:6px; flex:0 0 auto; }
+#ykt-assign-panel .ap-links button{
+  padding:3px 8px; border:1px solid var(--ykt-border-strong); border-radius:5px;
+  background:#fff; cursor:pointer; font-size:11px; color:var(--ykt-fg);
+}
+#ykt-assign-panel .ap-links button:hover{ border-color:var(--ykt-accent); color:var(--ykt-accent); }
+#ykt-assign-panel .ap-empty{ padding:16px; color:var(--ykt-muted); font-size:13px; }
