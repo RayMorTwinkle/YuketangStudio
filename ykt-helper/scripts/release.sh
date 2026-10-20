@@ -105,7 +105,7 @@ if [ "$CHECK_ONLY" = 1 ]; then echo; echo "✅ 检查通过"; exit 0; fi
 # ---------- 版本号 ----------
 if [ -n "$VERSION" ]; then
   step "设置版本 v$VERSION"
-  node - "$ROOT/ykt-helper/package.json" "$VERSION" <<'PY'
+  python3 - "$ROOT/ykt-helper/package.json" "$VERSION" <<'PY'
 import json,sys
 p,ver=sys.argv[1],sys.argv[2]
 d=json.load(open(p)); d["version"]=ver
