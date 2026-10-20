@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.6.3
+// @version      0.6.4
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -779,6 +779,28 @@
       };
       check();
     });
+  }
+  // src/core/dom.js
+  // 轻量 DOM 工具——escapeHtml 此前在 ai.js / chat.js / auto-answer-popup.js 各抄了一份
+    function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+  /**
+   * 把截图数据统一成合法的 image_url：
+   * - 已经是 data:image/... 或 http(s) URL → 原样返回
+   * - 裸 base64（captureSlideImage 的返回值）→ 按魔数补 data: 前缀
+   */  function ensureImageUrl(s) {
+    const v = String(s || "").trim();
+    if (!v) return "";
+    if (/^data:image\//i.test(v) || /^https?:\/\//i.test(v)) return v;
+    const mime = v.startsWith("iVBORw0KGgo") ? "image/png" : v.startsWith("R0lGOD") ? "image/gif" : v.startsWith("UklGR") ? "image/webp" : "image/jpeg";
+    return `data:${mime};base64,${v}`;
   }
   // src/core/telemetry.js
   // 匿名使用统计：installId（首启生成 UUID）+ 平台 + 版本 + 是否用码 +
@@ -1630,17 +1652,6 @@
       source: "failed",
       reason: slide || url ? "PPT 图片下载失败（可能是网络或权限问题）" : "当前页面没有可用的 PPT 页"
     };
-  }
-  // src/core/dom.js
-  // 轻量 DOM 工具——escapeHtml 此前在 ai.js / chat.js / auto-answer-popup.js 各抄了一份
-    function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    }[c]));
   }
   // src/ai/tools.js
   // 「提交答案」工具：定义 + 参数归一化。
@@ -2660,7 +2671,7 @@
     if (sid != null) try {
       const img = await captureSlideImage(sid);
       if (img) return {
-        dataUrl: img,
+        dataUrl: ensureImageUrl(img),
         source: "problem-slide"
       };
     } catch (e) {
@@ -2869,7 +2880,7 @@
       if (dataUrl) content.push({
         type: "image_url",
         image_url: {
-          url: dataUrl
+          url: ensureImageUrl(dataUrl)
         }
       }); else if (isAnalyze) attachFailed = reason || "未取到当前 PPT 页";
     }
@@ -2882,7 +2893,7 @@
     const userBubble = addBubble$1("user", escapeHtml(nudge || text || DEFAULT_ANALYZE_PROMPT));
     for (const c of content) if (c.type === "image_url") {
       const img = document.createElement("img");
-      img.src = c.image_url.url;
+      img.src = ensureImageUrl(c.image_url.url);
       img.alt = "当前 PPT 页";
       userBubble.appendChild(img);
     }
@@ -5912,7 +5923,7 @@
         if (dataUrl) content.push({
           type: "image_url",
           image_url: {
-            url: dataUrl
+            url: ensureImageUrl(dataUrl)
           }
         }); else 
         // 明确告知用户本条没有附图，而不是静默降级
@@ -5922,7 +5933,7 @@
             for (const att of attachments) content.push({
         type: "image_url",
         image_url: {
-          url: att
+          url: ensureImageUrl(att)
         }
       });
       history.push({
@@ -6585,7 +6596,7 @@
       if (typeof GM_info !== "undefined" && GM_info.script?.version) return GM_info.script.version;
     } catch {}
     try {
-      return "0.6.3";
+      return "0.6.4";
     } catch {}
     return "0.0.0";
   }
@@ -6699,8 +6710,12 @@
    * 不返回结果——需要结果请用 fetchLatest()。
    */  function checkForUpdate({force: force = false} = {}) {
     const now = Date.now();
-    // Android 壳「30 天不再自动检查」：壳写入 update.snoozeUntil，自动检查直接跳过
-        const snoozeUntil = Number(storage.get("update.snoozeUntil")) || 0;
+    // Android 壳的「自动检查更新」策略（彻底关闭 / 暂停 / 跳过版本）
+        if (!force && storage.get("update.autoCheck") === false) {
+      log.dbg("[update] 自动检查已关闭");
+      return;
+    }
+    const snoozeUntil = Number(storage.get("update.snoozeUntil")) || 0;
     if (!force && now < snoozeUntil) {
       log.dbg("[update] 自动检查已暂停");
       return;
@@ -6714,6 +6729,17 @@
       }
       if (!d.hasUpdate) {
         log.dbg(`[update] 已是最新 v${d.cur}`);
+        return;
+      }
+      // 跳过将来 N 个版本：同一版本只扣一次
+            const skip = Number(storage.get("update.skipRemaining")) || 0;
+      if (skip > 0) {
+        const last = storage.get("update.lastSkippedVersion") || "";
+        if (last !== d.latest) {
+          storage.set("update.skipRemaining", skip - 1);
+          storage.set("update.lastSkippedVersion", d.latest);
+        }
+        log.dbg(`[update] 跳过 v${d.latest}（剩余 ${Math.max(0, skip - 1)} 个版本）`);
         return;
       }
       log.dbg(`[update] 发现新版本 v${d.latest}（当前 v${d.cur}）`);
@@ -6739,8 +6765,8 @@
   function mountAboutPanel() {
     if (mounted$1) return root$1;
     const host = document.createElement("div");
-    // "0.6.3" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.3"}<`);
+    // "0.6.4" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.4"}<`);
     document.body.appendChild(host.firstElementChild);
     root$1 = document.getElementById("ykt-about-panel");
     const $btn = root$1.querySelector("#ykt-about-check");
