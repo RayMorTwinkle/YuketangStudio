@@ -288,7 +288,14 @@ export async function cacheQuizAnswer({ quizId, problemId, result }) {
     },
     body: JSON.stringify(payload),
   });
-  const j = await r.json().catch(() => ({}));
+  const text = await r.text();
+  let j;
+  try {
+    j = JSON.parse(text);
+  } catch {
+    // 作业已结束/参数错误时服务端会回 HTML 错误页，不能当成功
+    throw new Error('服务器返回非 JSON（可能作业已结束或参数错误）');
+  }
   if (!r.ok || j.success === false) throw new Error(j.msg || `HTTP ${r.status}`);
   return j;
 }
