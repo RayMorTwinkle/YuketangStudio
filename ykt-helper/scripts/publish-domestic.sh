@@ -15,13 +15,18 @@ cd "$(dirname "$0")/.."
 
 CHANNEL="beta"
 APK=""
+APK_ONLY=0
 for arg in "$@"; do
   case "$arg" in
-    --stable) CHANNEL="stable" ;;
-    --beta)   CHANNEL="beta" ;;
-    *)        APK="$arg" ;;
+    --stable)   CHANNEL="stable" ;;
+    --beta)     CHANNEL="beta" ;;
+    --apk-only) APK_ONLY=1 ;;
+    *)          APK="$arg" ;;
   esac
 done
+if [ "$APK_ONLY" = 1 ] && { [ -z "$APK" ] || [ ! -f "$APK" ]; }; then
+  echo "--apk-only 需要提供有效的 APK 路径"; exit 1
+fi
 
 H="${AXOOO_HOST:-http://10.126.126.1:3005}"
 K="${AXOOO_API_KEY:?需要 AXOOO_API_KEY（见 ServerX/敏感/axooo-pan.md）}"
@@ -49,10 +54,15 @@ echo "▸ 渠道：$CHANNEL"
 curl -s -X POST -H "X-API-Key: $K" "$H/mkdir?path=$REMOTE_DIR" >/dev/null || true
 
 REMOTE_JS="$REMOTE_DIR/YuketangStudio-latest.user.js"
-echo "▸ 上传 $REMOTE_JS"
-upload "$LATEST_JS" "$REMOTE_JS"
-JS_URL=$(dl_host "$REMOTE_JS")
-echo "  $JS_URL"
+JS_URL=""
+if [ "$APK_ONLY" = 0 ]; then
+  echo "▸ 上传 $REMOTE_JS"
+  upload "$LATEST_JS" "$REMOTE_JS"
+  JS_URL=$(dl_host "$REMOTE_JS")
+  echo "  $JS_URL"
+else
+  echo "▸ --apk-only：跳过脚本上传，沿用现有 userscript 链接"
+fi
 
 APK_URL=""
 if [ -n "$APK" ] && [ -f "$APK" ]; then
@@ -67,9 +77,9 @@ fi
 NOTES="${PUBLISH_NOTES:-v${VER} 更新}"
 TMP=$(mktemp)
 ssh SM 'cat /root/app-configs/svc/data/yt-latest.json' > "$TMP" 2>/dev/null || echo '{}' > "$TMP"
-python3 - "$VER" "$JS_URL" "$APK_URL" "$NOTES" "$CHANNEL" "$TMP" <<'PY'
+python3 - "$VER" "$JS_URL" "$APK_URL" "$NOTES" "$CHANNEL" "$TMP" "$APK_ONLY" <<'PY'
 import json, sys, datetime
-ver, js, apk, notes, channel, path = sys.argv[1:7]
+ver, js, apk, notes, channel, path, apk_only = sys.argv[1:8]
 try:
     d = json.load(open(path))
 except Exception:
@@ -78,6 +88,10 @@ if "version" in d and "stable" not in d:
     d = {"stable": d}
 d.setdefault("stable", {})
 d.setdefault("beta", {})
+if apk_only == "1":
+    js = d.get(channel, {}).get("userscript", "")
+    if not js:
+        sys.exit("--apk-only 但该渠道没有已发布的 userscript 链接")
 d[channel] = {
     "version": ver,
     "userscript": js,
