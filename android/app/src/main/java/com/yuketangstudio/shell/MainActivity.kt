@@ -662,7 +662,7 @@ class MainActivity : AppCompatActivity() {
             sheetRow(layout, "💾", "备份设置", "登录态+全部配置+账号+历史") { pickBackupTarget() }
             sheetRow(layout, "♻️", "还原设置") { pickRestoreSource() }
             sheetDivider(layout)
-            sheetRow(layout, "🔄", "检查更新", "当前 v${BuildConfig.VERSION_NAME}") { checkAppUpdate() }
+            sheetRow(layout, "ℹ️", "关于与更新", "版本 v${BuildConfig.VERSION_NAME} · 官网 / GitHub") { showAboutSheet() }
             sheetDivider(layout)
             sheetRow(layout, "🗑", "清空当前标签页数据") {
                 activeWebView?.let {
@@ -701,6 +701,52 @@ class MainActivity : AppCompatActivity() {
         activeWebView?.evaluateJavascript(
             "try{GM_setValue('ykt-helper:update.snoozeUntil',$until)}catch(e){}", null
         )
+    }
+
+    // ---------- 关于与更新 ----------
+    private fun showAboutSheet() {
+        val site = "https://app.raymor.top/yuketangstudio/"
+        val github = "https://github.com/RayMorTwinkle/YuketangStudio"
+        showSheet("关于与更新") { layout ->
+            layout.addView(TextView(this).apply {
+                text = "YuketangStudio"
+                textSize = 22f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(TXT)
+                setPadding(dp(16), dp(4), dp(16), dp(2))
+            })
+            layout.addView(TextView(this).apply {
+                text = "版本 v${BuildConfig.VERSION_NAME} · 雨课堂学习增强助手"
+                textSize = 13f
+                setTextColor(TEXT_SEC)
+                setPadding(dp(16), dp(0), dp(16), dp(6))
+            })
+            layout.addView(TextView(this).apply {
+                text = "⭐ 如果这个工具帮到了你，欢迎到 GitHub 点个 Star，这是对作者最大的支持。"
+                textSize = 13f
+                setTextColor(TXT)
+                setPadding(dp(16), dp(4), dp(16), dp(10))
+            })
+            sheetDivider(layout)
+            sheetRow(layout, "🔄", "检查更新", "当前 v${BuildConfig.VERSION_NAME}") { checkAppUpdate() }
+            sheetRow(layout, "🌐", "打开官网", "app.raymor.top/yuketangstudio") { openUrl(site) }
+            sheetRow(layout, "📋", "复制官网地址", "发给朋友") { copyTextToClipboard(site, "已复制官网地址") }
+            sheetRow(layout, "⭐", "打开 GitHub", "github.com/RayMorTwinkle/YuketangStudio") { openUrl(github) }
+            sheetRow(layout, "💬", "复制讨论群号", "QQ 群 901466023") { copyTextToClipboard("901466023", "已复制群号 901466023") }
+            sheetDivider(layout)
+            sheetRow(layout, "📄", "开源协议", "MIT License") { openUrl("$github/blob/main/LICENSE") }
+        }
+    }
+
+    private fun openUrl(url: String) {
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { toast("没有可用的浏览器") }
+    }
+
+    private fun copyTextToClipboard(text: String, msg: String) {
+        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
+            .setPrimaryClip(ClipData.newPlainText("ykt", text))
+        toast(msg)
     }
 
     /**
