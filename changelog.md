@@ -1,5 +1,10 @@
 # 更新日志
 
+0.6.11:
+
+- ⏸ **暂时关闭 DSML 变体识别**：实测 Ark DeepSeek V4.1 Flash 10/10 均返回标准 `tool_calls`，暂不需要从正文解析；模块保留（`src/ai/dsml.js`）待后续按需开启
+- ✅ 自定义渠道工具调用回归：测试模式 + 假题目，10/10 正确调用 `submit_answer`，参数均为 `["B"]`，无降级
+
 0.6.10:
 
 - 🧰 **兼容 DeepSeek DSML 工具调用**：部分自定义端点不把 DSML 转成 `tool_calls`，客户端现在会从正文/思考链解析 `submit_answer` 调用，并去掉 DSML 标记
