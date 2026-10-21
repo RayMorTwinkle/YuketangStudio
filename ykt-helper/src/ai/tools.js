@@ -36,21 +36,31 @@ export const SUBMIT_ANSWER_TOOL = {
  * @param {object|null} problem
  * @param {{mandatory?: boolean}} [opts] mandatory=自动作答，必须调用工具
  */
-export function toolPromptBlock(problem, { mandatory = false } = {}) {
+export function toolPromptBlock(problem, { mandatory = false, soft = false } = {}) {
   if (!problem) return '';
   const isQuiz = problem.__submitTarget === 'quiz';
-  const lines = [
-    '【工具使用要求】',
-    isQuiz
-      ? '当前是作业题：submit_answer 只会把答案暂存到该题，不会交卷。确定答案后仍然必须调用工具；只输出文字不算完成。'
-      : '当前页有可提交的题目。确定最终答案后，必须调用 submit_answer 工具提交答案；只输出文字不算完成。',
+  const lines = ['【工具使用要求】'];
+  if (soft) {
+    lines.push(
+      isQuiz
+        ? '当前有作业题上下文。如果用户要的是最终答案，请调用 submit_answer 暂存答案（不会交卷）；如果只是解释、追问或讨论，可以直接用文字回答。'
+        : '当前有题目上下文。如果用户要的是最终答案，请调用 submit_answer 提交；如果只是解释、追问或讨论，可以直接用文字回答。',
+    );
+  } else {
+    lines.push(
+      isQuiz
+        ? '当前是作业题：submit_answer 只会把答案暂存到该题，不会交卷。确定答案后仍然必须调用工具；只输出文字不算完成。'
+        : '当前页有可提交的题目。确定最终答案后，必须调用 submit_answer 工具提交答案；只输出文字不算完成。',
+    );
+  }
+  lines.push(
     'submit_answer 的 answers 参数：',
     '- 单选/多选/投票：选项字母数组，例如 ["A"] 或 ["A","C"]；',
     '- 填空：按空位顺序，每个空一项；',
     '- 主观/问答：一个元素，内容为完整作答文本。',
-    isQuiz ? '暂存成功后可以继续给用户简要说明思路。' : '提交成功后可以继续给用户简要说明思路。',
-  ];
+  );
   if (mandatory) lines.push('本次为自动作答：必须调用 submit_answer，否则本次作答视为失败。');
+  else if (!soft) lines.push(isQuiz ? '暂存成功后可以继续给用户简要说明思路。' : '提交成功后可以继续给用户简要说明思路。');
   return lines.join('\n');
 }
 

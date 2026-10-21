@@ -696,8 +696,11 @@ async function runSendInner({
   abortCtrl = new AbortController();
   const ov = getOverride();
   // 工具只在「首轮解答」或「自动作答」时强制；追问不强制，避免反复提交
-  const mandatoryTool = useTools && canSubmit && (isAnalyze || autoSubmit);
-  const sys = systemPrompt() + (mandatoryTool ? '\n\n' + toolPromptBlock(problem, { mandatory: autoSubmit }) : '');
+  // 有题目上下文就带工具说明：空输入/自动作答用强要求，手动追问用软提示
+  const toolHint = (useTools && canSubmit)
+    ? '\n\n' + toolPromptBlock(problem, { mandatory: autoSubmit, soft: !isAnalyze && !autoSubmit })
+    : '';
+  const sys = systemPrompt() + toolHint;
   const tools = (useTools && canSubmit) ? [SUBMIT_ANSWER_TOOL] : undefined;
 
   const call = (toolList) => agnesChat({
