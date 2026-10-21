@@ -301,6 +301,9 @@ function buildUserText(problem, customPrompt, isAnalyze) {
       parts.push('选项：');
       for (const o of problem.options) parts.push(`${o.key}. ${o.value}`);
     }
+    if (Array.isArray(problem.__optionLabels) && problem.__optionLabels.length && !(Array.isArray(problem.options) && problem.options.length)) {
+      parts.push(`选项标签：${problem.__optionLabels.join('、')}（请用这些标签作答）`);
+    }
     if (Array.isArray(problem.blanks) && problem.blanks.length) {
       parts.push(`空位：${problem.blanks.join(' | ')}`);
     }
@@ -343,10 +346,7 @@ function canSubmitProblem(problem) {
 function notSubmitReason(problem) {
   if (!problem) return '当前页没有题目';
   if (problem.__noSubmit) {
-    if (problem.__submitTarget !== 'quiz' && (problem.problemType === 4 || problem.problemType === 5)) {
-      return '作业填空/主观题暂未开放';
-    }
-    return '当前题型暂不支持提交';
+    return '当前作业题型暂不支持提交';
   }
   return '该题型不支持提交';
 }
@@ -615,11 +615,14 @@ async function renderToolCard(aiBubble, { problem, args, reason, autoSubmit, deg
       btn.disabled = true;
       btn.textContent = '暂存中…';
       stEl.textContent = '';
+      // 填空/主观题传文本（args.content）；选择题传字母数组
+      const pt = Number(problem?.problemType);
+      const cacheResult = (pt === 4 || pt === 5) ? args.content : args.result;
       try {
         await cacheQuizAnswer({
           quizId: problem.__quizId,
           problemId: problem.__problemId,
-          result: args.result,
+          result: cacheResult,
         });
         card.classList.add('done');
         btn.textContent = '已暂存';
@@ -686,7 +689,7 @@ async function handleToolCall({ aiBubble, problem, toolCall, autoSubmit, degrade
 
   if (toolCall) {
     try {
-      const args = normalizeToolArgs(toolCall.function?.arguments, pt);
+      const args = normalizeToolArgs(toolCall.function?.arguments, pt, problem);
       const reason = toolReason(toolCall.function?.arguments);
       L('tool call:', { problemId: problem.problemId, args, reason });
       try { window.__yktLastToolCall = { args, reason, at: Date.now() }; } catch {}

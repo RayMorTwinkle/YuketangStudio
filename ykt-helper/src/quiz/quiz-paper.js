@@ -275,7 +275,9 @@ export async function quizQuestionDataUrl(data, index, scale = 2) {
  */
 export async function cacheQuizAnswer({ quizId, problemId, result }) {
   const token = (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || '';
-  const res = Array.isArray(result) ? result.join('') : String(result ?? '');
+  const res = Array.isArray(result)
+    ? result.join('')
+    : (result && typeof result === 'object' ? String(result.content ?? '') : String(result ?? ''));
   const payload = {
     results: [{ problemID: problemId, result: res, time: Math.ceil(Date.now() / 1000) }],
   };

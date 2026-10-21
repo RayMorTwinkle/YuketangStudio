@@ -25,6 +25,12 @@ console.log('== 主观（多行保留） ==');
 const subj = parseRegexAnswer('<answer>第一行\n第二行</answer>', 5);
 check('保留换行', subj?.answers?.[0] === '第一行\n第二行', JSON.stringify(subj));
 
+console.log('== 判断题符号 ==');
+const judge = parseRegexAnswer('<answer>×</answer>', 2);
+check('判断题 × 解析', judge?.answers?.join('') === '×', JSON.stringify(judge));
+const judge2 = parseRegexAnswer('<answer>√</answer>', 2);
+check('判断题 √ 解析', judge2?.answers?.join('') === '√', JSON.stringify(judge2));
+
 console.log('== 多个标记取最后一个 ==');
 const last = parseRegexAnswer('示例 <answer>A</answer>\n最终 <answer>D</answer>', 1);
 check('取 D', last?.answers?.join(',') === 'D', JSON.stringify(last));

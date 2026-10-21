@@ -18,6 +18,16 @@ r = normalizeToolArgs('{"answers":["b"]}', 2);
 assert.equal(r.content, 'B');
 assert.deepEqual(r.result, ['B']);
 
+// 判断题：×/√ 映射到作业选项标签 A/B
+r = normalizeToolArgs({ answers: ['×'] }, 2, { __optionLabels: ['A', 'B'] });
+assert.equal(r.content, 'B');
+assert.deepEqual(r.result, ['B']);
+r = normalizeToolArgs({ answers: ['√'] }, 2, { __optionLabels: ['A', 'B'] });
+assert.equal(r.content, 'A');
+// 选项 key 本身是 √/×
+r = normalizeToolArgs({ answers: ['×'] }, 2, { options: [{ key: '√' }, { key: '×' }] });
+assert.equal(r.content, '×');
+
 // 填空：按空顺序换行拼接
 r = normalizeToolArgs({ answers: ['12', '3.5'] }, 4);
 assert.equal(r.content, '12\n3.5');
@@ -49,5 +59,6 @@ assert.equal(isToolUnsupportedError(new Error('HTTP 500: boom')), false);
 const block = toolPromptBlock({ problemType: 1 }, { mandatory: true });
 assert.match(block, /必须调用/);
 assert.match(block, /submit_answer/);
+assert.match(block, /判断题/);
 
 console.log('✅ tools tests passed');

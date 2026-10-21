@@ -9,7 +9,7 @@ export const SUBMIT_ANSWER_TOOL = {
     name: 'submit_answer',
     description:
       '把本题的最终答案提交到雨课堂。确定答案后必须调用本工具；只输出文字不算完成。'
-      + '选择题传选项字母；填空题按空位顺序每空一项；主观题传完整作答文本。',
+      + '选择题传选项字母；判断题传选项标签（A/B 或 √/×）；填空题按空位顺序每空一项；主观题传完整作答文本。',
     parameters: {
       type: 'object',
       properties: {
@@ -18,6 +18,7 @@ export const SUBMIT_ANSWER_TOOL = {
           items: { type: 'string' },
           description:
             '答案数组。单选/多选/投票：["A"] 或 ["A","C"]；'
+            + '判断题：["A"]/["B"] 或 ["√"]/["×"]；'
             + '填空：每个空一项，如 ["12","3.5"]；主观/问答：一个元素，内容为完整作答文本。',
         },
         reason: {
@@ -56,6 +57,7 @@ export function toolPromptBlock(problem, { mandatory = false, soft = false } = {
   lines.push(
     'submit_answer 的 answers 参数：',
     '- 单选/多选/投票：选项字母数组，例如 ["A"] 或 ["A","C"]；',
+    '- 判断题/选项为 √/×：传选项标签（如 A/B 或 √/×），不要只传解释；',
     '- 填空：按空位顺序，每个空一项；',
     '- 主观/问答：一个元素，内容为完整作答文本。',
   );
@@ -73,12 +75,25 @@ export function isToolUnsupportedError(err) {
 }
 
 /**
+ * 判断题符号 → 选项序号：0=正确/√，1=错误/×
+ * @param {string} text
+ * @returns {number} -1 表示不是判断题符号
+ */
+function judgeIndex(text) {
+  const s = String(text || '').trim().toUpperCase();
+  if (/^(√|对|正确|TRUE|1)$/.test(s)) return 0;
+  if (/^(×|错|错误|FALSE|0)$/.test(s)) return 1;
+  return -1;
+}
+
+/**
  * 归一化工具参数 → 提交用的 content 与结构化 result。
  * @param {string|object} rawArgs 模型返回的 arguments（通常是 JSON 字符串）
  * @param {number} problemType 1单选 2多选 3投票 4填空 5主观
+ * @param {object} [problem] 题目上下文（作业题用于取 __optionLabels / options 做 √× 映射）
  * @returns {{content:string, result:any, display:string}}
  */
-export function normalizeToolArgs(rawArgs, problemType) {
+export function normalizeToolArgs(rawArgs, problemType, problem) {
   let args = rawArgs;
   if (typeof args === 'string') {
     const s = args.trim();
@@ -106,7 +121,18 @@ export function normalizeToolArgs(rawArgs, problemType) {
       const m = String(a).toUpperCase().match(/[A-Z]/g) || [];
       for (const c of m) if (!letters.includes(c)) letters.push(c);
     }
-    if (!letters.length) throw new Error('选择题答案里没有选项字母');
+    if (!letters.length) {
+      // 判断题：模型常回 √/× 或 对/错；映射到选项标签（作业题 A/B 或 √/×）
+      const idx = judgeIndex(answers.join(''));
+      if (idx >= 0) {
+        const keys = Array.isArray(problem?.__optionLabels) && problem.__optionLabels.length
+          ? problem.__optionLabels.map(String)
+          : (Array.isArray(problem?.options) ? problem.options.map(o => String(o?.key ?? '')) : []);
+        const key = keys[idx] || ['A', 'B'][idx];
+        return { content: key, result: [key], display: key };
+      }
+      throw new Error('选择题答案里没有选项字母');
+    }
     letters.sort();
     return { content: letters.join(','), result: letters, display: letters.join('、') };
   }

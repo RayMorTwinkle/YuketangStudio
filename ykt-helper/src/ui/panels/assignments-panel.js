@@ -256,7 +256,8 @@ async function aiForQuestion(index) {
     const dataUrl = await quizQuestionDataUrl(viewData, index, 2);
     const p = viewData.Slides[index].Problem || {};
     const code = TYPE_CODE[p.Type] || 0;
-    const choice = code >= 1 && code <= 3;   // 选择题/判断题才启用「暂存答案」工具
+    // 单选/多选/判断/填空/主观都启用「暂存答案」工具；未知题型不启用
+    const supported = code >= 1 && code <= 5;
     const quizId = String(viewAssignment?.oldId || window.quizID || '');
     ui.showAIPanel?.(true);
     await askAIForProblem({
@@ -266,8 +267,9 @@ async function aiForQuestion(index) {
       body: `第 ${index + 1} 题（${typeText(p.Type)}，${p.Score ?? ''} 分）`,
       options: [],
       __imageDataUrl: dataUrl,
-      __noSubmit: !choice,
-      __submitTarget: choice ? 'quiz' : undefined,
+      __optionLabels: (p.Bullets || []).map((b) => String(b?.Label || '')).filter(Boolean),
+      __noSubmit: !supported,
+      __submitTarget: supported ? 'quiz' : undefined,
       __quizId: quizId,
       __problemId: p.ProblemID,
     });

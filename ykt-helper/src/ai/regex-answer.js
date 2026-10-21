@@ -26,6 +26,11 @@ export function regexAnswerPrompt(problem, { mandatory = false, soft = false } =
   if (!problem) return '';
   const pt = Number(problem.problemType);
   const isQuiz = problem.__submitTarget === 'quiz';
+  // 作业题的 __quizType 更准确（Judgement 在课堂题型里是 3=投票，但作业里是判断题）
+  const quizType = String(problem.__quizType || '');
+  const typeLabel = (quizType === 'Judgement' || quizType === 'Judgment')
+    ? '判断题'
+    : (TYPE_NAME[pt] || '题目');
   const lines = ['【答案输出格式】'];
 
   if (soft) {
@@ -50,7 +55,7 @@ export function regexAnswerPrompt(problem, { mandatory = false, soft = false } =
     '3.5',
     '</answer>',
     '- 主观/问答：<answer>完整作答文本</answer>',
-    `当前是${TYPE_NAME[pt] || '题目'}。`,
+    `当前是${typeLabel}。`,
     '只输出一个 <answer> 块，放在回答最后；不要使用「答案：」「解释：」等旧格式。',
   );
 
@@ -102,7 +107,12 @@ export function parseRegexAnswer(content, problemType) {
       if (!letters.includes(c)) letters.push(c);
     }
     letters.sort();
-    answers = letters;
+    answers = letters.length ? letters : [];
+    if (!answers.length) {
+      // 判断题符号：交给 normalizeToolArgs 结合题目选项映射成 A/B 或 √/×
+      const t = body.trim();
+      if (/^(√|对|正确|TRUE|1|×|错|错误|FALSE|0)$/i.test(t)) answers = [t];
+    }
   } else if (pt === 4) {
     // 每个空一行；只有一行时容忍 12|3.5 / 12｜3.5 的写法
     let parts = body.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
