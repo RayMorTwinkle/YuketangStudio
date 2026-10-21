@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.6.13
+// @version      0.6.14
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -383,6 +383,8 @@
     autoAnswerOnAutoJoin: false,
     aiAutoAnalyze: false,
     aiSlidePickPriority: true,
+    // 正则化工具调用：不发 tools，模型用 <answer>...</answer> 交答案
+    regexToolCall: false,
     // 习题提醒
     notifyPopupDuration: 5e3,
     notifyVolume: .6,
@@ -1067,7 +1069,9 @@
   const K_ID = "telemetry.installId";
   const K_DAY = "telemetry.day";
  // { date, calls, ttft:{sum,max,n}, dur:{sum,max,n}, pinged }
-    function enabled() {
+    const K_ENHANCED = "telemetry.enhanced";
+  const K_QUEUE = "telemetry.traceQueue";
+  function enabled() {
     // 0.6.2 起默认开启：只有用户明确关掉（存 false）才不上报
     return storage.get(K_ENABLED) !== false;
   }
@@ -1101,7 +1105,18 @@
   }
   function setEnabled(v) {
     storage.set(K_ENABLED, !!v);
-    if (v) ping(hasCloudUnlock()).catch(() => {});
+    if (!v) storage.set(K_ENHANCED, false);
+ // 基础关了，强化也一起关
+        if (v) ping(hasCloudUnlock()).catch(() => {});
+  }
+  /** 强化遥测：仅当基础遥测开启时才生效 */  function enhancedEnabled() {
+    return enabled() && storage.get(K_ENHANCED) === true;
+  }
+  /** 开关强化遥测；基础遥测关闭时拒绝开启 */  function setEnhanced(v) {
+    if (v && !enabled()) return false;
+    storage.set(K_ENHANCED, !!v);
+    if (v) scheduleTraceFlush(1e3);
+    return true;
   }
   function installId() {
     let id = storage.get(K_ID);
@@ -1224,6 +1239,195 @@
         ontimeout: reject
       });
     });
+  }
+  // ============================================================
+  // 强化遥测：上报 LLM 请求/响应/解析/提交结果（脱敏 + 截断 + 采样）
+  // 默认关；基础遥测关闭时强制不传。
+  // ============================================================
+    const TRACE_ENDPOINT = "https://api.raymor.top/yuketangstudio/telemetry/trace";
+  const TRACE_MAX_EVENTS = 20;
+  const TRACE_MAX_BYTES = 96 * 1024;
+  const TRACE_STR_MAX = 8 * 1024;
+  const TRACE_TOTAL_MAX = 32 * 1024;
+  function trunc(s, n = TRACE_STR_MAX) {
+    const str = String(s ?? "");
+    return str.length > n ? str.slice(0, n) + `…[${str.length}]` : str;
+  }
+  function hash32(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(16).padStart(8, "0");
+  }
+  function redactUrl(u) {
+    try {
+      const x = new URL(String(u || ""));
+      return x.origin + x.pathname;
+    } catch {
+      return trunc(String(u || "").split("?")[0], 300);
+    }
+  }
+  function sanitizeMessages(messages) {
+    if (!Array.isArray(messages)) return [];
+    const out = messages.slice(0, 20).map(m => {
+      const role = trunc(m?.role, 16);
+      let content = m?.content;
+      if (typeof content === "string") content = trunc(content); else if (Array.isArray(content)) content = content.slice(0, 8).map(part => {
+        if (part?.type === "text") return {
+          type: "text",
+          text: trunc(part.text)
+        };
+        if (part?.type === "image_url") {
+          const url = String(part?.image_url?.url || "");
+          // 不上传图片原始 base64：只留长度 + 前 64KB 的指纹
+                    return {
+            type: "image",
+            bytes: url.length,
+            hash: hash32(url.slice(0, 65536))
+          };
+        }
+        return {
+          type: trunc(part?.type, 20)
+        };
+      }); else content = trunc(String(content ?? ""));
+      return {
+        role: role,
+        content: content
+      };
+    });
+    let json = JSON.stringify(out);
+    while (json.length > TRACE_TOTAL_MAX && out.length > 1) {
+      out.shift();
+      json = JSON.stringify(out);
+    }
+    return out;
+  }
+  function sanitizeTrace(ev) {
+    if (!ev || typeof ev !== "object") return null;
+    const out = {
+      id: ev.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      ts: Number(ev.ts) || Date.now(),
+      event: trunc(ev.event, 40),
+      kind: trunc(ev.kind, 20),
+      mode: trunc(ev.mode, 20),
+      ok: ev.ok !== false
+    };
+    if (ev.attempt != null) out.attempt = Number(ev.attempt) || 0;
+    if (ev.problemType != null) out.problemType = Number(ev.problemType) || 0;
+    if (ev.provider) out.provider = {
+      url: redactUrl(ev.provider.url),
+      model: trunc(ev.provider.model, 120),
+      cloud: !!ev.provider.cloud,
+      stream: !!ev.provider.stream,
+      thinking: !!ev.provider.thinking
+    };
+    if (ev.request) out.request = {
+      bodyBytes: Number(ev.request.bodyBytes) || 0,
+      tools: Number(ev.request.tools) || 0,
+      messages: sanitizeMessages(ev.request.messages)
+    };
+    if (ev.response) out.response = {
+      content: trunc(ev.response.content),
+      reasoning: trunc(ev.response.reasoning),
+      toolCalls: Array.isArray(ev.response.toolCalls) ? ev.response.toolCalls.slice(0, 3).map(t => ({
+        name: trunc(t?.function?.name, 60),
+        arguments: trunc(t?.function?.arguments)
+      })) : void 0,
+      truncated: !!ev.response.truncated
+    };
+    if (ev.parse) out.parse = {
+      ok: !!ev.parse.ok,
+      path: trunc(ev.parse.path, 20),
+      error: trunc(ev.parse.error, 1e3)
+    };
+    if (ev.problem) out.problem = {
+      type: Number(ev.problem.type) || 0,
+      options: Number(ev.problem.options) || 0,
+      bodyLen: Number(ev.problem.bodyLen) || 0
+    };
+    if (ev.image) out.image = {
+      count: Number(ev.image.count) || 0,
+      bytes: Number(ev.image.bytes) || 0,
+      hash: trunc(ev.image.hash, 40)
+    };
+    if (ev.error) out.error = {
+      name: trunc(ev.error.name, 60),
+      message: trunc(ev.error.message, 2048),
+      status: Number(ev.error.status) || 0
+    };
+    if (ev.route != null) out.route = trunc(ev.route, 20);
+    if (ev.regexParsed != null) out.regexParsed = !!ev.regexParsed;
+    if (ev.toolCall != null) out.toolCall = !!ev.toolCall;
+    if (ev.contentLen != null) out.contentLen = Number(ev.contentLen) || 0;
+    if (JSON.stringify(out).length > TRACE_MAX_BYTES) return null;
+    return out;
+  }
+  /** 记录一条强化遥测；失败全量、成功 10% 采样；入队后批量发送 */  function trace(event) {
+    if (!enhancedEnabled()) return;
+    try {
+      const ev = sanitizeTrace(event);
+      if (!ev) return;
+      if (ev.ok !== false && Math.random() > .1) return;
+      const q = storage.get(K_QUEUE);
+      const queue = Array.isArray(q) ? q : [];
+      queue.push(ev);
+      while (queue.length > TRACE_MAX_EVENTS) queue.shift();
+      let json = JSON.stringify(queue);
+      while (json.length > TRACE_MAX_BYTES && queue.length > 1) {
+        queue.shift();
+        json = JSON.stringify(queue);
+      }
+      storage.set(K_QUEUE, queue);
+      scheduleTraceFlush(5e3);
+    } catch {}
+  }
+  let traceTimer = 0;
+  function scheduleTraceFlush(delay = 5e3) {
+    if (traceTimer) return;
+    traceTimer = setTimeout(() => {
+      traceTimer = 0;
+      flushTraces().catch(() => {});
+    }, delay);
+  }
+  /** 发送队列；成功移除已发送项，失败保留并 30s 后重试 */  async function flushTraces() {
+    if (!enhancedEnabled()) return;
+    const q = storage.get(K_QUEUE);
+    const queue = Array.isArray(q) ? q : [];
+    if (!queue.length) return;
+    const events = queue.slice(0, TRACE_MAX_EVENTS);
+    const body = {
+      installId: installId(),
+      platform: platform(),
+      version: version(),
+      events: events
+    };
+    try {
+      await new Promise((resolve, reject) => {
+        gm.xhr({
+          method: "POST",
+          url: TRACE_ENDPOINT,
+          headers: {
+            "Content-Type": "application/json"
+          },
+          data: JSON.stringify(body),
+          timeout: 1e4,
+          onload: r => r.status >= 200 && r.status < 300 ? resolve() : reject(new Error("HTTP " + r.status)),
+          onerror: reject,
+          ontimeout: reject
+        });
+      });
+      const cur = storage.get(K_QUEUE);
+      if (Array.isArray(cur)) {
+        const sent = new Set(events.map(e => e.id));
+        const rest = cur.filter(e => !sent.has(e.id));
+        storage.set(K_QUEUE, rest);
+        if (rest.length) scheduleTraceFlush(2e3);
+      }
+    } catch {
+      scheduleTraceFlush(3e4);
+    }
   }
   // src/core/devmode.js
   // 开发者模式：云端解锁码 → svc 验证 → 注入「云端 profile」（LLM 调用走代理）
@@ -1533,40 +1737,94 @@
     // 只有「网络层失败」（CORS/连接错误）才值得降级 GM_xhr；
     // 中止与明确的 HTTP 错误都意味着请求已到达服务端——重发会造成重复计费/双份回答
         const shouldFallback = e => e?.name !== "AbortError" && !opts.signal?.aborted && !/^HTTP \d/.test(String(e?.message || ""));
-    if (stream) 
-    // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
-    try {
-      const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
-      smooth.end();
-      recordTele();
-      return r;
-    } catch (e) {
-      if (!shouldFallback(e)) {
-        smooth.abort();
-        throw e;
+    const traceBase = {
+      event: "llm_call",
+      kind: opts.traceKind || "llm",
+      mode: opts.traceMode || "none",
+      provider: {
+        url: url,
+        model: model,
+        cloud: isCloud,
+        stream: stream,
+        thinking: thinking
+      },
+      request: {
+        messages: opts.messages,
+        tools: opts.tools?.length || 0,
+        bodyBytes: JSON.stringify(body).length
       }
-      dlog("fetch stream failed, fallback to GM_xhr:", e?.message || e);
+    };
+    const traceResult = r => {
+      trace({
+        ...traceBase,
+        ok: true,
+        status: 200,
+        ttft: tFirst ? tFirst - t0 : 0,
+        dur: Date.now() - t0,
+        response: {
+          content: r.content,
+          reasoning: r.reasoning,
+          toolCalls: r.toolCalls,
+          finishReason: r.finishReason,
+          truncated: !!r.truncated
+        }
+      });
+      return r;
+    };
+    const traceError = e => {
+      const msg = String(e?.message || e);
+      const st = (msg.match(/^HTTP\s+(\d+)/) || [])[1] || 0;
+      trace({
+        ...traceBase,
+        ok: false,
+        ttft: tFirst ? tFirst - t0 : 0,
+        dur: Date.now() - t0,
+        error: {
+          message: msg,
+          name: e?.name || "",
+          status: Number(st) || 0
+        }
+      });
+    };
+    try {
+      if (stream) 
+      // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
       try {
-        const r = await gmXhrStream(url, apiKey, body, o2, timeoutMs);
+        const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
         smooth.end();
         recordTele();
-        return r;
-      } catch (e2) {
-        smooth.abort();
-        throw e2;
-      }
-    }
-    // 非流式同样 fetch 优先，GM_xhr 兜底
+        return traceResult(r);
+      } catch (e) {
+        if (!shouldFallback(e)) {
+          smooth.abort();
+          throw e;
+        }
+        dlog("fetch stream failed, fallback to GM_xhr:", e?.message || e);
         try {
-      const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
-      recordTele();
-      return r;
+          const r = await gmXhrStream(url, apiKey, body, o2, timeoutMs);
+          smooth.end();
+          recordTele();
+          return traceResult(r);
+        } catch (e2) {
+          smooth.abort();
+          throw e2;
+        }
+      }
+      // 非流式同样 fetch 优先，GM_xhr 兜底
+            try {
+        const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
+        recordTele();
+        return traceResult(r);
+      } catch (e) {
+        if (!shouldFallback(e)) throw e;
+        dlog("fetch failed, fallback to GM_xhr:", e?.message || e);
+        const r = await gmXhrOnce(url, apiKey, body, timeoutMs, o2);
+        recordTele();
+        return traceResult(r);
+      }
     } catch (e) {
-      if (!shouldFallback(e)) throw e;
-      dlog("fetch failed, fallback to GM_xhr:", e?.message || e);
-      const r = await gmXhrOnce(url, apiKey, body, timeoutMs, o2);
-      recordTele();
-      return r;
+      traceError(e);
+      throw e;
     }
   }
   function pickDelta(obj, opts, acc) {
@@ -1740,7 +1998,9 @@
       });
       // GM_xhr 的 timeout 是固定总时长，无法表达「最后字符后 15s」。
       // 这里自建看门狗：onprogress 每次推进重置为 15s，首字前给 30s。
-      // GM_xhr 的 timeout 设 0（不启用），完全交给看门狗，避免长回答被总时长误杀。
+      // 总 timeout 不能设 0：部分脚本管理器把 0 当成立即超时，请求发出 1~2s 就触发
+      // ontimeout（错误文案「请求超时（GM_xhr）」），看起来像 30s 超时其实不是。
+      // 给 120s 兜底，真正的首字/空闲判断仍由看门狗负责。
             let watchdog = 0;
       let settled = false;
       const arm = (ms, msg) => {
@@ -1767,7 +2027,7 @@
       const handle = gm.xhr({
         method: "POST",
         url: url,
-        timeout: 0,
+        timeout: 12e4,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`
@@ -2023,6 +2283,95 @@
     } catch {
       return "";
     }
+  }
+  // src/ai/regex-answer.js
+  // 「正则化工具调用」：不发 tools，让模型在正文末尾用 <answer>...</answer> 交答案。
+  // 只解析 content（绝不解析 reasoning/思考内容——模型常在思考里演练格式，那不是最终答案）。
+  
+  // 格式（按题型，提示词只教这一套）：
+  //   单选/投票：<answer>B</answer>
+  //   多选：    <answer>A,C</answer>
+  //   填空：    <answer>\n12\n3.5\n</answer>（每个空一行）
+  //   主观：    <answer>完整作答文本</answer>
+  // 理由写在 <answer> 前面的正文里，不单独格式化。
+    const TYPE_NAME = {
+    1: "单选题",
+    2: "多选题",
+    3: "投票题",
+    4: "填空题",
+    5: "主观题"
+  };
+  /**
+   * 正则模式的 system prompt 片段。
+   * @param {object|null} problem
+   * @param {{mandatory?: boolean, soft?: boolean}} [opts]
+   */  function regexAnswerPrompt(problem, {mandatory: mandatory = false, soft: soft = false} = {}) {
+    if (!problem) return "";
+    const pt = Number(problem.problemType);
+    const isQuiz = problem.__submitTarget === "quiz";
+    const lines = [ "【答案输出格式】" ];
+    if (soft) lines.push("如果用户要的是最终答案，才在回答最后输出一个 <answer>...</answer> 块；" + "如果只是解释、追问或讨论，可以直接用文字回答。"); else lines.push("最终答案必须放在回答最后，用 <answer> 和 </answer> 包裹。" + "答案前可以写简要理由或解题过程；<answer> 里只放答案本身，不要写理由。");
+    lines.push("按题型使用下面的格式：", "- 单选/投票：<answer>B</answer>", "- 多选：<answer>A,C</answer>（字母用英文逗号分隔）", "- 填空：每个空一行，例如：", "<answer>", "12", "3.5", "</answer>", "- 主观/问答：<answer>完整作答文本</answer>", `当前是${TYPE_NAME[pt] || "题目"}。`, "只输出一个 <answer> 块，放在回答最后；不要使用「答案：」「解释：」等旧格式。");
+    if (isQuiz) lines.push("当前是作业题：<answer> 只会把答案暂存到该题，不会交卷。");
+    if (mandatory) lines.push("本次为自动作答：必须输出 <answer>...</answer>，否则本次作答视为失败。"); else if (!soft) lines.push(isQuiz ? "暂存成功后可以继续给用户简要说明思路。" : "提交成功后可以继续给用户简要说明思路。");
+    return lines.join("\n");
+  }
+  /** 全角尖括号归一化（只影响解析，不改展示） */  function normalizeTags(text) {
+    return String(text || "").replace(/＜/g, "<").replace(/＞/g, ">");
+  }
+  /**
+   * 从正文里取最后一个完整的 <answer>...</answer>（也容忍 <答案>）。
+   * 只接受 content；调用方不得把 reasoning 传进来。
+   * @param {string} content
+   * @param {number} problemType 1单选 2多选 3投票 4填空 5主观
+   * @returns {{answers:string[], matched:string, index:number}|null}
+   */  function parseRegexAnswer(content, problemType) {
+    const text = normalizeTags(content);
+    if (!text) return null;
+    // 无题目哨兵：与 parseAIAnswer 保持一致，避免把 NO_PROMPT 当答案
+        if (/^\s*STATE\s*:/im.test(text) || /\bNO_PROMPT\b/i.test(text)) return null;
+    const re = /<(answer|答案)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi;
+    let m;
+    let last = null;
+    while (m = re.exec(text)) last = m;
+    if (!last) return null;
+    const body = String(last[2] || "").trim();
+    if (!body) return null;
+    const pt = Number(problemType);
+    let answers = [];
+    if (pt === 1 || pt === 2 || pt === 3) {
+      const letters = [];
+      for (const c of body.toUpperCase().match(/[A-Z]/g) || []) if (!letters.includes(c)) letters.push(c);
+      letters.sort();
+      answers = letters;
+    } else if (pt === 4) {
+      // 每个空一行；只有一行时容忍 12|3.5 / 12｜3.5 的写法
+      let parts = body.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      if (parts.length === 1 && /[|｜]/.test(parts[0])) parts = parts[0].split(/[|｜]/).map(s => s.trim()).filter(Boolean);
+      answers = parts;
+    } else if (pt === 5) answers = [ body ]; else return null;
+    if (!answers.length) return null;
+    return {
+      answers: answers,
+      matched: last[0],
+      index: last.index
+    };
+  }
+  /** 把解析出的答案包装成现有工具调用结构，复用 handleToolCall / 卡片 / 提交流程 */  function regexToolCall(answers, id) {
+    return {
+      id: id || `regex_${Date.now().toString(36)}`,
+      type: "function",
+      function: {
+        name: "submit_answer",
+        arguments: JSON.stringify({
+          answers: answers
+        })
+      }
+    };
+  }
+  /** 从展示正文里去掉所有 <answer> 块（保留前面的理由/过程） */  function stripRegexAnswer(content) {
+    const out = normalizeTags(content).replace(/<(answer|答案)(?:\s[^>]*)?>[\s\S]*?<\/\1\s*>/gi, "");
+    return out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
   // src/capture/screenshoot.js
   /**
@@ -3348,12 +3697,17 @@
     const ov = getOverride();
     // 工具只在「首轮解答」或「自动作答」时强制；追问不强制，避免反复提交
     // 有题目上下文就带工具说明：空输入/自动作答用强要求，手动追问用软提示
-        const toolHint = useTools && canSubmit ? "\n\n" + toolPromptBlock(problem, {
+    // 正则模式：不发 tools，改成在正文末尾输出 <answer>...</answer>
+        const regexMode = !!ui.config.regexToolCall;
+    const toolHint = useTools && canSubmit ? "\n\n" + (regexMode ? regexAnswerPrompt(problem, {
       mandatory: autoSubmit,
       soft: !isAnalyze && !autoSubmit
-    }) : "";
+    }) : toolPromptBlock(problem, {
+      mandatory: autoSubmit,
+      soft: !isAnalyze && !autoSubmit
+    })) : "";
     const sys = systemPrompt$1() + toolHint;
-    const tools = useTools && canSubmit ? [ SUBMIT_ANSWER_TOOL ] : void 0;
+    const tools = !regexMode && useTools && canSubmit ? [ SUBMIT_ANSWER_TOOL ] : void 0;
     const call = toolList => agnesChat({
       messages: [ {
         role: "system",
@@ -3364,8 +3718,10 @@
       // 跟设置里的「启用思考」开关走
       signal: abortCtrl$1.signal,
       override: ov || void 0,
-      tools: toolList,
-      toolChoice: autoSubmit ? "required" : "auto",
+      tools: regexMode ? void 0 : toolList,
+      toolChoice: regexMode ? void 0 : autoSubmit ? "required" : "auto",
+      traceKind: autoSubmit ? "auto" : "ai",
+      traceMode: regexMode ? "regex" : toolList ? "tools" : "none",
       onDelta: d => {
         acc.content += d;
         paint();
@@ -3396,7 +3752,16 @@
     }
     acc.content = res.content || acc.content;
     acc.reasoning = res.reasoning || acc.reasoning;
-    const toolCall = (res.toolCalls || []).find(t => t?.function?.name === "submit_answer");
+    let toolCall = (res.toolCalls || []).find(t => t?.function?.name === "submit_answer");
+    let regexParsed = null;
+    if (regexMode) {
+      // 只解析 content；reasoning 里的格式演练不算最终答案
+      regexParsed = parseRegexAnswer(acc.content, problemType);
+      if (regexParsed) {
+        toolCall = regexToolCall(regexParsed.answers);
+        acc.content = stripRegexAnswer(acc.content);
+      }
+    }
     if (raf) {
       cancelAnimationFrame(raf);
       raf = 0;
@@ -3425,6 +3790,22 @@
       autoSubmit: autoSubmit,
       degraded: degraded,
       content: acc.content
+    });
+    trace({
+      event: "answer_parse",
+      kind: autoSubmit ? "auto" : "ai",
+      mode: regexMode ? "regex" : tools ? "tools" : "none",
+      problemType: problemType,
+      problem: {
+        type: problemType,
+        options: problem?.options?.length || 0,
+        bodyLen: problem?.body?.length || 0
+      },
+      ok: !!submitInfo,
+      regexParsed: !!regexParsed,
+      toolCall: !!toolCall,
+      route: submitInfo?.route || null,
+      contentLen: (acc.content || "").length
     });
     // 手动模式最后一次仍未调用工具：把正文解析成答案卡片，至少能一键提交（仍需二次确认）
         if (!submitInfo && !degraded && !toolCall && (isAnalyze || !!nudge) && !autoSubmit && canSubmit && attempt >= 2) {
@@ -3458,7 +3839,20 @@
       return await runSendInner(opts);
     } catch (e) {
       const emsg = String(e?.message || "");
-      const isTimeout = /timeout|超时/i.test(emsg);
+      log.warn("[AI] 请求失败:", emsg || e, e);
+      trace({
+        event: "answer_error",
+        kind: opts.autoSubmit ? "auto" : "ai",
+        mode: ui.config.regexToolCall ? "regex" : "tools",
+        attempt: opts.attempt || 1,
+        ok: false,
+        error: {
+          message: emsg || String(e),
+          name: e?.name || ""
+        }
+      });
+      // HTTP 错误体里可能带 "timeout"（如上游 504），不能当成本地等待超时
+            const isTimeout = !/^HTTP \d/.test(emsg) && /timeout|超时/i.test(emsg);
       const aborted = e?.name === "AbortError" && !isTimeout || /abort|cancel/i.test(emsg);
       const retryBtn = lastSendText$1 !== null ? `<button class="ykt-retry-btn" style="margin-left:8px;padding:2px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:12px">↻ 重试</button>` : "";
       if (aborted) addBubble$1("ai", `<span class="muted">（已中断：${escapeHtml$1(emsg || "请求被中止")}）</span>${retryBtn}`); else if (/HTTP 429/.test(emsg)) addBubble$1("ai", `<span class="err">当前使用人数较多，请稍后重试</span>${retryBtn}<br/><small>上游已限流，稍等几秒再点重试。</small>`); else if (isTimeout) addBubble$1("ai", `<span class="err">等待超时，请重试</span>${retryBtn}<br/><small>30 秒内没有返回首字，可点重试或稍后再试。</small>`); else addBubble$1("ai", `<span class="err">出错了：${escapeHtml$1(e?.message || String(e))}</span>${retryBtn}<br/><small>${isTimeout ? "提示：上游响应过慢或网络中断，可点重试。" : "提示：到设置里检查 AI 配置的 API Key。"}</small>`);
@@ -3496,10 +3890,17 @@
       const needRetry = r && !r.submitInfo && r.problem && !r.degraded && (r.isAnalyze || opts.autoSubmit) && attempt < 2;
       if (needRetry) {
         L$2("retry: model did not call submit_answer, attempt", attempt + 1);
+        const nudge = ui.config.regexToolCall ? "继续。请只在回答最后输出一个 <answer>...</answer> 块（按当前题型格式），不要在 <answer> 里写理由。" : "继续，记得调用工具提交答案。";
+        trace({
+          event: "answer_retry",
+          kind: opts.autoSubmit ? "auto" : "ai",
+          mode: ui.config.regexToolCall ? "regex" : "tools",
+          attempt: attempt + 1
+        });
         r = await runSend({
           ...opts,
           attempt: attempt + 1,
-          nudge: "继续，记得调用工具提交答案。"
+          nudge: nudge
         });
       }
       return r;
@@ -6424,6 +6825,8 @@
         thinking: ov?.thinking !== false,
         // 跟设置里的「启用思考」开关走
         signal: abortCtrl.signal,
+        traceKind: "chat",
+        traceMode: "none",
         // 与 AI 解答面板一致：走当前激活的 AI Profile，而不是只吃开发者模式配置
         override: ov || void 0,
         onDelta: d => {
@@ -6478,7 +6881,7 @@
       $sel("#ykt-chat-log").scrollTop = $sel("#ykt-chat-log").scrollHeight;
     }
   }
-  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    \n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">\n          <small>兼容 OpenAI 协议的服务端，例如 api.deepseek.com / api.openai.com / 火山方舟 api/v3 或 api/plan/v3；填到 /v1、/api/v3、/api/plan/v3 即可，脚本会自动补 /chat/completions。火山方舟不提供模型列表，请手动填写模型 ID。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <div class="apikey-row">\n            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">\n            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>\n            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>\n          </div>\n          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-chat / gpt-4o-mini">\n          <button id="ykt-ai-model-fetch" type="button" style="padding:3px 10px">获取模型列表</button>\n        </div>\n        <div id="ykt-ai-model-options" class="ykt-model-options" style="display:none"></div>\n        <small id="ykt-ai-model-hint" style="display:none;opacity:.6">云端模型由服务端按渠道自动分配，无需填写</small>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-thinking">\n            <span class="checkmark"></span>\n            启用思考（推理模型深度思考）\n          </label>\n          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-effort">思考强度:</label>\n          <select id="ykt-ai-effort">\n            <option value="low">低</option>\n            <option value="medium" selected>中</option>\n            <option value="high">高</option>\n            <option value="max">超高（max）</option>\n          </select>\n          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>\n        </div>\n\n        <details class="setting-advanced">\n          <summary>高级选项</summary>\n          <div class="setting-item">\n            <label for="ykt-ai-vision-model">图像模型 ID:</label>\n            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">\n            <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-fallback-answer">\n            <span class="checkmark"></span>\n            无 API Key 时提交兜底答案\n          </label>\n          <small>未配置 AI 时提交占位答案（选择题为 A）；开启自动作答且模型两次都未调用「提交答案」工具时，也会解析正文并提交。默认关闭，宁缺答不误答。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <details class="setting-advanced">\n          <summary>自定义提示音</summary>\n          <div class="setting-item">\n            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n              <button id="ykt-btn-apply-audio-url">应用URL</button>\n              <button id="ykt-btn-preview-audio">预览</button>\n              <button id="ykt-btn-clear-audio">清除自定义音频</button>\n            </div>\n            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n        <small style="display:block;margin-top:6px;opacity:.55">\n          没有解锁码？加讨论群 <strong>901466023</strong> 获取\n          <button id="ykt-devmode-qq" type="button" style="margin-left:4px;padding:1px 6px;font-size:11px;cursor:pointer">复制群号</button>\n        </small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry">\n            <span class="checkmark"></span>\n            匿名统计使用情况\n          </label>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    \n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">\n          <small>兼容 OpenAI 协议的服务端，例如 api.deepseek.com / api.openai.com / 火山方舟 api/v3 或 api/plan/v3；填到 /v1、/api/v3、/api/plan/v3 即可，脚本会自动补 /chat/completions。火山方舟不提供模型列表，请手动填写模型 ID。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <div class="apikey-row">\n            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">\n            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>\n            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>\n          </div>\n          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-chat / gpt-4o-mini">\n          <button id="ykt-ai-model-fetch" type="button" style="padding:3px 10px">获取模型列表</button>\n        </div>\n        <div id="ykt-ai-model-options" class="ykt-model-options" style="display:none"></div>\n        <small id="ykt-ai-model-hint" style="display:none;opacity:.6">云端模型由服务端按渠道自动分配，无需填写</small>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-thinking">\n            <span class="checkmark"></span>\n            启用思考（推理模型深度思考）\n          </label>\n          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-effort">思考强度:</label>\n          <select id="ykt-ai-effort">\n            <option value="low">低</option>\n            <option value="medium" selected>中</option>\n            <option value="high">高</option>\n            <option value="max">超高（max）</option>\n          </select>\n          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>\n        </div>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-regex-tool">\n            <span class="checkmark"></span>\n            正则化工具调用（兼容不支持 tools 的端点）\n          </label>\n          <small>开启后不再发送 tools 参数；模型在回答结尾用 &lt;answer&gt;...&lt;/answer&gt; 交答案（按题型自动解析）。适合只支持纯文本、或 tools 调用不稳定的端点。</small>\n        </div>\n\n        <details class="setting-advanced">\n          <summary>高级选项</summary>\n          <div class="setting-item">\n            <label for="ykt-ai-vision-model">图像模型 ID:</label>\n            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">\n            <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-fallback-answer">\n            <span class="checkmark"></span>\n            无 API Key 时提交兜底答案\n          </label>\n          <small>未配置 AI 时提交占位答案（选择题为 A）；开启自动作答且模型两次都未调用「提交答案」工具时，也会解析正文并提交。默认关闭，宁缺答不误答。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <details class="setting-advanced">\n          <summary>自定义提示音</summary>\n          <div class="setting-item">\n            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n              <button id="ykt-btn-apply-audio-url">应用URL</button>\n              <button id="ykt-btn-preview-audio">预览</button>\n              <button id="ykt-btn-clear-audio">清除自定义音频</button>\n            </div>\n            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n        <small style="display:block;margin-top:6px;opacity:.55">\n          没有解锁码？加讨论群 <strong>901466023</strong> 获取\n          <button id="ykt-devmode-qq" type="button" style="margin-left:4px;padding:1px 6px;font-size:11px;cursor:pointer">复制群号</button>\n        </small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry">\n            <span class="checkmark"></span>\n            匿名统计使用情况\n          </label>\n        </div>\n        <div class="setting-item" style="margin-top:8px">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry-enhanced">\n            <span class="checkmark"></span>\n            强化遥测（上传请求/响应用于排错）\n          </label>\n          <small>会上传发送给模型的消息、模型回复、解析/提交结果和错误信息；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭，需先开启「匿名统计使用情况」。</small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // settings.js (new version)
     let mounted$3 = false;
   let root$3;
@@ -6542,6 +6945,7 @@
     }
     const $thinking = root$3.querySelector("#ykt-ai-thinking");
     const $effort = root$3.querySelector("#ykt-ai-effort");
+    const $regex = root$3.querySelector("#ykt-ai-regex-tool");
     const $apiEye = root$3.querySelector("#ykt-apikey-eye");
     const $apiTest = root$3.querySelector("#ykt-apikey-test");
     const $apiTestResult = root$3.querySelector("#ykt-apikey-test-result");
@@ -6666,16 +7070,40 @@
       syncFormFromConfig();
  // 解锁后表单立即显示新配置
         }
-    // === 匿名统计开关（最底部，无说明；「开」时才允许解锁云端） ===
+    // === 匿名统计开关（最底部）与强化遥测（依赖基础遥测） ===
         const $telemetry = root$3.querySelector("#ykt-telemetry");
+    const $telemetryEnhanced = root$3.querySelector("#ykt-telemetry-enhanced");
+    const syncEnhancedTelemetryState = () => {
+      if (!$telemetryEnhanced) return;
+      const base = enabled();
+      $telemetryEnhanced.disabled = !base;
+      if (!base) $telemetryEnhanced.checked = false; else $telemetryEnhanced.checked = enhancedEnabled();
+    };
     if ($telemetry) {
       $telemetry.checked = enabled();
       $telemetry.addEventListener("change", () => {
         setEnabled($telemetry.checked);
+        if (!$telemetry.checked) setEnhanced(false);
+        syncEnhancedTelemetryState();
         refreshDevHint();
  // 关掉后解锁按钮语义不变，但下次解锁会被拦
             });
     }
+    if ($telemetryEnhanced) $telemetryEnhanced.addEventListener("change", () => {
+      if ($telemetryEnhanced.checked) {
+        const ok = confirm("强化遥测会上传发送给模型的消息、模型回复、解析/提交结果和错误信息（已脱敏、截断，不含 API Key 和图片原始数据）。确定开启吗？");
+        if (!ok) {
+          $telemetryEnhanced.checked = false;
+          return;
+        }
+      }
+      const applied = setEnhanced($telemetryEnhanced.checked);
+      if (!applied && $telemetryEnhanced.checked) {
+        $telemetryEnhanced.checked = false;
+        ui.toast?.("请先开启「匿名统计使用情况」");
+      }
+    });
+    syncEnhancedTelemetryState();
     $devBtn?.addEventListener("click", async () => {
       const pass = ($devPass?.value || "").trim();
       if (!pass) {
@@ -6960,6 +7388,7 @@
       ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1e3);
       ui.config.iftex = !!$iftex.checked;
       ui.config.aiSlidePickPriority = !!$priority.checked;
+      ui.config.regexToolCall = !!$regex?.checked;
       ui.config.notifyPopupDuration = Math.max(2e3, (+$notifyDur.value || 0) * 1e3);
       ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
       ui.saveConfig();
@@ -7002,10 +7431,12 @@
       $delay.value = Math.floor((ui.config.autoAnswerDelay || 3e3) / 1e3);
       $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1e3);
       $priority.checked = ui.config.aiSlidePickPriority !== false;
+      if ($regex) $regex.checked = !!ui.config.regexToolCall;
       $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5e3) / 1e3);
       $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? .6));
       $audioName.textContent = ui.config.customNotifyAudioName ? `当前：${ui.config.customNotifyAudioName}` : "当前：使用内置“叮-咚”提示音";
       if ($telemetry) $telemetry.checked = enabled();
+      syncEnhancedTelemetryState();
       fillPrompts();
     }
     // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
@@ -7027,7 +7458,9 @@
       storage.set("kimiApiKey", "");
       // 遥测开关不在 config 里（独立 storage key），一并复位（默认开）
             setEnabled(true);
+      setEnhanced(false);
       if ($telemetry) $telemetry.checked = true;
+      syncEnhancedTelemetryState();
       ui.saveConfig();
       ui.updateAutoAnswerBtn();
       ui.toast("设置已重置");
@@ -7135,7 +7568,7 @@
       if (typeof GM_info !== "undefined" && GM_info.script?.version) return GM_info.script.version;
     } catch {}
     try {
-      return "0.6.13";
+      return "0.6.14";
     } catch {}
     return "0.0.0";
   }
@@ -7310,8 +7743,8 @@
   function mountAboutPanel() {
     if (mounted$2) return root$2;
     const host = document.createElement("div");
-    // "0.6.13" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.13"}<`);
+    // "0.6.14" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.14"}<`);
     document.body.appendChild(host.firstElementChild);
     root$2 = document.getElementById("ykt-about-panel");
     const $btn = root$2.querySelector("#ykt-about-check");
@@ -7803,7 +8236,9 @@
             } ],
             stream: false,
             thinking: true,
-            override: override
+            override: override,
+            traceKind: "assignment",
+            traceMode: "none"
           });
           md.push(`## 第 ${i + 1} 题\n\n${res.content || "（空回复）"}\n`);
           done++;
@@ -9613,6 +10048,8 @@
           } ],
           blanks: opts.blanks || (Number(type) === 4 ? [ "第一空", "第二空" ] : [])
         };
+        // 测试用：给假题挂一张图，验证图片请求 / trace 脱敏
+                if (opts.imageDataUrl) problem.__imageDataUrl = opts.imageDataUrl;
         const slide = {
           id: slideId,
           index: 1,
