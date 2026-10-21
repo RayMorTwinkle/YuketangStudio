@@ -183,11 +183,14 @@ if [ "$DO_GH" = 1 ]; then
   ASSETS=()
   if [ -f "$USCRIPT" ]; then cp "$USCRIPT" "$TMP/YTS-$VER.user.js"; ASSETS+=("$TMP/YTS-$VER.user.js"); fi
   if [ -f "$APK" ]; then cp "$APK" "$TMP/YTS-$VER.apk"; ASSETS+=("$TMP/YTS-$VER.apk"); fi
+  PRE_ARGS=()
+  [ "$CHANNEL" = "beta" ] && PRE_ARGS+=(--prerelease)
   if gh release view "v$VER" >/dev/null 2>&1; then
     warn "Release v$VER 已存在，上传/覆盖资产"
     gh release upload "v$VER" "${ASSETS[@]}" --clobber
+    [ "$CHANNEL" = "beta" ] && gh release edit "v$VER" --prerelease >/dev/null || true
   else
-    gh release create "v$VER" "${ASSETS[@]}" --title "v$VER" --notes "${NOTES:-v$VER 更新}"
+    gh release create "v$VER" "${ASSETS[@]}" --title "v$VER" --notes "${NOTES:-v$VER 更新}" "${PRE_ARGS[@]}"
   fi
   ok "GitHub Release：https://github.com/RayMorTwinkle/YuketangStudio/releases/tag/v$VER"
   rm -rf "$TMP"
