@@ -126,6 +126,8 @@ export async function agnesChat(opts) {
   if (!baseUrl || !apiKey) throw new Error('开发者模式未解锁：请到设置中解锁内置配置');
 
   const isCloud = telemetry.isCloudProfile(baseUrl);
+  // 自定义渠道必须填模型 ID（云端由服务端按渠道分配，允许空）
+  if (!model && !isCloud) throw new Error('请先在设置中填写模型 ID');
   // 「开遥测才能用解锁码」的第二层：解锁后关掉遥测 → 云端调用直接拦
   if (isCloud && !telemetry.enabled()) {
     throw new Error('请先在设置底部开启「匿名统计使用情况」');

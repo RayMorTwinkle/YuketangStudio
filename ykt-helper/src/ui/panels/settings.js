@@ -8,6 +8,7 @@ import { storage } from '../../core/storage.js';
 import { unlockDevMode, getDevConfigs } from '../../core/devmode.js';
 import * as telemetry from '../../core/telemetry.js';
 import { gm } from '../../core/env.js';
+import { makeChatUrl } from '../../ai/agnes.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
 let mounted = false;
@@ -272,10 +273,11 @@ export function mountSettingsPanel() {
     $apiEye.querySelector('i').className = isPwd ? 'fas fa-eye-slash' : 'fas fa-eye';
   });
 
-  // 测试连接：先试 /models，不行退 /chat/completions 最小请求（走 GM_xhr 绕 CORS）
+  // 测试连接：/models 优先；端点不提供模型列表（404/405）时用真实模型做最小对话验证
   $apiTest?.addEventListener('click', async () => {
     const baseUrl = $baseUrl.value.trim().replace(/\/+$/, '');
     const apiKey = $api.value.trim();
+    const modelId = $model.value.trim();
     if (!baseUrl) { $apiTestResult.textContent = '请先填 URL'; $apiTestResult.style.color = '#c0392b'; return; }
     if (!apiKey) { $apiTestResult.textContent = '请先填 API Key'; $apiTestResult.style.color = '#c0392b'; return; }
     $apiTest.disabled = true;
@@ -296,14 +298,21 @@ export function mountSettingsPanel() {
       } catch (e) { reject(e); }
     });
     try {
-      const r = await gmReq('GET', `${baseUrl}/models`);
+      const modelsUrl = baseUrl.replace(/\/chat\/completions.*$/, '') + '/models';
+      const r = await gmReq('GET', modelsUrl);
       if (r.status >= 200 && r.status < 300) { show('✅ 连接成功', '#059669'); return; }
       if (r.status === 401 || r.status === 403) { show(`❌ 认证失败 (HTTP ${r.status})`, '#c0392b'); return; }
-      // 其他码：降级 chat completions 最小请求
-      const r2 = await gmReq('POST', `${baseUrl}/chat/completions`,
-        { model: $model.value.trim() || 'test', messages: [{role:'user',content:'hi'}], max_tokens: 1 });
+      // 404/405：该端点没有 /models（火山方舟等）——没有模型 ID 时只能确认端点可达
+      if (!modelId) {
+        show('✅ 端点可达（该端点不提供模型列表，请填模型 ID 后点测试）', '#059669');
+        return;
+      }
+      const r2 = await gmReq('POST', makeChatUrl(baseUrl),
+        { model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 });
       if (r2.status >= 200 && r2.status < 300) { show('✅ 连接成功', '#059669'); return; }
       if (r2.status === 400) { show('✅ 端点可达（模型参数校验通过）', '#059669'); return; }
+      if (r2.status === 401 || r2.status === 403) { show(`❌ 认证失败 (HTTP ${r2.status})`, '#c0392b'); return; }
+      if (r2.status === 404) { show('❌ 模型 ID 不存在，或该模型不支持此端点', '#c0392b'); return; }
       show(`❌ HTTP ${r2.status}`, '#c0392b');
     } catch (e) {
       show(`❌ 网络错误：${e?.message || e}`, '#c0392b');
@@ -333,8 +342,10 @@ export function mountSettingsPanel() {
     $modelFetch.disabled = true;
     $modelFetch.textContent = '获取中…';
     let data = null;
+    let lastStatus = 0;
     try {
       const r = await fetch(url, { headers });
+      lastStatus = r.status;
       if (!r.ok) throw new Error('HTTP ' + r.status);
       data = await r.json();
     } catch (e) {
@@ -342,14 +353,22 @@ export function mountSettingsPanel() {
         data = await new Promise((resolve, reject) => {
           gm.xhr({
             method: 'GET', url, headers, timeout: 10000,
-            onload: (res) => { try { resolve(JSON.parse(res.responseText || '{}')); } catch (err) { reject(err); } },
+            onload: (res) => {
+              lastStatus = res.status;
+              if (res.status < 200 || res.status >= 300) return reject(new Error('HTTP ' + res.status));
+              try { resolve(JSON.parse(res.responseText || '{}')); } catch (err) { reject(err); }
+            },
             onerror: reject, ontimeout: reject,
           });
         });
       } catch (e2) {
         $modelFetch.disabled = false;
         $modelFetch.textContent = oldText;
-        ui.toast?.('获取失败：' + (e2?.message || e2));
+        if (lastStatus === 404 || lastStatus === 405) {
+          ui.toast?.('该端点不提供模型列表，请手动填写模型 ID', 3200);
+        } else {
+          ui.toast?.('获取失败：' + (e2?.message || e2));
+        }
         return;
       }
     }
