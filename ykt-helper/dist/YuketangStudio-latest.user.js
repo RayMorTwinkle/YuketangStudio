@@ -1740,7 +1740,9 @@
       });
       // GM_xhr 的 timeout 是固定总时长，无法表达「最后字符后 15s」。
       // 这里自建看门狗：onprogress 每次推进重置为 15s，首字前给 30s。
-      // GM_xhr 的 timeout 设 0（不启用），完全交给看门狗，避免长回答被总时长误杀。
+      // 总 timeout 不能设 0：部分脚本管理器把 0 当成立即超时，请求发出 1~2s 就触发
+      // ontimeout（错误文案「请求超时（GM_xhr）」），看起来像 30s 超时其实不是。
+      // 给 120s 兜底，真正的首字/空闲判断仍由看门狗负责。
             let watchdog = 0;
       let settled = false;
       const arm = (ms, msg) => {
@@ -1767,7 +1769,7 @@
       const handle = gm.xhr({
         method: "POST",
         url: url,
-        timeout: 0,
+        timeout: 12e4,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`
@@ -3458,7 +3460,9 @@
       return await runSendInner(opts);
     } catch (e) {
       const emsg = String(e?.message || "");
-      const isTimeout = /timeout|超时/i.test(emsg);
+      log.warn("[AI] 请求失败:", emsg || e, e);
+      // HTTP 错误体里可能带 "timeout"（如上游 504），不能当成本地等待超时
+            const isTimeout = !/^HTTP \d/.test(emsg) && /timeout|超时/i.test(emsg);
       const aborted = e?.name === "AbortError" && !isTimeout || /abort|cancel/i.test(emsg);
       const retryBtn = lastSendText$1 !== null ? `<button class="ykt-retry-btn" style="margin-left:8px;padding:2px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:12px">↻ 重试</button>` : "";
       if (aborted) addBubble$1("ai", `<span class="muted">（已中断：${escapeHtml$1(emsg || "请求被中止")}）</span>${retryBtn}`); else if (/HTTP 429/.test(emsg)) addBubble$1("ai", `<span class="err">当前使用人数较多，请稍后重试</span>${retryBtn}<br/><small>上游已限流，稍等几秒再点重试。</small>`); else if (isTimeout) addBubble$1("ai", `<span class="err">等待超时，请重试</span>${retryBtn}<br/><small>30 秒内没有返回首字，可点重试或稍后再试。</small>`); else addBubble$1("ai", `<span class="err">出错了：${escapeHtml$1(e?.message || String(e))}</span>${retryBtn}<br/><small>${isTimeout ? "提示：上游响应过慢或网络中断，可点重试。" : "提示：到设置里检查 AI 配置的 API Key。"}</small>`);

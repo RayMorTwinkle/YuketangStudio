@@ -340,7 +340,9 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
 
     // GM_xhr 的 timeout 是固定总时长，无法表达「最后字符后 15s」。
     // 这里自建看门狗：onprogress 每次推进重置为 15s，首字前给 30s。
-    // GM_xhr 的 timeout 设 0（不启用），完全交给看门狗，避免长回答被总时长误杀。
+    // 总 timeout 不能设 0：部分脚本管理器把 0 当成立即超时，请求发出 1~2s 就触发
+    // ontimeout（错误文案「请求超时（GM_xhr）」），看起来像 30s 超时其实不是。
+    // 给 120s 兜底，真正的首字/空闲判断仍由看门狗负责。
     let watchdog = 0;
     let settled = false;
     const arm = (ms, msg) => {
@@ -358,7 +360,7 @@ function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
     const handle = gm.xhr({
       method: 'POST',
       url,
-      timeout: 0,
+      timeout: 120000,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       data: JSON.stringify(body),
       onprogress: (res) => {

@@ -929,7 +929,9 @@ async function runSend(opts = {}) {
     return await runSendInner(opts);
   } catch (e) {
     const emsg = String(e?.message || '');
-    const isTimeout = /timeout|超时/i.test(emsg);
+    log.warn('[AI] 请求失败:', emsg || e, e);
+    // HTTP 错误体里可能带 "timeout"（如上游 504），不能当成本地等待超时
+    const isTimeout = !/^HTTP \d/.test(emsg) && /timeout|超时/i.test(emsg);
     const aborted = (e?.name === 'AbortError' && !isTimeout) || /abort|cancel/i.test(emsg);
     const retryBtn = lastSendText !== null
       ? `<button class="ykt-retry-btn" style="margin-left:8px;padding:2px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:12px">↻ 重试</button>`
