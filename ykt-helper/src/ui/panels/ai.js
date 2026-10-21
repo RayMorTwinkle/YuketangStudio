@@ -16,6 +16,8 @@ import { ensureMermaid, ensureMarked, ensureDOMPurify, ensureKaTeX, gm } from '.
 import { escapeHtml, ensureImageUrl } from '../../core/dom.js';
 import { PROBLEM_TYPE_MAP, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 import { SUBMIT_ANSWER_TOOL, toolPromptBlock, normalizeToolArgs, toolReason, isToolUnsupportedError } from '../../ai/tools.js';
+import { parseRegexAnswer, stripRegexAnswer, regexToolCall, regexAnswerPrompt } from '../../ai/regex-answer.js';
+import * as telemetry from '../../core/telemetry.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { parseAIAnswer } from '../../tsm/ai-format.js';
 import { submitProblemAnswer } from '../../tsm/submit-flow.js';
@@ -827,11 +829,15 @@ async function runSendInner({
   const ov = getOverride();
   // 工具只在「首轮解答」或「自动作答」时强制；追问不强制，避免反复提交
   // 有题目上下文就带工具说明：空输入/自动作答用强要求，手动追问用软提示
+  // 正则模式：不发 tools，改成在正文末尾输出 <answer>...</answer>
+  const regexMode = !!ui.config.regexToolCall;
   const toolHint = (useTools && canSubmit)
-    ? '\n\n' + toolPromptBlock(problem, { mandatory: autoSubmit, soft: !isAnalyze && !autoSubmit })
+    ? '\n\n' + (regexMode
+      ? regexAnswerPrompt(problem, { mandatory: autoSubmit, soft: !isAnalyze && !autoSubmit })
+      : toolPromptBlock(problem, { mandatory: autoSubmit, soft: !isAnalyze && !autoSubmit }))
     : '';
   const sys = systemPrompt() + toolHint;
-  const tools = (useTools && canSubmit) ? [SUBMIT_ANSWER_TOOL] : undefined;
+  const tools = (!regexMode && useTools && canSubmit) ? [SUBMIT_ANSWER_TOOL] : undefined;
 
   const call = (toolList) => agnesChat({
     messages: [{ role: 'system', content: sys }, ...conv],
@@ -839,8 +845,10 @@ async function runSendInner({
     thinking: ov?.thinking !== false,   // 跟设置里的「启用思考」开关走
     signal: abortCtrl.signal,
     override: ov || undefined,
-    tools: toolList,
-    toolChoice: autoSubmit ? 'required' : 'auto',
+    tools: regexMode ? undefined : toolList,
+    toolChoice: regexMode ? undefined : (autoSubmit ? 'required' : 'auto'),
+    traceKind: autoSubmit ? 'auto' : 'ai',
+    traceMode: regexMode ? 'regex' : (toolList ? 'tools' : 'none'),
     onDelta: (d) => { acc.content += d; paint(); },
     onReasoning: (d) => { acc.reasoning += d; paint(); },
     onWait: (ms) => {
@@ -873,7 +881,16 @@ async function runSendInner({
 
   acc.content = res.content || acc.content;
   acc.reasoning = res.reasoning || acc.reasoning;
-  const toolCall = (res.toolCalls || []).find(t => t?.function?.name === 'submit_answer');
+  let toolCall = (res.toolCalls || []).find(t => t?.function?.name === 'submit_answer');
+  let regexParsed = null;
+  if (regexMode) {
+    // 只解析 content；reasoning 里的格式演练不算最终答案
+    regexParsed = parseRegexAnswer(acc.content, problemType);
+    if (regexParsed) {
+      toolCall = regexToolCall(regexParsed.answers);
+      acc.content = stripRegexAnswer(acc.content);
+    }
+  }
   if (raf) { cancelAnimationFrame(raf); raf = 0; }   // 防止挂起的 paint 覆盖 renderRich 成果
   aiBubble.innerHTML =
     (acc.reasoning ? `<details><summary>💭 思考过程（点击展开）</summary><div class="reasoning-body">${escapeHtml(acc.reasoning)}</div></details>` : '')
@@ -904,6 +921,19 @@ async function runSendInner({
     aiBubble, problem, toolCall, autoSubmit, degraded, content: acc.content,
   });
 
+  telemetry.trace({
+    event: 'answer_parse',
+    kind: autoSubmit ? 'auto' : 'ai',
+    mode: regexMode ? 'regex' : (tools ? 'tools' : 'none'),
+    problemType,
+    problem: { type: problemType, options: problem?.options?.length || 0, bodyLen: problem?.body?.length || 0 },
+    ok: !!submitInfo,
+    regexParsed: !!regexParsed,
+    toolCall: !!toolCall,
+    route: submitInfo?.route || null,
+    contentLen: (acc.content || '').length,
+  });
+
   // 手动模式最后一次仍未调用工具：把正文解析成答案卡片，至少能一键提交（仍需二次确认）
   if (!submitInfo && !degraded && !toolCall && (isAnalyze || !!nudge) && !autoSubmit && canSubmit && attempt >= 2) {
     const parsed = parseAIAnswer(problem, acc.content || '');
@@ -930,6 +960,14 @@ async function runSend(opts = {}) {
   } catch (e) {
     const emsg = String(e?.message || '');
     log.warn('[AI] 请求失败:', emsg || e, e);
+    telemetry.trace({
+      event: 'answer_error',
+      kind: opts.autoSubmit ? 'auto' : 'ai',
+      mode: ui.config.regexToolCall ? 'regex' : 'tools',
+      attempt: opts.attempt || 1,
+      ok: false,
+      error: { message: emsg || String(e), name: e?.name || '' },
+    });
     // HTTP 错误体里可能带 "timeout"（如上游 504），不能当成本地等待超时
     const isTimeout = !/^HTTP \d/.test(emsg) && /timeout|超时/i.test(emsg);
     const aborted = (e?.name === 'AbortError' && !isTimeout) || /abort|cancel/i.test(emsg);
@@ -980,7 +1018,16 @@ export async function sendCurrent(opts = {}) {
       && (r.isAnalyze || opts.autoSubmit) && attempt < 2;
     if (needRetry) {
       L('retry: model did not call submit_answer, attempt', attempt + 1);
-      r = await runSend({ ...opts, attempt: attempt + 1, nudge: '继续，记得调用工具提交答案。' });
+      const nudge = ui.config.regexToolCall
+        ? '继续。请只在回答最后输出一个 <answer>...</answer> 块（按当前题型格式），不要在 <answer> 里写理由。'
+        : '继续，记得调用工具提交答案。';
+      telemetry.trace({
+        event: 'answer_retry',
+        kind: opts.autoSubmit ? 'auto' : 'ai',
+        mode: ui.config.regexToolCall ? 'regex' : 'tools',
+        attempt: attempt + 1,
+      });
+      r = await runSend({ ...opts, attempt: attempt + 1, nudge });
     }
     return r;
   } finally {

@@ -42,6 +42,8 @@ export const DEFAULT_CONFIG = {
   autoAnswerOnAutoJoin: false,
   aiAutoAnalyze: false,
   aiSlidePickPriority: true,
+  // 正则化工具调用：不发 tools，模型用 <answer>...</answer> 交答案
+  regexToolCall: false,
   // 习题提醒
   notifyPopupDuration: 5000,
   notifyVolume: 0.6,

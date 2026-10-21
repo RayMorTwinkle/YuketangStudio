@@ -89,6 +89,7 @@ export function mountSettingsPanel() {
   }
   const $thinking = root.querySelector('#ykt-ai-thinking');
   const $effort = root.querySelector('#ykt-ai-effort');
+  const $regex = root.querySelector('#ykt-ai-regex-tool');
   const $apiEye = root.querySelector('#ykt-apikey-eye');
   const $apiTest = root.querySelector('#ykt-apikey-test');
   const $apiTestResult = root.querySelector('#ykt-apikey-test-result');
@@ -219,15 +220,39 @@ export function mountSettingsPanel() {
     syncFormFromConfig();   // 解锁后表单立即显示新配置
   }
 
-  // === 匿名统计开关（最底部，无说明；「开」时才允许解锁云端） ===
+  // === 匿名统计开关（最底部）与强化遥测（依赖基础遥测） ===
   const $telemetry = root.querySelector('#ykt-telemetry');
+  const $telemetryEnhanced = root.querySelector('#ykt-telemetry-enhanced');
+  const syncEnhancedTelemetryState = () => {
+    if (!$telemetryEnhanced) return;
+    const base = telemetry.enabled();
+    $telemetryEnhanced.disabled = !base;
+    if (!base) $telemetryEnhanced.checked = false;
+    else $telemetryEnhanced.checked = telemetry.enhancedEnabled();
+  };
   if ($telemetry) {
     $telemetry.checked = telemetry.enabled();
     $telemetry.addEventListener('change', () => {
       telemetry.setEnabled($telemetry.checked);
+      if (!$telemetry.checked) telemetry.setEnhanced(false);
+      syncEnhancedTelemetryState();
       refreshDevHint();   // 关掉后解锁按钮语义不变，但下次解锁会被拦
     });
   }
+  if ($telemetryEnhanced) {
+    $telemetryEnhanced.addEventListener('change', () => {
+      if ($telemetryEnhanced.checked) {
+        const ok = confirm('强化遥测会上传发送给模型的消息、模型回复、解析/提交结果和错误信息（已脱敏、截断，不含 API Key 和图片原始数据）。确定开启吗？');
+        if (!ok) { $telemetryEnhanced.checked = false; return; }
+      }
+      const applied = telemetry.setEnhanced($telemetryEnhanced.checked);
+      if (!applied && $telemetryEnhanced.checked) {
+        $telemetryEnhanced.checked = false;
+        ui.toast?.('请先开启「匿名统计使用情况」');
+      }
+    });
+  }
+  syncEnhancedTelemetryState();
 
   $devBtn?.addEventListener('click', async () => {
     const pass = ($devPass?.value || '').trim();
@@ -467,6 +492,7 @@ export function mountSettingsPanel() {
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
     ui.config.iftex = !!$iftex.checked;
     ui.config.aiSlidePickPriority = !!$priority.checked;
+    ui.config.regexToolCall = !!$regex?.checked;
     ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
     ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
 
@@ -508,12 +534,14 @@ export function mountSettingsPanel() {
     $delay.value = Math.floor((ui.config.autoAnswerDelay || 3000) / 1000);
     $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1000);
     $priority.checked = (ui.config.aiSlidePickPriority !== false);
+    if ($regex) $regex.checked = !!ui.config.regexToolCall;
     $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
     $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));
     $audioName.textContent = ui.config.customNotifyAudioName
       ? `当前：${ui.config.customNotifyAudioName}`
       : '当前：使用内置“叮-咚”提示音';
     if ($telemetry) $telemetry.checked = telemetry.enabled();
+    syncEnhancedTelemetryState();
     fillPrompts();
   }
   // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
@@ -541,7 +569,9 @@ export function mountSettingsPanel() {
 
     // 遥测开关不在 config 里（独立 storage key），一并复位（默认开）
     telemetry.setEnabled(true);
+    telemetry.setEnhanced(false);
     if ($telemetry) $telemetry.checked = true;
+    syncEnhancedTelemetryState();
 
     ui.saveConfig();
     ui.updateAutoAnswerBtn();

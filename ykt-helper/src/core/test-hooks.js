@@ -41,6 +41,8 @@ export function installTestHooks() {
         ],
         blanks: opts.blanks || (Number(type) === 4 ? ['第一空', '第二空'] : []),
       };
+      // 测试用：给假题挂一张图，验证图片请求 / trace 脱敏
+      if (opts.imageDataUrl) problem.__imageDataUrl = opts.imageDataUrl;
       const slide = { id: slideId, index: 1, page: 1, problem };
       repo.upsertSlide(slide);
       repo.upsertProblem(problem);

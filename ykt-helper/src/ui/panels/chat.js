@@ -387,6 +387,8 @@ async function sendCurrent({ retryText = null } = {}) {
       stream: true,
       thinking: ov?.thinking !== false,   // 跟设置里的「启用思考」开关走
       signal: abortCtrl.signal,
+      traceKind: 'chat',
+      traceMode: 'none',
       // 与 AI 解答面板一致：走当前激活的 AI Profile，而不是只吃开发者模式配置
       override: ov || undefined,
       onDelta: (d) => { acc.content += d; paint(); },

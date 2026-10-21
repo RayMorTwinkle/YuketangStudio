@@ -178,19 +178,56 @@ export async function agnesChat(opts) {
     && !opts.signal?.aborted
     && !/^HTTP \d/.test(String(e?.message || ''));
 
+  const traceBase = {
+    event: 'llm_call',
+    kind: opts.traceKind || 'llm',
+    mode: opts.traceMode || 'none',
+    provider: { url, model, cloud: isCloud, stream, thinking },
+    request: { messages: opts.messages, tools: opts.tools?.length || 0, bodyBytes: JSON.stringify(body).length },
+  };
+  const traceResult = (r) => {
+    telemetry.trace({
+      ...traceBase,
+      ok: true,
+      status: 200,
+      ttft: tFirst ? tFirst - t0 : 0,
+      dur: Date.now() - t0,
+      response: {
+        content: r.content,
+        reasoning: r.reasoning,
+        toolCalls: r.toolCalls,
+        finishReason: r.finishReason,
+        truncated: !!r.truncated,
+      },
+    });
+    return r;
+  };
+  const traceError = (e) => {
+    const msg = String(e?.message || e);
+    const st = (msg.match(/^HTTP\s+(\d+)/) || [])[1] || 0;
+    telemetry.trace({
+      ...traceBase,
+      ok: false,
+      ttft: tFirst ? tFirst - t0 : 0,
+      dur: Date.now() - t0,
+      error: { message: msg, name: e?.name || '', status: Number(st) || 0 },
+    });
+  };
+
+  try {
   if (stream) {
     // 先试 fetch 真流式；CORS 失败自动降级 GM_xmlhttpRequest 伪流式
     try {
       const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
       smooth.end(); recordTele();
-      return r;
+      return traceResult(r);
     } catch (e) {
       if (!shouldFallback(e)) { smooth.abort(); throw e; }
       dlog('fetch stream failed, fallback to GM_xhr:', e?.message || e);
       try {
         const r = await gmXhrStream(url, apiKey, body, o2, timeoutMs);
         smooth.end(); recordTele();
-        return r;
+        return traceResult(r);
       } catch (e2) { smooth.abort(); throw e2; }
     }
   }
@@ -198,13 +235,17 @@ export async function agnesChat(opts) {
   try {
     const r = await fetchStream(url, apiKey, body, o2, timeoutMs);
     recordTele();
-    return r;
+    return traceResult(r);
   } catch (e) {
     if (!shouldFallback(e)) throw e;
     dlog('fetch failed, fallback to GM_xhr:', e?.message || e);
     const r = await gmXhrOnce(url, apiKey, body, timeoutMs, o2);
     recordTele();
-    return r;
+    return traceResult(r);
+  }
+  } catch (e) {
+    traceError(e);
+    throw e;
   }
 }
 

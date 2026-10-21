@@ -71,6 +71,15 @@
           <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>
         </div>
 
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-ai-regex-tool">
+            <span class="checkmark"></span>
+            正则化工具调用（兼容不支持 tools 的端点）
+          </label>
+          <small>开启后不再发送 tools 参数；模型在回答结尾用 &lt;answer&gt;...&lt;/answer&gt; 交答案（按题型自动解析）。适合只支持纯文本、或 tools 调用不稳定的端点。</small>
+        </div>
+
         <details class="setting-advanced">
           <summary>高级选项</summary>
           <div class="setting-item">
@@ -217,6 +226,14 @@
             <span class="checkmark"></span>
             匿名统计使用情况
           </label>
+        </div>
+        <div class="setting-item" style="margin-top:8px">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-telemetry-enhanced">
+            <span class="checkmark"></span>
+            强化遥测（上传请求/响应用于排错）
+          </label>
+          <small>会上传发送给模型的消息、模型回复、解析/提交结果和错误信息；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭，需先开启「匿名统计使用情况」。</small>
         </div>
       </div>
     </div>

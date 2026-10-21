@@ -353,6 +353,8 @@ async function batchAI() {
           stream: false,
           thinking: true,
           override,
+          traceKind: 'assignment',
+          traceMode: 'none',
         });
         md.push(`## 第 ${i + 1} 题\n\n${res.content || '（空回复）'}\n`);
         done++;
