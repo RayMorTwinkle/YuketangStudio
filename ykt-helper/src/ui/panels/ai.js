@@ -9,7 +9,7 @@ import { log } from '../../core/log.js';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { cacheQuizAnswer } from '../../quiz/quiz-paper.js';
-import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
+import { getCurrentMainPageSlideId, getCurrentMainPageMeta, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { resolveCurrentSlideImage } from '../slide-image.js';
 import { ensureMermaid, ensureMarked, ensureDOMPurify, ensureKaTeX, gm } from '../../core/env.js';
@@ -32,6 +32,9 @@ let history = [];           // OpenAI 格式消息
 let streaming = false;      // 防并发发送
 let abortCtrl = null;
 let lastSendText = null;    // 上一次发送的用户文本（重试用；空串=解答此页）
+let activeOverride = null;  // askAIForProblem 指定的题目（作业/题目列表），请求期间优先展示
+let lastThumbKey = '';      // 缩略图缓存键，避免 2s 轮询重复截图
+let ctxPollTimer = null;
 
 const systemPrompt = () => String(ui?.config?.systemPromptAI || '').trim() || DEFAULT_SYSTEM_PROMPT_AI;
 
@@ -147,7 +150,9 @@ export function mountAIPanel() {
   $sel('#ykt-ai-clear').addEventListener('click', () => {
     abortStreaming('清空会话');
     history = [];
+    activeOverride = null;
     renderHistory();
+    renderCtxStatus();
     addBubble('ai', mdToHtml('会话已清空。点击「发送」（输入留空）可解答当前页题目。'));
   });
 
@@ -157,6 +162,20 @@ export function mountAIPanel() {
   $input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrent(); }
   });
+
+  // 状态条：点击/回车 = 重新检测当前页题目
+  const statusEl = $sel('#ykt-ai-text-status');
+  if (statusEl) {
+    statusEl.setAttribute('role', 'button');
+    statusEl.setAttribute('tabindex', '0');
+    statusEl.addEventListener('click', () => renderCtxStatus({ force: true }));
+    statusEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); renderCtxStatus({ force: true }); }
+    });
+  }
+
+  // 课件题目数据晚到：立即刷新状态（无需重开面板）
+  window.addEventListener('ykt:problem:parsed', () => renderCtxStatus());
 
   waitForVueReady().then(() => {
     watchMainPageChange((slideId, slideInfo) => {
@@ -179,6 +198,12 @@ export function mountAIPanel() {
   warmupRichAssets();
   mounted = true;
   renderCtxStatus();
+  // 面板可见时轻量轮询（只更新状态文案，不重复截图），兜住移动端数据晚到
+  if (!ctxPollTimer) {
+    ctxPollTimer = setInterval(() => {
+      if (root?.classList.contains('visible')) renderCtxStatus({ light: true });
+    }, 2000);
+  }
   // shell 切到本 tab 时刷新（数据晚于挂载到达的场景：WS 课件、页面切换）
   root.__yksOnShow = () => {
     renderCtxStatus();
@@ -200,6 +225,7 @@ export function showAIPanel(v = true) {
   if (!mounted) mountAIPanel();
   root.classList.toggle('visible', !!v);
   if (v) {
+    activeOverride = null;
     renderCtxStatus();
     if (history.length === 0) {
       addBubble('ai', mdToHtml('点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。'));
@@ -286,33 +312,138 @@ function buildUserText(problem, customPrompt, isAnalyze) {
   return parts.join('\n');
 }
 
-/** 页面识别状态行（面板底部小字） */
-function renderCtxStatus() {
+// ---- 当前页题目状态（显式化：已解析/可提交/解析中/无题目） ----
+
+const QUIZ_TYPE_LABEL = {
+  SingleChoice: '单选题',
+  MultipleChoice: '多选题',
+  Judgement: '判断题',
+  Judgment: '判断题',
+  FillBlank: '填空题',
+  Subjective: '主观题',
+  Poll: '投票',
+  Exam: '试卷',
+  Link: '外链题',
+};
+
+function problemTypeLabel(problem) {
+  const qt = problem?.__quizType;
+  if (qt && QUIZ_TYPE_LABEL[qt]) return QUIZ_TYPE_LABEL[qt];
+  return PROBLEM_TYPE_MAP[problem?.problemType] || '题目';
+}
+
+function canSubmitProblem(problem) {
+  if (!problem || problem.__noSubmit) return false;
+  const t = Number(problem.problemType);
+  return problem.__submitTarget === 'quiz' || (t >= 1 && t <= 5);
+}
+
+function notSubmitReason(problem) {
+  if (!problem) return '当前页没有题目';
+  if (problem.__noSubmit) {
+    if (problem.__submitTarget !== 'quiz' && (problem.problemType === 4 || problem.problemType === 5)) {
+      return '作业填空/主观题暂未开放';
+    }
+    return '当前题型暂不支持提交';
+  }
+  return '该题型不支持提交';
+}
+
+/** 更新输入框占位，提示这一轮会做什么 */
+function updateCtxPlaceholder(problem, canSubmit, isQuiz) {
+  const input = $sel('#ykt-ai-input');
+  if (!input) return;
+  if (!problem) input.placeholder = '当前页无题目，可输入问题提问（Enter 发送）';
+  else if (isQuiz) input.placeholder = '留空发送 = 解答本题并暂存（Enter 发送）';
+  else if (canSubmit) input.placeholder = '留空发送 = 解答本题并提交（Enter 发送）';
+  else input.placeholder = '留空发送 = 解答本题（暂不自动提交，Enter 发送）';
+}
+
+/** 页面识别状态行（面板底部，显式展示题目解析/可提交状态） */
+function renderCtxStatus({ light = false, force = false } = {}) {
   if (!mounted) return;
   const statusEl = $sel('#ykt-ai-text-status');
   if (!statusEl) return;
+
   const { slide, source } = pickCurrentSlide();
-  if (slide) {
-    const hasProblem = !!slide.problem;
-    statusEl.textContent = `✓ ${source}${hasProblem ? ' · 含题目' : ''}`;
-    statusEl.style.color = '';
+  const override = activeOverride;
+  const problem = override || slide?.problem || null;
+  const isQuiz = problem?.__submitTarget === 'quiz';
+  const canSubmit = canSubmitProblem(problem);
+  const label = problemTypeLabel(problem);
+  const meta = getCurrentMainPageMeta();
+  const looksProblem = !!(meta?.problemID || String(meta?.type || '') === 'problem');
+
+  let cls;
+  let text;
+  let title;
+
+  if (override) {
+    cls = canSubmit ? 'st-info' : 'st-warn';
+    text = canSubmit
+      ? `已指定题目 · ${label} · ${isQuiz ? '作业暂存' : '可提交'}`
+      : `已指定题目 · ${label} · 暂不支持提交：${notSubmitReason(override)}`;
+    title = `来源：指定题目（作业/题目列表）\n题型：${label}`
+      + (override.__problemId != null ? `\n题目ID：${override.__problemId}` : '');
+  } else if (!slide) {
+    if (looksProblem) {
+      cls = 'st-busy';
+      text = '题目页解析中…';
+      title = '当前页是题目页，但题目数据还没到；稍等会自动刷新';
+    } else {
+      cls = 'st-err';
+      text = '未检测到课件页';
+      title = '请先在课堂里翻页，或从题目列表/作业里打开 AI 解答';
+    }
+  } else if (problem) {
+    cls = canSubmit ? 'st-ok' : 'st-warn';
+    text = canSubmit
+      ? `题目已解析到 · ${label} · ${isQuiz ? '作业暂存' : '可提交'}`
+      : `题目已解析到 · ${label} · 暂不支持提交：${notSubmitReason(problem)}`;
+    title = `来源：${source || '当前页'}\n题型：${label}`
+      + (problem.problemId != null ? `\n题目ID：${problem.problemId}` : '');
+  } else if (looksProblem) {
+    cls = 'st-busy';
+    text = '题目页解析中…';
+    title = `来源：${source || '当前页'}\n题目数据还没到，稍等会自动刷新`;
   } else {
-    statusEl.textContent = '⚠ 未检测到课件页（可先在课堂里翻页）';
-    statusEl.style.color = '#b42318';
+    cls = 'st-idle';
+    text = '当前页无题目 · 仅问答';
+    title = `来源：${source || '当前页'}\n这一页不是题目页，submit_answer 不可用`;
   }
-  renderCtxThumb();
+
+  statusEl.className = `ctx-status ${cls}`;
+  statusEl.textContent = text;
+  statusEl.title = `${title}\n（点击重新检测）`;
+  updateCtxPlaceholder(problem, canSubmit, isQuiz);
+
+  if (!light && root?.classList.contains('visible')) {
+    renderCtxThumb({ force, slideId: slide?.id || '', override });
+  }
 }
 
-async function renderCtxThumb() {
+async function renderCtxThumb({ force = false, slideId = '', override = null } = {}) {
   const span = $sel('#ykt-ai-ctx-thumb');
   if (!span) return;
+  const key = override
+    ? `ov:${override.__problemId ?? override.problemId ?? 'x'}:${override.__imageDataUrl ? 'img' : (slideId || 'none')}`
+    : (slideId || 'none');
+  if (!force && key === lastThumbKey) return;
+  lastThumbKey = key;
   span.textContent = '⏳';
-  const { dataUrl } = await resolveCurrentSlideImage();
+  const myKey = key;
+  let dataUrl = '';
+  if (override?.__imageDataUrl) {
+    dataUrl = override.__imageDataUrl;
+  } else if (slideId) {
+    ({ dataUrl } = await resolveCurrentSlideImage());
+  }
+  if (myKey !== lastThumbKey) return;   // 截图期间切页了，丢弃旧结果
   if (dataUrl) {
     span.innerHTML = '';
     const img = document.createElement('img');
     img.src = dataUrl;
-    img.title = '当前 PPT 页';
+    img.title = override ? '指定题目' : '当前 PPT 页';
     span.appendChild(img);
   } else {
     span.textContent = '（无图）';
@@ -602,8 +733,7 @@ async function runSendInner({
   const ctxSlide = pickCurrentSlide().slide;
   const problem = problemOverride || ctxSlide?.problem || null;
   const problemType = Number(problem?.problemType);
-  const canSubmit = !!problem && !problem.__noSubmit
-    && (problem.__submitTarget === 'quiz' || (problemType >= 1 && problemType <= 5));
+  const canSubmit = canSubmitProblem(problem);
 
   // 自动作答使用独立会话：不污染用户聊天，也不会把上一题的上下文带进来
   const conv = autoSubmit ? [] : history;
@@ -833,6 +963,10 @@ export async function sendCurrent(opts = {}) {
     ui.toast?.('AI 正在作答，请稍候', 1500);
     return null;
   }
+  if (!opts.problemOverride && activeOverride) {
+    activeOverride = null;
+    renderCtxStatus();
+  }
   streaming = true;
   setStreamingFlag(true);
   const sendBtn = $sel('#ykt-ai-send');
@@ -870,7 +1004,14 @@ export async function askAITextOnly() {
 
 /** 自动作答入口：指定题目 + 直接提交 */
 export async function askAIForProblem(problem, { autoSubmit = false } = {}) {
-  return sendCurrent({ auto: true, problemOverride: problem, autoSubmit });
+  activeOverride = problem || null;
+  renderCtxStatus();
+  try {
+    return await sendCurrent({ auto: true, problemOverride: problem, autoSubmit });
+  } finally {
+    activeOverride = null;
+    renderCtxStatus();
+  }
 }
 
 // ---------------- Markdown / 富媒体渲染 ----------------

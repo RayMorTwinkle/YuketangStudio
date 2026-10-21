@@ -262,6 +262,7 @@ async function aiForQuestion(index) {
     await askAIForProblem({
       problemId: `quiz_${quizId}_${index}`,
       problemType: code || 4,
+      __quizType: p.Type,
       body: `第 ${index + 1} 题（${typeText(p.Type)}，${p.Score ?? ''} 分）`,
       options: [],
       __imageDataUrl: dataUrl,

@@ -207,6 +207,10 @@ export const actions = {
     // 课件晚于 unlockproblem 到达时，重放暂存的解锁事件
     this._replayPendingUnlocks();
     ui.updatePresentationList();
+    // 通知 AI 面板重新检测（课件 XHR 晚于面板打开时，状态需要从「解析中」翻绿）
+    try {
+      window.dispatchEvent(new CustomEvent('ykt:problem:parsed', { detail: { presentationId: String(id) } }));
+    } catch {}
   },
 
   /** 重放暂存的 unlockproblem（课件 XHR 晚于 WS 到达的竞态） */

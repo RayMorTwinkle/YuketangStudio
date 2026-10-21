@@ -85,6 +85,45 @@ export function getCurrentMainPageSlideId() {
   }
 }
 
+/** 当前页元信息：区分「普通页」和「题目页但题目数据还没到」 */
+export function getCurrentMainPageMeta() {
+  try {
+    const store = getStore(getVueApp());
+    const st = store?.state;
+    const cs = st?.currSlide;
+    if (cs) {
+      return {
+        sid: cs.sid == null ? null : String(cs.sid),
+        type: cs.type ?? null,
+        problemID: cs.problemID ?? null,
+      };
+    }
+    const tl = st?.lessonTimelineSlides;
+    if (Array.isArray(tl) && tl.length) {
+      const last = tl[tl.length - 1];
+      const sid = last?.sid ?? last?.id;
+      return {
+        sid: sid == null ? null : String(sid),
+        type: last?.type ?? null,
+        problemID: last?.problemID ?? null,
+      };
+    }
+    const cards = st?.cards;
+    if (Array.isArray(cards)) {
+      for (let i = cards.length - 1; i >= 0; i--) {
+        const c = cards[i];
+        if (c?.sid != null) {
+          return { sid: String(c.sid), type: c.type ?? null, problemID: c.problemID ?? null };
+        }
+      }
+    }
+    return null;
+  } catch (e) {
+    E('getCurrentMainPageMeta 错误:', e);
+    return null;
+  }
+}
+
 export function watchMainPageChange(callback) {
   const app = getVueApp();
   const store = getStore(app);
