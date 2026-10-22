@@ -576,7 +576,7 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$7 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-weight: 500; position: relative; padding-left: 12px; }\n    #ykt-ai-ctx .ctx-status::before { content: \'\'; position: absolute; left: 2px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: currentColor; }\n    #ykt-ai-ctx .ctx-status:hover { text-decoration: underline dotted; }\n    #ykt-ai-ctx .ctx-status.st-ok { color: #1a7f37; }\n    #ykt-ai-ctx .ctx-status.st-warn { color: #b45309; }\n    #ykt-ai-ctx .ctx-status.st-info { color: #1d63df; }\n    #ykt-ai-ctx .ctx-status.st-busy { color: #a16207; }\n    #ykt-ai-ctx .ctx-status.st-idle { color: #64748b; }\n    #ykt-ai-ctx .ctx-status.st-err { color: #b42318; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n    /* 工具调用：提交答案卡片 */\n    .ykt-tool-card { margin-top: 8px; border: 1px solid #cfe0ff; background: #f5f9ff; border-radius: 8px; padding: 8px 10px; }\n    .ykt-tool-card.done { border-color: #b7e4c7; background: #f0fbf4; }\n    .ykt-tool-title { font-size: 12px; font-weight: 600; color: #1d63df; margin-bottom: 4px; }\n    .ykt-tool-answer { font-size: 15px; font-weight: 600; color: #111827; word-break: break-word; white-space: pre-wrap; }\n    .ykt-tool-reason { font-size: 12px; color: #607190; margin-top: 4px; white-space: pre-wrap; }\n    .ykt-tool-actions { margin-top: 8px; }\n    .ykt-tool-submit { padding: 5px 14px; border: none; border-radius: 6px; background: #1d63df; color: #fff; cursor: pointer; font-size: 13px; }\n    .ykt-tool-submit:disabled { opacity: .6; cursor: not-allowed; }\n    .ykt-tool-status { margin-top: 6px; font-size: 12px; color: #2e7d32; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
+  var tpl$7 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-weight: 500; position: relative; padding-left: 12px; }\n    #ykt-ai-ctx .ctx-status::before { content: \'\'; position: absolute; left: 2px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: currentColor; }\n    #ykt-ai-ctx .ctx-status:hover { text-decoration: underline dotted; }\n    #ykt-ai-ctx .ctx-status.st-ok { color: #1a7f37; }\n    #ykt-ai-ctx .ctx-status.st-warn { color: #b45309; }\n    #ykt-ai-ctx .ctx-status.st-info { color: #1d63df; }\n    #ykt-ai-ctx .ctx-status.st-busy { color: #a16207; }\n    #ykt-ai-ctx .ctx-status.st-idle { color: #64748b; }\n    #ykt-ai-ctx .ctx-status.st-err { color: #b42318; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n    /* 工具调用：提交答案卡片 */\n    .ykt-tool-card { margin-top: 8px; border: 1px solid #cfe0ff; background: #f5f9ff; border-radius: 8px; padding: 8px 10px; }\n    .ykt-tool-card.done { border-color: #b7e4c7; background: #f0fbf4; }\n    .ykt-tool-title { font-size: 12px; font-weight: 600; color: #1d63df; margin-bottom: 4px; }\n    .ykt-tool-answer { font-size: 15px; font-weight: 600; color: #111827; word-break: break-word; white-space: pre-wrap; }\n    .ykt-tool-reason { font-size: 12px; color: #607190; margin-top: 4px; white-space: pre-wrap; }\n    .ykt-tool-actions { margin-top: 8px; }\n    .ykt-tool-submit { padding: 5px 14px; border: none; border-radius: 6px; background: #1d63df; color: #fff; cursor: pointer; font-size: 13px; }\n    .ykt-tool-submit:disabled { opacity: .6; cursor: not-allowed; }\n    .ykt-tool-status { margin-top: 6px; font-size: 12px; color: #2e7d32; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-report">诊断</button>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
   // src/core/dom.js
   // 轻量 DOM 工具——escapeHtml 此前在 ai.js / chat.js / auto-answer-popup.js 各抄了一份
     function escapeHtml$1(s) {
@@ -681,6 +681,9 @@
     } catch {
       return "dev";
     }
+  }
+  /** 当前构建版本（诊断报告用） */  function getVersion() {
+    return version();
   }
   function today() {
     const d = new Date;
@@ -4823,6 +4826,8 @@
  // 显式任务（作业/题目列表/自动作答）
     let lastRequest = null;
  // { task, userText, history } 供重试
+    let lastRunResult = null;
+ // 最近一次答题结果（诊断报告用）
     let lastThumbKey = "";
   let ctxPollTimer = null;
   const systemPrompt$1 = () => String(ui?.config?.systemPromptAI || "").trim() || DEFAULT_SYSTEM_PROMPT_AI;
@@ -4858,6 +4863,7 @@
     host.innerHTML = tpl$7;
     document.body.appendChild(host.firstElementChild);
     root$7 = document.getElementById("ykt-ai-answer-panel");
+    $$4("#ykt-ai-report")?.addEventListener("click", () => copyDiagnosticReport());
     $$4("#ykt-ai-clear").addEventListener("click", () => {
       abortStreaming$1("清空会话");
       history$1 = [];
@@ -5219,6 +5225,19 @@
       addBubble$1("ai", `<span class="err">答案卡片渲染失败：${escapeHtml$1(e?.message || e)}</span>`);
     } else if (run && run.ok === false) renderRunError(aiBubble, run, task);
     const elapsed = Date.now() - startedAt;
+    lastRunResult = {
+      runId: run?.runId || "",
+      ok: !!run?.ok,
+      code: run?.error?.code || "",
+      message: run?.error?.message || "",
+      transport: run?.transport || transport,
+      attempts: run?.attempts || 0,
+      taskId: task.id,
+      source: task.source,
+      type: task.question?.type,
+      autoSubmit: !!autoSubmit,
+      elapsedMs: elapsed
+    };
     answerLog("run_done", {
       taskId: task.id,
       source: task.source,
@@ -5272,6 +5291,143 @@
     });
     warn.appendChild(retry);
     aiBubble.appendChild(warn);
+  }
+  // ---------------- 诊断报告 ----------------
+    function redactBaseUrl(u) {
+    try {
+      const x = new URL(String(u || ""));
+      return x.origin + x.pathname;
+    } catch {
+      return String(u || "").split("?")[0].slice(0, 200);
+    }
+  }
+  function taskSnapshot(task) {
+    if (!task) return null;
+    const q = task.question || {};
+    const img = q.image?.dataUrl || "";
+    const includeImage = img.length <= 300 * 1024;
+    return {
+      id: task.id,
+      source: task.source,
+      question: {
+        type: q.type,
+        typeLabel: q.typeLabel,
+        body: q.body || "",
+        options: q.options || [],
+        optionLabels: q.optionLabels || [],
+        blanks: q.blanks || 0,
+        image: {
+          bytes: img.length,
+          included: includeImage,
+          dataUrl: includeImage ? img : "",
+          slideId: q.image?.slideId || "",
+          quizId: q.image?.quizId || "",
+          index: q.image?.index ?? null
+        }
+      },
+      target: task.target || {},
+      meta: task.meta || {}
+    };
+  }
+  function buildDiagnosticReport() {
+    const task = lastTask || taskForStatus();
+    const aiCfg = ui.config.ai || {};
+    const profiles = Array.isArray(aiCfg.profiles) ? aiCfg.profiles : [];
+    const active = profiles.find(p => p.id === aiCfg.activeProfileId) || profiles[0] || null;
+    const report = {
+      kind: "YuketangStudio diagnostic",
+      time: (new Date).toISOString(),
+      version: getVersion(),
+      page: location.origin + location.pathname,
+      userAgent: navigator.userAgent,
+      platform: window.YktBridge ? "android" : "pc",
+      testMode: (() => {
+        try {
+          return localStorage.getItem("ykt:test-mode") === "1";
+        } catch {
+          return false;
+        }
+      })(),
+      config: {
+        regexToolCall: !!ui.config.regexToolCall,
+        enhancedTelemetry: enhancedEnabled(),
+        ai: {
+          profile: active ? {
+            id: active.id,
+            name: active.name,
+            baseUrl: redactBaseUrl(active.baseUrl),
+            model: active.visionModel || active.model,
+            hasKey: !!active.apiKey
+          } : null,
+          profileCount: profiles.length
+        }
+      },
+      task: taskSnapshot(task),
+      lastRun: lastRunResult,
+      lastRequest: lastRequest ? {
+        taskId: lastRequest.task?.id || "",
+        userText: lastRequest.userText || "",
+        historyLen: (lastRequest.historyMessages || []).length
+      } : null,
+      history: getAIHistory().slice(-8),
+      answerLog: getAnswerLog().slice(-60)
+    };
+    const json = JSON.stringify(report, null, 2);
+    const summary = [ "YuketangStudio 诊断报告", `时间: ${report.time}`, `版本: ${report.version} / ${report.platform}`, `页面: ${report.page}`, `任务: ${task ? `${task.id} (${task.source}, ${task.question?.type})` : "无"}`, `最近运行: ${lastRunResult ? `${lastRunResult.ok ? "成功" : "失败"} ${lastRunResult.code || ""} runId=${lastRunResult.runId || ""}` : "无"}`, `强化遥测: ${report.config.enhancedTelemetry ? "开" : "关"}` ].join("\n");
+    return {
+      json: json,
+      summary: summary,
+      task: task
+    };
+  }
+  async function copyDiagnosticReport() {
+    try {
+      const {json: json, summary: summary, task: task} = buildDiagnosticReport();
+      let copied = false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(json);
+          copied = true;
+        }
+      } catch {/* fallback below */}
+      if (!copied) try {
+        const ta = document.createElement("textarea");
+        ta.value = json;
+        ta.style.cssText = "position:fixed;left:-9999px;top:0";
+        document.body.appendChild(ta);
+        ta.select();
+        copied = document.execCommand("copy");
+        ta.remove();
+      } catch {
+        copied = false;
+      }
+      const stamp = (new Date).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const filename = `YuketangStudio-diagnostic-${stamp}.json`;
+      try {
+        await saveBlob(new Blob([ json ], {
+          type: "application/json;charset=utf-8"
+        }), filename);
+      } catch {/* 仅复制也可 */}
+      ui.toast?.(copied ? "诊断报告已复制并保存，直接发我即可" : "诊断报告已保存为文件", 3e3);
+      answerLog("diagnostic_report", {
+        taskId: task?.id || "",
+        copied: copied,
+        bytes: json.length
+      });
+      return {
+        ok: true,
+        json: json,
+        summary: summary,
+        filename: filename,
+        copied: copied
+      };
+    } catch (e) {
+      ui.toast?.("诊断报告生成失败：" + (e?.message || e), 3e3);
+      return {
+        ok: false,
+        error: String(e?.message || e)
+      };
+    }
   }
   // ---------------- 对外入口 ----------------
   /** 当前 AI Profile */  function getOverride() {
@@ -11626,6 +11782,15 @@
           regexToolCall: !!ui.config.regexToolCall,
           ai: ui.config.ai
         };
+      },
+      /** 生成诊断报告（不复制/不写文件） */
+      diagnostic() {
+        const r = buildDiagnosticReport();
+        try {
+          return JSON.parse(r.json);
+        } catch {
+          return r;
+        }
       },
       /** 清空 AI 面板视图/历史（题目保留） */
       clearUI() {

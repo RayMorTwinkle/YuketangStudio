@@ -101,6 +101,18 @@ for (let round = 1; round <= 3; round++) {
     if (!r.ok || r.card?.answer !== 'A、C' || r.card?.title !== '📤 提交答案') throw new Error(JSON.stringify(r));
   });
 
+  await check(`诊断报告 → 有 task/lastRun/log（第 ${round} 轮）`, async () => {
+    const r = await run('diagnostic', ASYNC(`
+      T.reset();T.clearUI();
+      T.injectProblem(2,{body:'诊断报告',options:[{key:'A',value:'甲'},{key:'B',value:'乙'}]});
+      T.mockTool({answers:['A']});
+      await T.ask();
+      const d=T.diagnostic();
+      window.__e2eResult={task:d.task?.id,ok:d.lastRun?.ok,runId:d.lastRun?.runId,logLen:d.answerLog?.length||0,version:d.version};
+    `));
+    if (!/^classroom:/.test(r.task || '') || r.ok !== true || !/^ans_/.test(r.runId || '') || (r.logLen || 0) < 3) throw new Error(JSON.stringify(r));
+  });
+
   await check(`课堂单选 文本兜底 → A（第 ${round} 轮）`, async () => {
     const r = await run('legacy', ASYNC(`
       T.reset();T.clearUI();

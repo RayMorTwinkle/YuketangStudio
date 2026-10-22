@@ -17,9 +17,10 @@ import { runAnswer } from '../../answer/engine.js';
 import { submitAnswerTask } from '../../answer/submit.js';
 import { buildUserContent } from '../../answer/prompt.js';
 import { stripRegexAnswer } from '../../answer/parse.js';
-import { answerLog } from '../../answer/debug.js';
+import { answerLog, getAnswerLog } from '../../answer/debug.js';
 import * as telemetry from '../../core/telemetry.js';
 import { renderAnswerCard } from './answer-card.js';
+import { saveBlob } from '../../quiz/quiz-paper.js';
 import { mdToHtml, renderRich, StreamRenderer, warmupRichAssets } from '../rich.js';
 
 export { mdToHtml, renderRich, StreamRenderer, warmupRichAssets };
@@ -33,6 +34,7 @@ let streaming = false;
 let abortCtrl = null;
 let lastTask = null;        // 显式任务（作业/题目列表/自动作答）
 let lastRequest = null;     // { task, userText, history } 供重试
+let lastRunResult = null;   // 最近一次答题结果（诊断报告用）
 let lastThumbKey = '';
 let ctxPollTimer = null;
 
@@ -69,6 +71,8 @@ export function mountAIPanel() {
   host.innerHTML = tpl;
   document.body.appendChild(host.firstElementChild);
   root = document.getElementById('ykt-ai-answer-panel');
+
+  $('#ykt-ai-report')?.addEventListener('click', () => copyDiagnosticReport());
 
   $('#ykt-ai-clear').addEventListener('click', () => {
     abortStreaming('清空会话');
@@ -456,6 +460,19 @@ async function executeTask(task, {
   }
 
   const elapsed = Date.now() - startedAt;
+  lastRunResult = {
+    runId: run?.runId || '',
+    ok: !!run?.ok,
+    code: run?.error?.code || '',
+    message: run?.error?.message || '',
+    transport: run?.transport || transport,
+    attempts: run?.attempts || 0,
+    taskId: task.id,
+    source: task.source,
+    type: task.question?.type,
+    autoSubmit: !!autoSubmit,
+    elapsedMs: elapsed,
+  };
   answerLog('run_done', {
     taskId: task.id,
     source: task.source,
@@ -510,6 +527,112 @@ function renderRunError(aiBubble, run, task) {
   aiBubble.appendChild(warn);
 }
 
+
+// ---------------- 诊断报告 ----------------
+
+function redactBaseUrl(u) {
+  try { const x = new URL(String(u || '')); return x.origin + x.pathname; }
+  catch { return String(u || '').split('?')[0].slice(0, 200); }
+}
+
+function taskSnapshot(task) {
+  if (!task) return null;
+  const q = task.question || {};
+  const img = q.image?.dataUrl || '';
+  const includeImage = img.length <= 300 * 1024;
+  return {
+    id: task.id,
+    source: task.source,
+    question: {
+      type: q.type,
+      typeLabel: q.typeLabel,
+      body: q.body || '',
+      options: q.options || [],
+      optionLabels: q.optionLabels || [],
+      blanks: q.blanks || 0,
+      image: {
+        bytes: img.length,
+        included: includeImage,
+        dataUrl: includeImage ? img : '',
+        slideId: q.image?.slideId || '',
+        quizId: q.image?.quizId || '',
+        index: q.image?.index ?? null,
+      },
+    },
+    target: task.target || {},
+    meta: task.meta || {},
+  };
+}
+
+export function buildDiagnosticReport() {
+  const task = lastTask || taskForStatus();
+  const aiCfg = ui.config.ai || {};
+  const profiles = Array.isArray(aiCfg.profiles) ? aiCfg.profiles : [];
+  const active = profiles.find((p) => p.id === aiCfg.activeProfileId) || profiles[0] || null;
+  const report = {
+    kind: 'YuketangStudio diagnostic',
+    time: new Date().toISOString(),
+    version: telemetry.getVersion(),
+    page: location.origin + location.pathname,
+    userAgent: navigator.userAgent,
+    platform: window.YktBridge ? 'android' : 'pc',
+    testMode: (() => { try { return localStorage.getItem('ykt:test-mode') === '1'; } catch { return false; } })(),
+    config: {
+      regexToolCall: !!ui.config.regexToolCall,
+      enhancedTelemetry: telemetry.enhancedEnabled(),
+      ai: {
+        profile: active ? { id: active.id, name: active.name, baseUrl: redactBaseUrl(active.baseUrl), model: active.visionModel || active.model, hasKey: !!active.apiKey } : null,
+        profileCount: profiles.length,
+      },
+    },
+    task: taskSnapshot(task),
+    lastRun: lastRunResult,
+    lastRequest: lastRequest ? { taskId: lastRequest.task?.id || '', userText: lastRequest.userText || '', historyLen: (lastRequest.historyMessages || []).length } : null,
+    history: getAIHistory().slice(-8),
+    answerLog: getAnswerLog().slice(-60),
+  };
+  const json = JSON.stringify(report, null, 2);
+  const summary = [
+    'YuketangStudio 诊断报告',
+    `时间: ${report.time}`,
+    `版本: ${report.version} / ${report.platform}`,
+    `页面: ${report.page}`,
+    `任务: ${task ? `${task.id} (${task.source}, ${task.question?.type})` : '无'}`,
+    `最近运行: ${lastRunResult ? `${lastRunResult.ok ? '成功' : '失败'} ${lastRunResult.code || ''} runId=${lastRunResult.runId || ''}` : '无'}`,
+    `强化遥测: ${report.config.enhancedTelemetry ? '开' : '关'}`,
+  ].join('\n');
+  return { json, summary, task };
+}
+
+export async function copyDiagnosticReport() {
+  try {
+    const { json, summary, task } = buildDiagnosticReport();
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(json); copied = true; }
+    } catch { /* fallback below */ }
+    if (!copied) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = json;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta);
+        ta.select();
+        copied = document.execCommand('copy');
+        ta.remove();
+      } catch { copied = false; }
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `YuketangStudio-diagnostic-${stamp}.json`;
+    try { await saveBlob(new Blob([json], { type: 'application/json;charset=utf-8' }), filename); } catch { /* 仅复制也可 */ }
+    ui.toast?.(copied ? '诊断报告已复制并保存，直接发我即可' : '诊断报告已保存为文件', 3000);
+    answerLog('diagnostic_report', { taskId: task?.id || '', copied, bytes: json.length });
+    return { ok: true, json, summary, filename, copied };
+  } catch (e) {
+    ui.toast?.('诊断报告生成失败：' + (e?.message || e), 3000);
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
 
 // ---------------- 对外入口 ----------------
 

@@ -89,6 +89,22 @@ await okAsync('课堂多选：工具调用 → 卡片 A、C', async () => {
   assert.equal(r.card.title, '📤 提交答案');
 });
 
+await okAsync('诊断报告：包含 task/lastRun/answerLog', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI();
+    T.injectProblem(2, { body: '诊断报告', options: [{ key: 'A', value: '甲' }, { key: 'B', value: '乙' }] });
+    T.mockTool({ answers: ['A'] });
+    await T.ask();
+    const d = T.diagnostic();
+    return { task: d.task?.id, ok: d.lastRun?.ok, runId: d.lastRun?.runId, logLen: d.answerLog?.length || 0, version: d.version };
+  });
+  assert.match(r.task || '', /^classroom:/);
+  assert.equal(r.ok, true);
+  assert.match(r.runId || '', /^ans_/);
+  assert.ok(r.logLen >= 3);
+  assert.ok(r.version);
+});
+
 await okAsync('课堂单选：模型只回「答案: A」→ 手动兜底成卡片', async () => {
   const r = await toolsPage.evaluate(async () => {
     const T = window.__yktTest; T.reset(); T.clearUI();

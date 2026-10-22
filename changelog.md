@@ -1,5 +1,13 @@
 # 更新日志
 
+0.7.2:
+
+- 🩺 **AI 解答面板新增「诊断」按钮**：一键复制并保存诊断 JSON，包含版本/平台/页面/当前题目/选项/题图（≤300KB）/最近一次运行/最近 60 条答题日志/最近会话；不用再手动打字描述
+- 🧪 **维护模式测试实验室**：`npm run test:lab`（单测+lint+build+ego）、`npm run test:android`（真机测试模式）、`npm run test:all`
+- 📄 新增 `MAINTENANCE.md`：冻结功能、只修 bug；测试命令、诊断流程、服务器 traces 查看方式
+- 🛠 诊断报告已脱敏：不含 API Key；AI profile 只保留 origin/path/model
+- ✅ ego 15 条 + Android 真机 34 条（3 轮 tools + 2 轮 regex）全部通过
+
 0.7.1:
 
 - 📈 **答题链路强化遥测升级**：`answer_start/attempt/parsed/parse_error/retry/transport_switch/submit/submit_error/ui_error` 全量记录，带 `taskId/runId/source/type/transport/target`

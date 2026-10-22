@@ -93,6 +93,11 @@ function version() {
   try { const gi = typeof GM_info !== 'undefined' ? GM_info : null; return (gi && gi.script && gi.script.version) || 'dev'; }
   catch { return 'dev'; }
 }
+/** 当前构建版本（诊断报告用） */
+export function getVersion() {
+  return version();
+}
+
 function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
