@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.6.14
+// @version      0.6.15
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -764,7 +764,7 @@
    * POST /v/quiz/cache_each_result/{quizId}/ { results:[{problemID,result,time}] }
    */  async function cacheQuizAnswer({quizId: quizId, problemId: problemId, result: result}) {
     const token = (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || "";
-    const res = Array.isArray(result) ? result.join("") : String(result ?? "");
+    const res = Array.isArray(result) ? result.join("") : result && typeof result === "object" ? String(result.content ?? "") : String(result ?? "");
     const payload = {
       results: [ {
         problemID: problemId,
@@ -2181,7 +2181,7 @@
     type: "function",
     function: {
       name: "submit_answer",
-      description: "把本题的最终答案提交到雨课堂。确定答案后必须调用本工具；只输出文字不算完成。" + "选择题传选项字母；填空题按空位顺序每空一项；主观题传完整作答文本。",
+      description: "把本题的最终答案提交到雨课堂。确定答案后必须调用本工具；只输出文字不算完成。" + "选择题传选项字母；判断题传选项标签（A/B 或 √/×）；填空题按空位顺序每空一项；主观题传完整作答文本。",
       parameters: {
         type: "object",
         properties: {
@@ -2190,7 +2190,7 @@
             items: {
               type: "string"
             },
-            description: '答案数组。单选/多选/投票：["A"] 或 ["A","C"]；' + '填空：每个空一项，如 ["12","3.5"]；主观/问答：一个元素，内容为完整作答文本。'
+            description: '答案数组。单选/多选/投票：["A"] 或 ["A","C"]；' + '判断题：["A"]/["B"] 或 ["√"]/["×"]；' + '填空：每个空一项，如 ["12","3.5"]；主观/问答：一个元素，内容为完整作答文本。'
           },
           reason: {
             type: "string",
@@ -2211,7 +2211,7 @@
     const isQuiz = problem.__submitTarget === "quiz";
     const lines = [ "【工具使用要求】" ];
     if (soft) lines.push(isQuiz ? "当前有作业题上下文。如果用户要的是最终答案，请调用 submit_answer 暂存答案（不会交卷）；如果只是解释、追问或讨论，可以直接用文字回答。" : "当前有题目上下文。如果用户要的是最终答案，请调用 submit_answer 提交；如果只是解释、追问或讨论，可以直接用文字回答。"); else lines.push(isQuiz ? "当前是作业题：submit_answer 只会把答案暂存到该题，不会交卷。确定答案后仍然必须调用工具；只输出文字不算完成。" : "当前页有可提交的题目。确定最终答案后，必须调用 submit_answer 工具提交答案；只输出文字不算完成。");
-    lines.push("submit_answer 的 answers 参数：", '- 单选/多选/投票：选项字母数组，例如 ["A"] 或 ["A","C"]；', "- 填空：按空位顺序，每个空一项；", "- 主观/问答：一个元素，内容为完整作答文本。");
+    lines.push("submit_answer 的 answers 参数：", '- 单选/多选/投票：选项字母数组，例如 ["A"] 或 ["A","C"]；', "- 判断题/选项为 √/×：传选项标签（如 A/B 或 √/×），不要只传解释；", "- 填空：按空位顺序，每个空一项；", "- 主观/问答：一个元素，内容为完整作答文本。");
     if (mandatory) lines.push("本次为自动作答：必须调用 submit_answer，否则本次作答视为失败。"); else if (!soft) lines.push(isQuiz ? "暂存成功后可以继续给用户简要说明思路。" : "提交成功后可以继续给用户简要说明思路。");
     return lines.join("\n");
   }
@@ -2222,11 +2222,22 @@
     return /tool|function[_ ]?call|tool_choice/i.test(msg);
   }
   /**
+   * 判断题符号 → 选项序号：0=正确/√，1=错误/×
+   * @param {string} text
+   * @returns {number} -1 表示不是判断题符号
+   */  function judgeIndex(text) {
+    const s = String(text || "").trim().toUpperCase();
+    if (/^(√|对|正确|TRUE|1)$/.test(s)) return 0;
+    if (/^(×|错|错误|FALSE|0)$/.test(s)) return 1;
+    return -1;
+  }
+  /**
    * 归一化工具参数 → 提交用的 content 与结构化 result。
    * @param {string|object} rawArgs 模型返回的 arguments（通常是 JSON 字符串）
    * @param {number} problemType 1单选 2多选 3投票 4填空 5主观
+   * @param {object} [problem] 题目上下文（作业题用于取 __optionLabels / options 做 √× 映射）
    * @returns {{content:string, result:any, display:string}}
-   */  function normalizeToolArgs(rawArgs, problemType) {
+   */  function normalizeToolArgs(rawArgs, problemType, problem) {
     let args = rawArgs;
     if (typeof args === "string") {
       const s = args.trim();
@@ -2250,7 +2261,20 @@
         const m = String(a).toUpperCase().match(/[A-Z]/g) || [];
         for (const c of m) if (!letters.includes(c)) letters.push(c);
       }
-      if (!letters.length) throw new Error("选择题答案里没有选项字母");
+      if (!letters.length) {
+        // 判断题：模型常回 √/× 或 对/错；映射到选项标签（作业题 A/B 或 √/×）
+        const idx = judgeIndex(answers.join(""));
+        if (idx >= 0) {
+          const keys = Array.isArray(problem?.__optionLabels) && problem.__optionLabels.length ? problem.__optionLabels.map(String) : Array.isArray(problem?.options) ? problem.options.map(o => String(o?.key ?? "")) : [];
+          const key = keys[idx] || [ "A", "B" ][idx];
+          return {
+            content: key,
+            result: [ key ],
+            display: key
+          };
+        }
+        throw new Error("选择题答案里没有选项字母");
+      }
       letters.sort();
       return {
         content: letters.join(","),
@@ -2309,9 +2333,12 @@
     if (!problem) return "";
     const pt = Number(problem.problemType);
     const isQuiz = problem.__submitTarget === "quiz";
+    // 作业题的 __quizType 更准确（Judgement 在课堂题型里是 3=投票，但作业里是判断题）
+        const quizType = String(problem.__quizType || "");
+    const typeLabel = quizType === "Judgement" || quizType === "Judgment" ? "判断题" : TYPE_NAME[pt] || "题目";
     const lines = [ "【答案输出格式】" ];
     if (soft) lines.push("如果用户要的是最终答案，才在回答最后输出一个 <answer>...</answer> 块；" + "如果只是解释、追问或讨论，可以直接用文字回答。"); else lines.push("最终答案必须放在回答最后，用 <answer> 和 </answer> 包裹。" + "答案前可以写简要理由或解题过程；<answer> 里只放答案本身，不要写理由。");
-    lines.push("按题型使用下面的格式：", "- 单选/投票：<answer>B</answer>", "- 多选：<answer>A,C</answer>（字母用英文逗号分隔）", "- 填空：每个空一行，例如：", "<answer>", "12", "3.5", "</answer>", "- 主观/问答：<answer>完整作答文本</answer>", `当前是${TYPE_NAME[pt] || "题目"}。`, "只输出一个 <answer> 块，放在回答最后；不要使用「答案：」「解释：」等旧格式。");
+    lines.push("按题型使用下面的格式：", "- 单选/投票：<answer>B</answer>", "- 多选：<answer>A,C</answer>（字母用英文逗号分隔）", "- 填空：每个空一行，例如：", "<answer>", "12", "3.5", "</answer>", "- 主观/问答：<answer>完整作答文本</answer>", `当前是${typeLabel}。`, "只输出一个 <answer> 块，放在回答最后；不要使用「答案：」「解释：」等旧格式。");
     if (isQuiz) lines.push("当前是作业题：<answer> 只会把答案暂存到该题，不会交卷。");
     if (mandatory) lines.push("本次为自动作答：必须输出 <answer>...</answer>，否则本次作答视为失败。"); else if (!soft) lines.push(isQuiz ? "暂存成功后可以继续给用户简要说明思路。" : "提交成功后可以继续给用户简要说明思路。");
     return lines.join("\n");
@@ -2343,7 +2370,12 @@
       const letters = [];
       for (const c of body.toUpperCase().match(/[A-Z]/g) || []) if (!letters.includes(c)) letters.push(c);
       letters.sort();
-      answers = letters;
+      answers = letters.length ? letters : [];
+      if (!answers.length) {
+        // 判断题符号：交给 normalizeToolArgs 结合题目选项映射成 A/B 或 √/×
+        const t = body.trim();
+        if (/^(√|对|正确|TRUE|1|×|错|错误|FALSE|0)$/i.test(t)) answers = [ t ];
+      }
     } else if (pt === 4) {
       // 每个空一行；只有一行时容忍 12|3.5 / 12｜3.5 的写法
       let parts = body.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -3206,6 +3238,7 @@
         parts.push("选项：");
         for (const o of problem.options) parts.push(`${o.key}. ${o.value}`);
       }
+      if (Array.isArray(problem.__optionLabels) && problem.__optionLabels.length && !(Array.isArray(problem.options) && problem.options.length)) parts.push(`选项标签：${problem.__optionLabels.join("、")}（请用这些标签作答）`);
       if (Array.isArray(problem.blanks) && problem.blanks.length) parts.push(`空位：${problem.blanks.join(" | ")}`);
     }
     parts.push(problem ? "请结合以上题目文本与页面截图解答此题。" : "【页面说明】当前页面可能不是题目页；请根据截图内容概述页面，若有题目请解答。");
@@ -3236,10 +3269,7 @@
   }
   function notSubmitReason(problem) {
     if (!problem) return "当前页没有题目";
-    if (problem.__noSubmit) {
-      if (problem.__submitTarget !== "quiz" && (problem.problemType === 4 || problem.problemType === 5)) return "作业填空/主观题暂未开放";
-      return "当前题型暂不支持提交";
-    }
+    if (problem.__noSubmit) return "当前作业题型暂不支持提交";
     return "该题型不支持提交";
   }
   /** 更新输入框占位，提示这一轮会做什么 */  function updateCtxPlaceholder(problem, canSubmit, isQuiz) {
@@ -3475,11 +3505,14 @@
         btn.disabled = true;
         btn.textContent = "暂存中…";
         stEl.textContent = "";
+        // 填空/主观题传文本（args.content）；选择题传字母数组
+                const pt = Number(problem?.problemType);
+        const cacheResult = pt === 4 || pt === 5 ? args.content : args.result;
         try {
           await cacheQuizAnswer({
             quizId: problem.__quizId,
             problemId: problem.__problemId,
-            result: args.result
+            result: cacheResult
           });
           card.classList.add("done");
           btn.textContent = "已暂存";
@@ -3551,7 +3584,7 @@
     const pt = Number(problem?.problemType);
     if (!(pt >= 1 && pt <= 5)) return null;
     if (toolCall) try {
-      const args = normalizeToolArgs(toolCall.function?.arguments, pt);
+      const args = normalizeToolArgs(toolCall.function?.arguments, pt, problem);
       const reason = toolReason(toolCall.function?.arguments);
       L$2("tool call:", {
         problemId: problem.problemId,
@@ -7568,7 +7601,7 @@
       if (typeof GM_info !== "undefined" && GM_info.script?.version) return GM_info.script.version;
     } catch {}
     try {
-      return "0.6.14";
+      return "0.6.15";
     } catch {}
     return "0.0.0";
   }
@@ -7743,8 +7776,8 @@
   function mountAboutPanel() {
     if (mounted$2) return root$2;
     const host = document.createElement("div");
-    // "0.6.14" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.14"}<`);
+    // "0.6.15" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.6.15"}<`);
     document.body.appendChild(host.firstElementChild);
     root$2 = document.getElementById("ykt-about-panel");
     const $btn = root$2.querySelector("#ykt-about-check");
@@ -8125,9 +8158,9 @@
       const dataUrl = await quizQuestionDataUrl(viewData, index, 2);
       const p = viewData.Slides[index].Problem || {};
       const code = TYPE_CODE[p.Type] || 0;
-      const choice = code >= 1 && code <= 3;
- // 选择题/判断题才启用「暂存答案」工具
-            const quizId = String(viewAssignment?.oldId || window.quizID || "");
+      // 单选/多选/判断/填空/主观都启用「暂存答案」工具；未知题型不启用
+            const supported = code >= 1 && code <= 5;
+      const quizId = String(viewAssignment?.oldId || window.quizID || "");
       ui.showAIPanel?.(true);
       await askAIForProblem({
         problemId: `quiz_${quizId}_${index}`,
@@ -8136,8 +8169,9 @@
         body: `第 ${index + 1} 题（${typeText(p.Type)}，${p.Score ?? ""} 分）`,
         options: [],
         __imageDataUrl: dataUrl,
-        __noSubmit: !choice,
-        __submitTarget: choice ? "quiz" : void 0,
+        __optionLabels: (p.Bullets || []).map(b => String(b?.Label || "")).filter(Boolean),
+        __noSubmit: !supported,
+        __submitTarget: supported ? "quiz" : void 0,
         __quizId: quizId,
         __problemId: p.ProblemID
       });
