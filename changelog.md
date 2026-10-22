@@ -1,5 +1,13 @@
 # 更新日志
 
+0.7.1:
+
+- 📈 **答题链路强化遥测升级**：`answer_start/attempt/parsed/parse_error/retry/transport_switch/submit/submit_error/ui_error` 全量记录，带 `taskId/runId/source/type/transport/target`
+- 📈 记录题目（题型/题干/选项/空位/图片大小）、模型响应、工具名/参数、解析错误、提交 payload 与后端错误
+- ⚡ 失败事件 300ms 内立即上传；答题/工具调用事件不再按 10% 采样；页面隐藏/关闭前尽力 flush
+- 🛠 Android WebView 遥测版本号不再显示 `dev`，改为真实构建版本（`__BUILD_VERSION__`）
+- 🔒 仍脱敏/截断，不含 API Key、Authorization、URL query 和图片原始 base64
+
 0.7.0:
 
 - ♻️ **答题链路重构（Answer Engine V2）**：新增 `src/answer/` 单一事实源（`AnswerTask` / `Answer` / 唯一提交入口）；AI 解答、作业、PPT 答题、自动作答、题目列表全部走同一条链路

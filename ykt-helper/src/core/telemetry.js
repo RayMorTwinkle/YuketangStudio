@@ -86,6 +86,10 @@ function platform() {
   return 'pc';
 }
 function version() {
+  try {
+    // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
+    if (typeof __BUILD_VERSION__ !== 'undefined' && __BUILD_VERSION__) return String(__BUILD_VERSION__);
+  } catch { /* ignore */ }
   try { const gi = typeof GM_info !== 'undefined' ? GM_info : null; return (gi && gi.script && gi.script.version) || 'dev'; }
   catch { return 'dev'; }
 }
@@ -173,7 +177,7 @@ export async function ping(useCode) {
 // 默认关；基础遥测关闭时强制不传。
 // ============================================================
 const TRACE_ENDPOINT = 'https://api.raymor.top/yuketangstudio/telemetry/trace';
-const TRACE_MAX_EVENTS = 20;
+const TRACE_MAX_EVENTS = 40;
 const TRACE_MAX_BYTES = 96 * 1024;
 const TRACE_STR_MAX = 8 * 1024;
 const TRACE_TOTAL_MAX = 32 * 1024;
@@ -228,6 +232,25 @@ function sanitizeMessages(messages) {
   return out;
 }
 
+function sanitizeDeep(v, depth = 0) {
+  if (depth > 4) return '[depth]';
+  if (v == null) return v;
+  if (typeof v === 'string') return trunc(v, 4096);
+  if (typeof v === 'number' || typeof v === 'boolean') return v;
+  if (Array.isArray(v)) return v.slice(0, 20).map((x) => sanitizeDeep(x, depth + 1));
+  if (typeof v === 'object') {
+    const out = {};
+    for (const [k, val] of Object.entries(v).slice(0, 30)) {
+      if (/authorization|apikey|api_key|token|password/i.test(k)) continue;
+      out[trunc(k, 80)] = sanitizeDeep(val, depth + 1);
+    }
+    return out;
+  }
+  return trunc(String(v), 200);
+}
+
+export function sanitizeTraceEvent(ev) { return sanitizeTrace(ev); }
+
 function sanitizeTrace(ev) {
   if (!ev || typeof ev !== 'object') return null;
   const out = {
@@ -240,6 +263,59 @@ function sanitizeTrace(ev) {
   };
   if (ev.attempt != null) out.attempt = Number(ev.attempt) || 0;
   if (ev.problemType != null) out.problemType = Number(ev.problemType) || 0;
+  for (const k of ['taskId', 'runId', 'requestId', 'source', 'type', 'transport', 'target', 'stage', 'route', 'userTextLen', 'historyLen', 'durationMs', 'attempts', 'from', 'to', 'reason', 'autoSubmit', 'mocked']) {
+    if (ev[k] != null) out[k] = typeof ev[k] === 'number' || typeof ev[k] === 'boolean' ? ev[k] : trunc(ev[k], 2048);
+  }
+  if (ev.payload != null) out.payload = sanitizeDeep(ev.payload);
+  if (ev.targetInfo) out.targetInfo = sanitizeDeep(ev.targetInfo);
+  if (ev.question) {
+    const q = ev.question;
+    out.question = {
+      type: trunc(q.type, 20),
+      typeLabel: trunc(q.typeLabel, 20),
+      body: trunc(q.body, 4096),
+      bodyLen: Number(q.bodyLen) || 0,
+      options: Array.isArray(q.options) ? q.options.slice(0, 12).map((o) => ({
+        key: trunc(o?.key, 20),
+        text: trunc(o?.text, 512),
+      })) : undefined,
+      optionLabels: Array.isArray(q.optionLabels) ? q.optionLabels.slice(0, 12).map((x) => trunc(x, 20)) : undefined,
+      blanks: Number(q.blanks) || 0,
+      hasImage: !!q.hasImage,
+      imageBytes: Number(q.imageBytes) || 0,
+      imageHash: trunc(q.imageHash, 40),
+      rawType: trunc(q.rawType, 40),
+    };
+  }
+  if (ev.answer) {
+    const a = ev.answer;
+    out.answer = {
+      kind: trunc(a.kind, 20),
+      values: Array.isArray(a.values) ? a.values.slice(0, 20).map((x) => trunc(x, 1000)) : undefined,
+      text: trunc(a.text, 4096),
+      textLen: Number(a.textLen) || 0,
+      display: trunc(a.display, 2048),
+      source: trunc(a.source, 20),
+    };
+  }
+  if (ev.tool) {
+    out.tool = {
+      name: trunc(ev.tool.name, 60),
+      arguments: trunc(ev.tool.arguments, 4096),
+      reason: trunc(ev.tool.reason, 1024),
+    };
+  }
+  if (ev.submit) {
+    out.submit = {
+      kind: trunc(ev.submit.kind, 20),
+      route: trunc(ev.submit.route, 20),
+      ok: ev.submit.ok !== false,
+      payload: sanitizeDeep(ev.submit.payload),
+      error: ev.submit.error ? { code: trunc(ev.submit.error.code, 40), message: trunc(ev.submit.error.message, 2048) } : undefined,
+    };
+  }
+  if (ev.retry) out.retry = sanitizeDeep(ev.retry);
+  if (ev.nudge) out.nudge = trunc(ev.nudge, 2048);
   if (ev.provider) {
     out.provider = {
       url: redactUrl(ev.provider.url),
@@ -273,7 +349,10 @@ function sanitizeTrace(ev) {
     out.parse = {
       ok: !!ev.parse.ok,
       path: trunc(ev.parse.path, 20),
-      error: trunc(ev.parse.error, 1000),
+      code: trunc(ev.parse.code, 40),
+      error: trunc(ev.parse.error, 2048),
+      raw: trunc(ev.parse.raw, 4096),
+      toolCall: ev.parse.toolCall ? sanitizeDeep(ev.parse.toolCall) : undefined,
     };
   }
   if (ev.problem) {
@@ -293,8 +372,10 @@ function sanitizeTrace(ev) {
   if (ev.error) {
     out.error = {
       name: trunc(ev.error.name, 60),
+      code: trunc(ev.error.code, 40),
       message: trunc(ev.error.message, 2048),
       status: Number(ev.error.status) || 0,
+      detail: sanitizeDeep(ev.error.detail),
     };
   }
   if (ev.route != null) out.route = trunc(ev.route, 20);
@@ -311,7 +392,12 @@ export function trace(event) {
   try {
     const ev = sanitizeTrace(event);
     if (!ev) return;
-    if (ev.ok !== false && Math.random() > 0.1) return;
+    const name = String(ev.event || '');
+    const isAnswer = name.startsWith('answer_');
+    const isToolLlm = name === 'llm_call'
+      && (Number(ev.request?.tools) > 0 || (ev.response?.toolCalls || []).length > 0);
+    // 答题链路事件全量；带 tools/工具调用的 LLM 调用全量；其余成功事件 10% 采样
+    if (ev.ok !== false && !isAnswer && !isToolLlm && Math.random() > 0.1) return;
     const q = storage.get(K_QUEUE);
     const queue = Array.isArray(q) ? q : [];
     queue.push(ev);
@@ -322,7 +408,8 @@ export function trace(event) {
       json = JSON.stringify(queue);
     }
     storage.set(K_QUEUE, queue);
-    scheduleTraceFlush(5000);
+    // 错误/答题关键事件尽快发；普通事件批量发
+    scheduleTraceFlush(ev.ok === false ? 300 : (isAnswer || isToolLlm ? 1200 : 5000));
   } catch {}
 }
 
@@ -365,5 +452,20 @@ export async function flushTraces() {
     }
   } catch {
     scheduleTraceFlush(30000);
+  }
+}
+
+// 页面隐藏/关闭前尽量把队列发出去：错误事件可能正好在用户离开时发生
+if (typeof window !== 'undefined') {
+  const flushSoon = () => {
+    if (!enhancedEnabled()) return;
+    try { flushTraces().catch(() => {}); } catch {}
+  };
+  window.addEventListener('pagehide', flushSoon);
+  window.addEventListener('beforeunload', flushSoon);
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushSoon();
+    });
   }
 }

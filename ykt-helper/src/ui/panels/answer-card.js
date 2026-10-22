@@ -15,7 +15,7 @@ import { toDisplayAnswer } from '../../answer/serialize.js';
  * @param {Function} [args.onSubmitted] (result) => void
  * @returns {HTMLElement}
  */
-export function renderAnswerCard(parent, { task, answer, autoSubmit = false, onSubmitted } = {}) {
+export function renderAnswerCard(parent, { task, answer, autoSubmit = false, runId = '', onSubmitted } = {}) {
   const card = document.createElement('div');
   card.className = 'ykt-tool-card';
   const isQuiz = task?.target?.kind === 'quiz';
@@ -106,7 +106,7 @@ export function renderAnswerCard(parent, { task, answer, autoSubmit = false, onS
     btn.textContent = isQuiz ? '暂存中…' : '提交中…';
     stEl.textContent = '';
     try {
-      const r = await submitAnswerTask(task, answer, { forceRetry });
+      const r = await submitAnswerTask(task, answer, { forceRetry, runId });
       card.classList.add('done');
       if (r.route === 'cache') {
         btn.textContent = '已暂存';

@@ -167,7 +167,7 @@ async function handleAutoAnswerInternal(problem) {
         allowLegacyText: false,
       });
       if (!run.ok) return { run, task };
-      const submitted = await submitAnswerTask(task, run.answer);
+      const submitted = await submitAnswerTask(task, run.answer, { runId: run.runId });
       return { run, task, submitted };
     });
 

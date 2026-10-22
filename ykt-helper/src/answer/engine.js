@@ -9,6 +9,78 @@ import { AnswerError, ERROR } from './model.js';
 import { buildMessages, buildNudge, SUBMIT_ANSWER_TOOL } from './prompt.js';
 import { parseToolCall, parseRegex, parseLegacy } from './parse.js';
 
+function makeRunId() {
+  return `ans_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function targetSummary(task) {
+  const t = task?.target || {};
+  return {
+    kind: t.kind,
+    allowSubmit: !!t.allowSubmit,
+    submitLabel: t.submitLabel,
+    problemId: t.problemId,
+    problemType: t.problemType,
+    quizId: t.quizId,
+    quizProblemId: t.quizProblemId,
+    hasStatus: t.kind === 'classroom' ? t.startTime != null || t.endTime != null : undefined,
+    answered: !!t.answered,
+    cacheText: !!t.cacheText,
+  };
+}
+
+function questionSummary(task) {
+  const q = task?.question || {};
+  const img = q.image?.dataUrl || '';
+  return {
+    type: q.type,
+    typeLabel: q.typeLabel,
+    body: q.body || '',
+    bodyLen: String(q.body || '').length,
+    options: (q.options || []).map((o) => ({ key: o.key, text: o.text || '' })),
+    optionLabels: q.optionLabels || [],
+    blanks: Number(q.blanks) || 0,
+    hasImage: !!img,
+    imageBytes: img.length,
+    rawType: q.rawType,
+  };
+}
+
+function answerSummary(answer) {
+  if (!answer) return null;
+  return {
+    kind: answer.kind,
+    values: answer.values || [],
+    text: answer.text || '',
+    textLen: (answer.text || '').length,
+    display: answer.kind === 'subjective' ? answer.text : (answer.values || []).join('、'),
+    source: answer.source,
+  };
+}
+
+function toolSummary(res) {
+  const calls = Array.isArray(res?.toolCalls) ? res.toolCalls : [];
+  const call = calls.find((t) => t?.function?.name === 'submit_answer') || calls[0];
+  if (!call) return null;
+  return {
+    name: call.function?.name || '',
+    arguments: String(call.function?.arguments || ''),
+  };
+}
+
+function responseSummary(res) {
+  if (!res) return null;
+  return {
+    content: String(res.content || ''),
+    reasoning: String(res.reasoning || ''),
+    toolCalls: (res.toolCalls || []).slice(0, 3).map((t) => ({
+      name: t?.function?.name || '',
+      arguments: String(t?.function?.arguments || ''),
+    })),
+    truncated: !!res.truncated,
+  };
+}
+
 function normalizeError(e) {
   if (e instanceof AnswerError) return e;
   const msg = String(e?.message || e || '未知错误');
@@ -83,6 +155,10 @@ export async function runAnswer(task, policy = {}, deps = {}) {
   const maxAttempts = Math.max(1, Number(policy.maxAttempts) || 2);
   let transport = task.target?.allowSubmit ? (policy.transport || 'tools') : 'text';
   if (transport === 'tools' && !task.target?.allowSubmit) transport = 'text';
+  const runId = policy.runId || makeRunId();
+  const startedAt = Date.now();
+  const question = questionSummary(task);
+  const targetInfo = targetSummary(task);
 
   const baseSystem = String(policy.baseSystem || '').trim();
   const baseHistory = Array.isArray(policy.history) ? [...policy.history] : [];
@@ -92,19 +168,37 @@ export async function runAnswer(task, policy = {}, deps = {}) {
   let attempts = 0;
   let degraded = false;
 
-  answerLog('engine_start', { taskId: task.id, source: task.source, type: task.question?.type, transport, target: task.target?.kind });
+  answerLog('engine_start', { runId, taskId: task.id, source: task.source, type: task.question?.type, transport, target: task.target?.kind });
   telemetry.trace({
     event: 'answer_start',
+    runId,
     taskId: task.id,
     source: task.source,
     type: task.question?.type,
     transport,
     target: task.target?.kind,
+    autoSubmit: !!policy.autoSubmit,
+    question,
+    targetInfo,
   });
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     attempts = attempt;
     policy.onAttempt?.({ attempt, transport });
+    telemetry.trace({
+      event: 'answer_attempt',
+      runId,
+      taskId: task.id,
+      source: task.source,
+      type: task.question?.type,
+      transport,
+      target: task.target?.kind,
+      attempt,
+      autoSubmit: !!policy.autoSubmit,
+      targetInfo,
+      userTextLen: String(policy.userText || '').length,
+      historyLen: baseHistory.length + retryHistory.length,
+    });
     const messages = buildMessages(task, {
       baseSystem,
       history: [...baseHistory, ...retryHistory],
@@ -128,6 +222,10 @@ export async function runAnswer(task, policy = {}, deps = {}) {
         toolChoice: transport === 'tools' ? (policy.toolChoice || (policy.autoSubmit ? 'required' : 'auto')) : undefined,
         traceKind: policy.traceKind || 'answer',
         traceMode: transport,
+        traceTaskId: task.id,
+        traceRunId: runId,
+        traceSource: task.source,
+        traceAttempt: attempt,
         onDelta: policy.onDelta,
         onReasoning: policy.onReasoning,
         onWait: policy.onWait,
@@ -139,10 +237,16 @@ export async function runAnswer(task, policy = {}, deps = {}) {
         transport = 'regex';
         telemetry.trace({
           event: 'answer_transport_switch',
+          runId,
           taskId: task.id,
+          source: task.source,
+          type: task.question?.type,
+          attempt,
+          transport: 'regex',
           from: 'tools',
           to: 'regex',
           reason: 'tool_unsupported',
+          error: { name: e?.name || '', code: 'TOOL_UNSUPPORTED', message: String(e?.message || e) },
         });
         attempt -= 1;
         continue;
@@ -156,49 +260,91 @@ export async function runAnswer(task, policy = {}, deps = {}) {
       const answer = parseOnce(task, res, transport, !!policy.allowLegacyText);
       telemetry.trace({
         event: 'answer_parsed',
+        runId,
         taskId: task.id,
         source: task.source,
         type: task.question?.type,
         transport,
+        target: task.target?.kind,
         attempt,
         ok: true,
-        answerSource: answer.source,
-        values: answer.kind === 'subjective' ? undefined : answer.values,
-        textLen: answer.text?.length || 0,
+        question,
+        targetInfo,
+        answer: answerSummary(answer),
+        tool: toolSummary(res),
+        response: responseSummary(res),
       });
-      answerLog('engine_done', { taskId: task.id, ok: true, transport, attempts, answerSource: answer.source, values: answer.kind === 'subjective' ? undefined : answer.values });
-      return { ok: true, answer, res, transport, attempts };
+      answerLog('engine_done', { runId, taskId: task.id, ok: true, transport, attempts, answerSource: answer.source, values: answer.kind === 'subjective' ? undefined : answer.values });
+      return { ok: true, answer, res, transport, attempts, runId };
     } catch (e) {
       lastError = e instanceof AnswerError ? e : normalizeError(e);
       telemetry.trace({
         event: 'answer_parse_error',
+        runId,
         taskId: task.id,
         source: task.source,
         type: task.question?.type,
         transport,
+        target: task.target?.kind,
         attempt,
-        code: lastError.code,
-        message: lastError.message,
+        ok: false,
+        question,
+        targetInfo,
+        parse: {
+          ok: false,
+          path: transport,
+          code: lastError.code,
+          error: lastError.message,
+          raw: String(res?.content || ''),
+          toolCall: toolSummary(res),
+        },
+        response: responseSummary(res),
+        error: { name: lastError.name, code: lastError.code, message: lastError.message },
       });
       if (attempt >= maxAttempts || lastError.retryable === false) break;
+      const nudge = buildNudge(task, lastError, transport);
+      telemetry.trace({
+        event: 'answer_retry',
+        runId,
+        taskId: task.id,
+        source: task.source,
+        type: task.question?.type,
+        transport,
+        target: task.target?.kind,
+        attempt: attempt + 1,
+        ok: true,
+        reason: lastError.message,
+        nudge,
+      });
       retryHistory = [
         ...retryHistory,
         { role: 'assistant', content: String(res?.content || '') || '（无内容）' },
-        { role: 'user', content: buildNudge(task, lastError, transport) },
+        { role: 'user', content: nudge },
       ];
     }
   }
 
-  answerLog('engine_done', { taskId: task.id, ok: false, code: lastError?.code || ERROR.UNKNOWN, transport, attempts, message: lastError?.message || '' });
+  answerLog('engine_done', { runId, taskId: task.id, ok: false, code: lastError?.code || ERROR.UNKNOWN, transport, attempts, message: lastError?.message || '' });
   telemetry.trace({
     event: 'answer_error',
+    runId,
     taskId: task.id,
     source: task.source,
     type: task.question?.type,
     transport,
+    target: task.target?.kind,
     attempts,
-    code: lastError?.code || ERROR.UNKNOWN,
-    message: lastError?.message || '',
+    ok: false,
+    durationMs: Date.now() - startedAt,
+    question,
+    targetInfo,
+    response: responseSummary(lastRes),
+    error: {
+      name: lastError?.name || 'AnswerError',
+      code: lastError?.code || ERROR.UNKNOWN,
+      message: lastError?.message || '',
+      detail: lastError?.detail || null,
+    },
   });
-  return { ok: false, error: lastError || new AnswerError(ERROR.UNKNOWN, '作答失败'), res: lastRes, transport, attempts };
+  return { ok: false, error: lastError || new AnswerError(ERROR.UNKNOWN, '作答失败'), res: lastRes, transport, attempts, runId };
 }

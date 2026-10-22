@@ -231,9 +231,9 @@
           <label class="checkbox-label">
             <input type="checkbox" id="ykt-telemetry-enhanced">
             <span class="checkmark"></span>
-            强化遥测（上传请求/响应用于排错）
+            强化遥测（上传答题/工具/提交/错误数据）
           </label>
-          <small>会上传发送给模型的消息、模型回复、解析/提交结果和错误信息；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭，需先开启「匿名统计使用情况」。</small>
+          <small>答题链路（含工具调用、提交/暂存、解析错误）全量记录，失败立即上传；会上传发送给模型的消息、模型回复、题目/答案/工具参数和错误详情；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭，需先开启「匿名统计使用情况」。</small>
         </div>
       </div>
     </div>

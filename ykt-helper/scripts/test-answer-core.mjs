@@ -11,6 +11,7 @@ import { normalizeAnswer, parseRegex, parseLegacy, stripRegexAnswer } from '../s
 import { buildQuestionBlock, buildAnswerContract, buildMessages } from '../src/answer/prompt.js';
 import { toClassroomResult, toQuizResult } from '../src/answer/serialize.js';
 import { runAnswer } from '../src/answer/engine.js';
+import { sanitizeTraceEvent } from '../src/core/telemetry.js';
 
 let pass = 0;
 let fail = 0;
@@ -242,6 +243,32 @@ ok('buildMessages：system 带契约，user 带题目', () => {
   assert.match(msgs[0].content, /submit_answer/);
   assert.equal(msgs[1].role, 'user');
   assert.match(msgs[1].content[0].text, /题目信息/);
+});
+
+console.log('== 强化遥测 schema ==');
+ok('answer_parse_error 保留 task/run/tool/question/error', () => {
+  const ev = sanitizeTraceEvent({
+    event: 'answer_parse_error', ok: false, taskId: 'assignment:1:2', runId: 'ans_x',
+    source: 'assignment', type: 'judge', transport: 'tools', attempt: 2,
+    question: { type: 'judge', body: '命题', options: [{ key: 'A', text: '' }], optionLabels: ['A', 'B'], blanks: 0 },
+    targetInfo: { kind: 'quiz', allowSubmit: true, submitLabel: '暂存' },
+    parse: { ok: false, path: 'tools', code: 'INVALID_ANSWER', error: '选项无效', raw: '答案是 A', toolCall: { name: 'submit_answer', arguments: '{"answers":["×"]}' } },
+    error: { name: 'AnswerError', code: 'INVALID_ANSWER', message: '选项无效' },
+  });
+  assert.equal(ev.taskId, 'assignment:1:2');
+  assert.equal(ev.runId, 'ans_x');
+  assert.equal(ev.parse.code, 'INVALID_ANSWER');
+  assert.equal(ev.parse.toolCall.arguments.includes('×'), true);
+  assert.equal(ev.targetInfo.kind, 'quiz');
+  assert.equal(ev.question.body, '命题');
+});
+ok('answer_submit 保留 payload', () => {
+  const ev = sanitizeTraceEvent({
+    event: 'answer_submit', ok: true, taskId: 'classroom:1', runId: 'ans_y',
+    route: 'answer', payload: { kind: 'classroom', problemId: 1, result: ['B'] },
+  });
+  assert.equal(ev.route, 'answer');
+  assert.deepEqual(ev.payload.result, ['B']);
 });
 
 console.log('== engine（注入 mock chat）==');

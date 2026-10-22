@@ -3,6 +3,8 @@
 import { cacheQuizAnswer } from '../quiz/quiz-paper.js';
 import { submitProblemAnswer } from '../tsm/submit-flow.js';
 import { getTestSubmitMode } from '../core/test-mode.js';
+import * as telemetry from '../core/telemetry.js';
+import { answerLog } from './debug.js';
 import { ERROR, AnswerError } from './model.js';
 import { toClassroomResult, toQuizResult, toDisplayAnswer } from './serialize.js';
 
@@ -42,8 +44,19 @@ export async function submitAnswerTask(task, answer, opts = {}) {
   const display = toDisplayAnswer(answer);
   const payload = buildSubmitPayload(task, answer);
   if (!payload) throw new AnswerError(ERROR.NO_TASK, '没有可提交的答案');
+  const base = {
+    taskId: task.id,
+    runId: opts.runId || '',
+    source: task.source,
+    type: task.question?.type,
+    target: task.target?.kind,
+    payload,
+  };
+  answerLog('submit_start', base);
+  telemetry.trace({ event: 'answer_submit_start', ...base, ok: true });
 
   if (payload.kind === 'display' || !task.target?.allowSubmit) {
+    telemetry.trace({ event: 'answer_submit', ...base, route: 'display', ok: true });
     return { route: 'display', display, payload };
   }
   if (opts.dryRun) return { route: payload.kind === 'quiz' ? 'cache' : 'answer', display, payload };
@@ -52,10 +65,15 @@ export async function submitAnswerTask(task, answer, opts = {}) {
   const mock = getTestSubmitMode();
   if (mock) {
     await new Promise((r) => setTimeout(r, 300));
-    if (mock === 'fail') throw new AnswerError(ERROR.SUBMIT_FAILED, '模拟提交失败');
+    if (mock === 'fail') {
+      const err = new AnswerError(ERROR.SUBMIT_FAILED, '模拟提交失败');
+      telemetry.trace({ event: 'answer_submit_error', ...base, ok: false, route: 'submit', error: { name: err.name, code: err.code, message: err.message } });
+      throw err;
+    }
     const route = mock === 'retry' ? 'retry' : (payload.kind === 'quiz' ? 'cache' : 'answer');
     task.target.answered = route !== 'cache';
     if (route === 'cache') task.target.cached = true;
+    telemetry.trace({ event: 'answer_submit', ...base, route, ok: true, mocked: true });
     return { route, display, payload, mocked: true };
   }
 
@@ -72,6 +90,7 @@ export async function submitAnswerTask(task, answer, opts = {}) {
         },
       );
       task.target.answered = true;
+      telemetry.trace({ event: 'answer_submit', ...base, route, ok: true });
       return { route, display, payload };
     }
 
@@ -83,11 +102,19 @@ export async function submitAnswerTask(task, answer, opts = {}) {
       });
       task.target.cached = true;
       task.target.answered = false; // 暂存 ≠ 交卷
+      telemetry.trace({ event: 'answer_submit', ...base, route: 'cache', ok: true });
       return { route: 'cache', display, payload };
     }
   } catch (e) {
-    if (e instanceof AnswerError) throw e;
-    throw new AnswerError(ERROR.SUBMIT_FAILED, String(e?.message || e), { cause: e });
+    const err = e instanceof AnswerError ? e : new AnswerError(ERROR.SUBMIT_FAILED, String(e?.message || e), { cause: e });
+    telemetry.trace({
+      event: 'answer_submit_error',
+      ...base,
+      ok: false,
+      route: payload.kind === 'quiz' ? 'cache' : 'answer',
+      error: { name: err.name, code: err.code, message: err.message },
+    });
+    throw err;
   }
 
   return { route: 'display', display, payload };

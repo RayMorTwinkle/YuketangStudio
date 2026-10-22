@@ -18,6 +18,7 @@ import { submitAnswerTask } from '../../answer/submit.js';
 import { buildUserContent } from '../../answer/prompt.js';
 import { stripRegexAnswer } from '../../answer/parse.js';
 import { answerLog } from '../../answer/debug.js';
+import * as telemetry from '../../core/telemetry.js';
 import { renderAnswerCard } from './answer-card.js';
 import { mdToHtml, renderRich, StreamRenderer, warmupRichAssets } from '../rich.js';
 
@@ -44,6 +45,20 @@ function setStreamingFlag(on) {
     if (on) document.body.dataset.yksStreaming = '1';
     else delete document.body.dataset.yksStreaming;
   } catch {}
+}
+
+function traceUiError(task, runId, e, stage) {
+  telemetry.trace({
+    event: 'answer_ui_error',
+    taskId: task?.id || '',
+    runId: runId || '',
+    source: task?.source || '',
+    type: task?.question?.type || '',
+    target: task?.target?.kind || '',
+    stage: stage || 'ui',
+    ok: false,
+    error: { name: e?.name || 'Error', code: e?.code || 'UI_ERROR', message: String(e?.message || e) },
+  });
 }
 
 // ---------------- 面板 ----------------
@@ -423,13 +438,19 @@ async function executeTask(task, {
   else aiBubble.querySelector('.ykt-sr-content').innerHTML = '<span class="err">（空回复）</span>';
 
   if (run?.ok && run.answer) {
-    const card = renderAnswerCard(aiBubble, {
-      task,
-      answer: run.answer,
-      autoSubmit,
-    });
-    // 自动提交时等待卡片内部提交完成
-    if (autoSubmit && card?.__submitPromise) await card.__submitPromise;
+    try {
+      const card = renderAnswerCard(aiBubble, {
+        task,
+        answer: run.answer,
+        autoSubmit,
+        runId: run?.runId || '',
+      });
+      // 自动提交时等待卡片内部提交完成
+      if (autoSubmit && card?.__submitPromise) await card.__submitPromise;
+    } catch (e) {
+      traceUiError(task, run?.runId, e, 'render_card');
+      addBubble('ai', `<span class="err">答案卡片渲染失败：${escapeHtml(e?.message || e)}</span>`);
+    }
   } else if (run && run.ok === false) {
     renderRunError(aiBubble, run, task);
   }
@@ -524,6 +545,9 @@ export async function askAnswer(task, { autoSubmit = false, userText = '', soft 
   renderCtxStatus();
   try {
     return await executeTask(task, { userText, historyMessages: [], autoSubmit, soft });
+  } catch (e) {
+    traceUiError(task, '', e, 'execute');
+    throw e;
   } finally {
     streaming = false;
     setStreamingFlag(false);
@@ -565,7 +589,7 @@ export async function askAIForProblem(problem, { autoSubmit = false } = {}) {
       allowLegacyText: false,
     });
     if (!r.ok) return r;
-    const submitResult = await submitAnswerTask(task, r.answer);
+    const submitResult = await submitAnswerTask(task, r.answer, { runId: r.runId });
     return { ...r, submitResult };
   }
   ui.showAIPanel(true);
@@ -605,12 +629,18 @@ export async function sendCurrent({ retryText = null } = {}) {
     if ($input) $input.value = '';
     lastTask = null;
     lastRequest = { task, userText: text, historyMessages: [...history], soft: !!text };
-    const r = await executeTask(task, {
-      userText: text,
-      historyMessages: [...history],
-      autoSubmit: false,
-      soft: !!text,
-    });
+    let r;
+    try {
+      r = await executeTask(task, {
+        userText: text,
+        historyMessages: [...history],
+        autoSubmit: false,
+        soft: !!text,
+      });
+    } catch (e) {
+      traceUiError(task, '', e, 'send');
+      throw e;
+    }
     if (r?.ok) {
       history.push({ role: 'user', content: buildUserContent(task, { userText: text, includeTask: true, attachImage: true }) });
       history.push({ role: 'assistant', content: r.displayContent || '' });

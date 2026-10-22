@@ -114,7 +114,7 @@ function parseJudge(task, answers) {
         }
         fail(
           ERROR.INVALID_ANSWER,
-          `本题选项只有${keys.length ? ` ${keys.join('、')} ` : '标签'}，请只输出选项标签，不要输出「${t}」`,
+          `本题选项只有 ${keys.length ? keys.join('、') : '标签'}，请只输出选项标签，不要输出「${t}」`,
         );
       }
       fail(

@@ -11,6 +11,7 @@ import { buildAssignmentTask } from '../answer/adapters/assignment.js';
 import { resolveProblemListTask } from '../answer/context.js';
 import { getAnswerLog } from '../answer/debug.js';
 import { actions } from '../state/actions.js';
+import * as telemetry from './telemetry.js';
 
 const L = (...a) => log.info('[test]', ...a);
 
@@ -155,6 +156,13 @@ export function installTestHooks() {
     dropStatus(problemId) {
       repo.problemStatus.delete(String(problemId));
       return true;
+    },
+
+    /** 打开/关闭强化遥测（测试用） */
+    setTelemetry(on = true) {
+      telemetry.setEnabled(!!on);
+      telemetry.setEnhanced(!!on);
+      return { enabled: telemetry.enabled(), enhanced: telemetry.enhancedEnabled() };
     },
 
     /** 设置测试配置（直接写 ui.config 并持久化，兼容 Android GM shim） */

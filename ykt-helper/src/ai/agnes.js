@@ -182,6 +182,10 @@ export async function agnesChat(opts) {
     event: 'llm_call',
     kind: opts.traceKind || 'llm',
     mode: opts.traceMode || 'none',
+    taskId: opts.traceTaskId || '',
+    runId: opts.traceRunId || '',
+    source: opts.traceSource || '',
+    attempt: opts.traceAttempt || 0,
     provider: { url, model, cloud: isCloud, stream, thinking },
     request: { messages: opts.messages, tools: opts.tools?.length || 0, bodyBytes: JSON.stringify(body).length },
   };

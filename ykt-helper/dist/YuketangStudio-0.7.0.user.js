@@ -672,6 +672,10 @@
   }
   function version() {
     try {
+      // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
+      if (typeof "0.7.0" !== "undefined" && "0.7.0") return String("0.7.0");
+    } catch {/* ignore */}
+    try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
       return gi && gi.script && gi.script.version || "dev";
     } catch {
@@ -786,7 +790,7 @@
   // 默认关；基础遥测关闭时强制不传。
   // ============================================================
     const TRACE_ENDPOINT = "https://api.raymor.top/yuketangstudio/telemetry/trace";
-  const TRACE_MAX_EVENTS = 20;
+  const TRACE_MAX_EVENTS = 40;
   const TRACE_MAX_BYTES = 96 * 1024;
   const TRACE_STR_MAX = 8 * 1024;
   const TRACE_TOTAL_MAX = 32 * 1024;
@@ -845,6 +849,22 @@
     }
     return out;
   }
+  function sanitizeDeep(v, depth = 0) {
+    if (depth > 4) return "[depth]";
+    if (v == null) return v;
+    if (typeof v === "string") return trunc(v, 4096);
+    if (typeof v === "number" || typeof v === "boolean") return v;
+    if (Array.isArray(v)) return v.slice(0, 20).map(x => sanitizeDeep(x, depth + 1));
+    if (typeof v === "object") {
+      const out = {};
+      for (const [k, val] of Object.entries(v).slice(0, 30)) {
+        if (/authorization|apikey|api_key|token|password/i.test(k)) continue;
+        out[trunc(k, 80)] = sanitizeDeep(val, depth + 1);
+      }
+      return out;
+    }
+    return trunc(String(v), 200);
+  }
   function sanitizeTrace(ev) {
     if (!ev || typeof ev !== "object") return null;
     const out = {
@@ -857,6 +877,56 @@
     };
     if (ev.attempt != null) out.attempt = Number(ev.attempt) || 0;
     if (ev.problemType != null) out.problemType = Number(ev.problemType) || 0;
+    for (const k of [ "taskId", "runId", "requestId", "source", "type", "transport", "target", "stage", "route", "userTextLen", "historyLen", "durationMs", "attempts", "from", "to", "reason", "autoSubmit", "mocked" ]) if (ev[k] != null) out[k] = typeof ev[k] === "number" || typeof ev[k] === "boolean" ? ev[k] : trunc(ev[k], 2048);
+    if (ev.payload != null) out.payload = sanitizeDeep(ev.payload);
+    if (ev.targetInfo) out.targetInfo = sanitizeDeep(ev.targetInfo);
+    if (ev.question) {
+      const q = ev.question;
+      out.question = {
+        type: trunc(q.type, 20),
+        typeLabel: trunc(q.typeLabel, 20),
+        body: trunc(q.body, 4096),
+        bodyLen: Number(q.bodyLen) || 0,
+        options: Array.isArray(q.options) ? q.options.slice(0, 12).map(o => ({
+          key: trunc(o?.key, 20),
+          text: trunc(o?.text, 512)
+        })) : void 0,
+        optionLabels: Array.isArray(q.optionLabels) ? q.optionLabels.slice(0, 12).map(x => trunc(x, 20)) : void 0,
+        blanks: Number(q.blanks) || 0,
+        hasImage: !!q.hasImage,
+        imageBytes: Number(q.imageBytes) || 0,
+        imageHash: trunc(q.imageHash, 40),
+        rawType: trunc(q.rawType, 40)
+      };
+    }
+    if (ev.answer) {
+      const a = ev.answer;
+      out.answer = {
+        kind: trunc(a.kind, 20),
+        values: Array.isArray(a.values) ? a.values.slice(0, 20).map(x => trunc(x, 1e3)) : void 0,
+        text: trunc(a.text, 4096),
+        textLen: Number(a.textLen) || 0,
+        display: trunc(a.display, 2048),
+        source: trunc(a.source, 20)
+      };
+    }
+    if (ev.tool) out.tool = {
+      name: trunc(ev.tool.name, 60),
+      arguments: trunc(ev.tool.arguments, 4096),
+      reason: trunc(ev.tool.reason, 1024)
+    };
+    if (ev.submit) out.submit = {
+      kind: trunc(ev.submit.kind, 20),
+      route: trunc(ev.submit.route, 20),
+      ok: ev.submit.ok !== false,
+      payload: sanitizeDeep(ev.submit.payload),
+      error: ev.submit.error ? {
+        code: trunc(ev.submit.error.code, 40),
+        message: trunc(ev.submit.error.message, 2048)
+      } : void 0
+    };
+    if (ev.retry) out.retry = sanitizeDeep(ev.retry);
+    if (ev.nudge) out.nudge = trunc(ev.nudge, 2048);
     if (ev.provider) out.provider = {
       url: redactUrl(ev.provider.url),
       model: trunc(ev.provider.model, 120),
@@ -881,7 +951,10 @@
     if (ev.parse) out.parse = {
       ok: !!ev.parse.ok,
       path: trunc(ev.parse.path, 20),
-      error: trunc(ev.parse.error, 1e3)
+      code: trunc(ev.parse.code, 40),
+      error: trunc(ev.parse.error, 2048),
+      raw: trunc(ev.parse.raw, 4096),
+      toolCall: ev.parse.toolCall ? sanitizeDeep(ev.parse.toolCall) : void 0
     };
     if (ev.problem) out.problem = {
       type: Number(ev.problem.type) || 0,
@@ -895,8 +968,10 @@
     };
     if (ev.error) out.error = {
       name: trunc(ev.error.name, 60),
+      code: trunc(ev.error.code, 40),
       message: trunc(ev.error.message, 2048),
-      status: Number(ev.error.status) || 0
+      status: Number(ev.error.status) || 0,
+      detail: sanitizeDeep(ev.error.detail)
     };
     if (ev.route != null) out.route = trunc(ev.route, 20);
     if (ev.regexParsed != null) out.regexParsed = !!ev.regexParsed;
@@ -910,7 +985,11 @@
     try {
       const ev = sanitizeTrace(event);
       if (!ev) return;
-      if (ev.ok !== false && Math.random() > .1) return;
+      const name = String(ev.event || "");
+      const isAnswer = name.startsWith("answer_");
+      const isToolLlm = name === "llm_call" && (Number(ev.request?.tools) > 0 || (ev.response?.toolCalls || []).length > 0);
+      // 答题链路事件全量；带 tools/工具调用的 LLM 调用全量；其余成功事件 10% 采样
+            if (ev.ok !== false && !isAnswer && !isToolLlm && Math.random() > .1) return;
       const q = storage.get(K_QUEUE);
       const queue = Array.isArray(q) ? q : [];
       queue.push(ev);
@@ -921,7 +1000,8 @@
         json = JSON.stringify(queue);
       }
       storage.set(K_QUEUE, queue);
-      scheduleTraceFlush(5e3);
+      // 错误/答题关键事件尽快发；普通事件批量发
+            scheduleTraceFlush(ev.ok === false ? 300 : isAnswer || isToolLlm ? 1200 : 5e3);
     } catch {}
   }
   let traceTimer = 0;
@@ -969,6 +1049,20 @@
     } catch {
       scheduleTraceFlush(3e4);
     }
+  }
+  // 页面隐藏/关闭前尽量把队列发出去：错误事件可能正好在用户离开时发生
+    if (typeof window !== "undefined") {
+    const flushSoon = () => {
+      if (!enhancedEnabled()) return;
+      try {
+        flushTraces().catch(() => {});
+      } catch {}
+    };
+    window.addEventListener("pagehide", flushSoon);
+    window.addEventListener("beforeunload", flushSoon);
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushSoon();
+    });
   }
   // src/core/devmode.js
   // 开发者模式：云端解锁码 → svc 验证 → 注入「云端 profile」（LLM 调用走代理）
@@ -1282,6 +1376,10 @@
       event: "llm_call",
       kind: opts.traceKind || "llm",
       mode: opts.traceMode || "none",
+      taskId: opts.traceTaskId || "",
+      runId: opts.traceRunId || "",
+      source: opts.traceSource || "",
+      attempt: opts.traceAttempt || 0,
       provider: {
         url: url,
         model: model,
@@ -2811,7 +2909,7 @@
           out.push(hit.key);
           continue;
         }
-        fail(ERROR.INVALID_ANSWER, `本题选项只有${keys.length ? ` ${keys.join("、")} ` : "标签"}，请只输出选项标签，不要输出「${t}」`);
+        fail(ERROR.INVALID_ANSWER, `本题选项只有 ${keys.length ? keys.join("、") : "标签"}，请只输出选项标签，不要输出「${t}」`);
       }
       fail(ERROR.INVALID_ANSWER, `答案「${t}」不是有效选项${keys.length ? `（可选：${keys.join("、")}）` : ""}`);
     }
@@ -2979,7 +3077,76 @@
   // src/answer/engine.js
   // 无 UI 的答题引擎：调用 LLM → 严格解析 → 失败重试/传输降级。
   // 不读写全局 history、streaming、DOM；调用方通过 hooks 渲染。
-    function normalizeError(e) {
+    function makeRunId() {
+    return `ans_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+  function targetSummary(task) {
+    const t = task?.target || {};
+    return {
+      kind: t.kind,
+      allowSubmit: !!t.allowSubmit,
+      submitLabel: t.submitLabel,
+      problemId: t.problemId,
+      problemType: t.problemType,
+      quizId: t.quizId,
+      quizProblemId: t.quizProblemId,
+      hasStatus: t.kind === "classroom" ? t.startTime != null || t.endTime != null : void 0,
+      answered: !!t.answered,
+      cacheText: !!t.cacheText
+    };
+  }
+  function questionSummary(task) {
+    const q = task?.question || {};
+    const img = q.image?.dataUrl || "";
+    return {
+      type: q.type,
+      typeLabel: q.typeLabel,
+      body: q.body || "",
+      bodyLen: String(q.body || "").length,
+      options: (q.options || []).map(o => ({
+        key: o.key,
+        text: o.text || ""
+      })),
+      optionLabels: q.optionLabels || [],
+      blanks: Number(q.blanks) || 0,
+      hasImage: !!img,
+      imageBytes: img.length,
+      rawType: q.rawType
+    };
+  }
+  function answerSummary(answer) {
+    if (!answer) return null;
+    return {
+      kind: answer.kind,
+      values: answer.values || [],
+      text: answer.text || "",
+      textLen: (answer.text || "").length,
+      display: answer.kind === "subjective" ? answer.text : (answer.values || []).join("、"),
+      source: answer.source
+    };
+  }
+  function toolSummary(res) {
+    const calls = Array.isArray(res?.toolCalls) ? res.toolCalls : [];
+    const call = calls.find(t => t?.function?.name === "submit_answer") || calls[0];
+    if (!call) return null;
+    return {
+      name: call.function?.name || "",
+      arguments: String(call.function?.arguments || "")
+    };
+  }
+  function responseSummary(res) {
+    if (!res) return null;
+    return {
+      content: String(res.content || ""),
+      reasoning: String(res.reasoning || ""),
+      toolCalls: (res.toolCalls || []).slice(0, 3).map(t => ({
+        name: t?.function?.name || "",
+        arguments: String(t?.function?.arguments || "")
+      })),
+      truncated: !!res.truncated
+    };
+  }
+  function normalizeError(e) {
     if (e instanceof AnswerError) return e;
     const msg = String(e?.message || e || "未知错误");
     if (e?.name === "AbortError" || /abort|cancel/i.test(msg)) return new AnswerError(ERROR.ABORTED, msg, {
@@ -3066,6 +3233,10 @@
     const maxAttempts = Math.max(1, Number(policy.maxAttempts) || 2);
     let transport = task.target?.allowSubmit ? policy.transport || "tools" : "text";
     if (transport === "tools" && !task.target?.allowSubmit) transport = "text";
+    const runId = policy.runId || makeRunId();
+    const startedAt = Date.now();
+    const question = questionSummary(task);
+    const targetInfo = targetSummary(task);
     const baseSystem = String(policy.baseSystem || "").trim();
     const baseHistory = Array.isArray(policy.history) ? [ ...policy.history ] : [];
     let retryHistory = [];
@@ -3074,6 +3245,7 @@
     let attempts = 0;
     let degraded = false;
     answerLog("engine_start", {
+      runId: runId,
       taskId: task.id,
       source: task.source,
       type: task.question?.type,
@@ -3082,17 +3254,35 @@
     });
     trace({
       event: "answer_start",
+      runId: runId,
       taskId: task.id,
       source: task.source,
       type: task.question?.type,
       transport: transport,
-      target: task.target?.kind
+      target: task.target?.kind,
+      autoSubmit: !!policy.autoSubmit,
+      question: question,
+      targetInfo: targetInfo
     });
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       attempts = attempt;
       policy.onAttempt?.({
         attempt: attempt,
         transport: transport
+      });
+      trace({
+        event: "answer_attempt",
+        runId: runId,
+        taskId: task.id,
+        source: task.source,
+        type: task.question?.type,
+        transport: transport,
+        target: task.target?.kind,
+        attempt: attempt,
+        autoSubmit: !!policy.autoSubmit,
+        targetInfo: targetInfo,
+        userTextLen: String(policy.userText || "").length,
+        historyLen: baseHistory.length + retryHistory.length
       });
       const messages = buildMessages(task, {
         baseSystem: baseSystem,
@@ -3116,6 +3306,10 @@
           toolChoice: transport === "tools" ? policy.toolChoice || (policy.autoSubmit ? "required" : "auto") : void 0,
           traceKind: policy.traceKind || "answer",
           traceMode: transport,
+          traceTaskId: task.id,
+          traceRunId: runId,
+          traceSource: task.source,
+          traceAttempt: attempt,
           onDelta: policy.onDelta,
           onReasoning: policy.onReasoning,
           onWait: policy.onWait
@@ -3127,10 +3321,20 @@
           transport = "regex";
           trace({
             event: "answer_transport_switch",
+            runId: runId,
             taskId: task.id,
+            source: task.source,
+            type: task.question?.type,
+            attempt: attempt,
+            transport: "regex",
             from: "tools",
             to: "regex",
-            reason: "tool_unsupported"
+            reason: "tool_unsupported",
+            error: {
+              name: e?.name || "",
+              code: "TOOL_UNSUPPORTED",
+              message: String(e?.message || e)
+            }
           });
           attempt -= 1;
           continue;
@@ -3143,17 +3347,22 @@
         const answer = parseOnce(task, res, transport, !!policy.allowLegacyText);
         trace({
           event: "answer_parsed",
+          runId: runId,
           taskId: task.id,
           source: task.source,
           type: task.question?.type,
           transport: transport,
+          target: task.target?.kind,
           attempt: attempt,
           ok: true,
-          answerSource: answer.source,
-          values: answer.kind === "subjective" ? void 0 : answer.values,
-          textLen: answer.text?.length || 0
+          question: question,
+          targetInfo: targetInfo,
+          answer: answerSummary(answer),
+          tool: toolSummary(res),
+          response: responseSummary(res)
         });
         answerLog("engine_done", {
+          runId: runId,
           taskId: task.id,
           ok: true,
           transport: transport,
@@ -3166,31 +3375,64 @@
           answer: answer,
           res: res,
           transport: transport,
-          attempts: attempts
+          attempts: attempts,
+          runId: runId
         };
       } catch (e) {
         lastError = e instanceof AnswerError ? e : normalizeError(e);
         trace({
           event: "answer_parse_error",
+          runId: runId,
           taskId: task.id,
           source: task.source,
           type: task.question?.type,
           transport: transport,
+          target: task.target?.kind,
           attempt: attempt,
-          code: lastError.code,
-          message: lastError.message
+          ok: false,
+          question: question,
+          targetInfo: targetInfo,
+          parse: {
+            ok: false,
+            path: transport,
+            code: lastError.code,
+            error: lastError.message,
+            raw: String(res?.content || ""),
+            toolCall: toolSummary(res)
+          },
+          response: responseSummary(res),
+          error: {
+            name: lastError.name,
+            code: lastError.code,
+            message: lastError.message
+          }
         });
         if (attempt >= maxAttempts || lastError.retryable === false) break;
+        const nudge = buildNudge(task, lastError, transport);
+        trace({
+          event: "answer_retry",
+          runId: runId,
+          taskId: task.id,
+          source: task.source,
+          type: task.question?.type,
+          transport: transport,
+          target: task.target?.kind,
+          attempt: attempt + 1,
+          ok: true,
+          reason: lastError.message,
+          nudge: nudge
+        });
         retryHistory = [ ...retryHistory, {
           role: "assistant",
           content: String(res?.content || "") || "（无内容）"
         }, {
           role: "user",
-          content: buildNudge(task, lastError, transport)
+          content: nudge
         } ];
       }
     }
     answerLog("engine_done", {
+      runId: runId,
       taskId: task.id,
       ok: false,
       code: lastError?.code || ERROR.UNKNOWN,
@@ -3200,20 +3442,32 @@
     });
     trace({
       event: "answer_error",
+      runId: runId,
       taskId: task.id,
       source: task.source,
       type: task.question?.type,
       transport: transport,
+      target: task.target?.kind,
       attempts: attempts,
-      code: lastError?.code || ERROR.UNKNOWN,
-      message: lastError?.message || ""
+      ok: false,
+      durationMs: Date.now() - startedAt,
+      question: question,
+      targetInfo: targetInfo,
+      response: responseSummary(lastRes),
+      error: {
+        name: lastError?.name || "AnswerError",
+        code: lastError?.code || ERROR.UNKNOWN,
+        message: lastError?.message || "",
+        detail: lastError?.detail || null
+      }
     });
     return {
       ok: false,
       error: lastError || new AnswerError(ERROR.UNKNOWN, "作答失败"),
       res: lastRes,
       transport: transport,
-      attempts: attempts
+      attempts: attempts,
+      runId: runId
     };
   }
   // src/quiz/quiz-paper.js
@@ -3766,11 +4020,33 @@
     const display = toDisplayAnswer(answer);
     const payload = buildSubmitPayload(task, answer);
     if (!payload) throw new AnswerError(ERROR.NO_TASK, "没有可提交的答案");
-    if (payload.kind === "display" || !task.target?.allowSubmit) return {
-      route: "display",
-      display: display,
+    const base = {
+      taskId: task.id,
+      runId: opts.runId || "",
+      source: task.source,
+      type: task.question?.type,
+      target: task.target?.kind,
       payload: payload
     };
+    answerLog("submit_start", base);
+    trace({
+      event: "answer_submit_start",
+      ...base,
+      ok: true
+    });
+    if (payload.kind === "display" || !task.target?.allowSubmit) {
+      trace({
+        event: "answer_submit",
+        ...base,
+        route: "display",
+        ok: true
+      });
+      return {
+        route: "display",
+        display: display,
+        payload: payload
+      };
+    }
     if (opts.dryRun) return {
       route: payload.kind === "quiz" ? "cache" : "answer",
       display: display,
@@ -3780,10 +4056,31 @@
         const mock = getTestSubmitMode();
     if (mock) {
       await new Promise(r => setTimeout(r, 300));
-      if (mock === "fail") throw new AnswerError(ERROR.SUBMIT_FAILED, "模拟提交失败");
+      if (mock === "fail") {
+        const err = new AnswerError(ERROR.SUBMIT_FAILED, "模拟提交失败");
+        trace({
+          event: "answer_submit_error",
+          ...base,
+          ok: false,
+          route: "submit",
+          error: {
+            name: err.name,
+            code: err.code,
+            message: err.message
+          }
+        });
+        throw err;
+      }
       const route = mock === "retry" ? "retry" : payload.kind === "quiz" ? "cache" : "answer";
       task.target.answered = route !== "cache";
       if (route === "cache") task.target.cached = true;
+      trace({
+        event: "answer_submit",
+        ...base,
+        route: route,
+        ok: true,
+        mocked: true
+      });
       return {
         route: route,
         display: display,
@@ -3803,6 +4100,12 @@
           lessonId: task.target.lessonId ?? void 0
         });
         task.target.answered = true;
+        trace({
+          event: "answer_submit",
+          ...base,
+          route: route,
+          ok: true
+        });
         return {
           route: route,
           display: display,
@@ -3818,17 +4121,34 @@
         task.target.cached = true;
         task.target.answered = false;
  // 暂存 ≠ 交卷
-                return {
+                trace({
+          event: "answer_submit",
+          ...base,
+          route: "cache",
+          ok: true
+        });
+        return {
           route: "cache",
           display: display,
           payload: payload
         };
       }
     } catch (e) {
-      if (e instanceof AnswerError) throw e;
-      throw new AnswerError(ERROR.SUBMIT_FAILED, String(e?.message || e), {
+      const err = e instanceof AnswerError ? e : new AnswerError(ERROR.SUBMIT_FAILED, String(e?.message || e), {
         cause: e
       });
+      trace({
+        event: "answer_submit_error",
+        ...base,
+        ok: false,
+        route: payload.kind === "quiz" ? "cache" : "answer",
+        error: {
+          name: err.name,
+          code: err.code,
+          message: err.message
+        }
+      });
+      throw err;
     }
     return {
       route: "display",
@@ -3883,7 +4203,7 @@
    * @param {boolean} [args.autoSubmit]
    * @param {Function} [args.onSubmitted] (result) => void
    * @returns {HTMLElement}
-   */  function renderAnswerCard(parent, {task: task, answer: answer, autoSubmit: autoSubmit = false, onSubmitted: onSubmitted} = {}) {
+   */  function renderAnswerCard(parent, {task: task, answer: answer, autoSubmit: autoSubmit = false, runId: runId = "", onSubmitted: onSubmitted} = {}) {
     const card = document.createElement("div");
     card.className = "ykt-tool-card";
     const isQuiz = task?.target?.kind === "quiz";
@@ -3965,7 +4285,8 @@
       stEl.textContent = "";
       try {
         const r = await submitAnswerTask(task, answer, {
-          forceRetry: forceRetry
+          forceRetry: forceRetry,
+          runId: runId
         });
         card.classList.add("done");
         if (r.route === "cache") {
@@ -4513,6 +4834,23 @@
       if (on) document.body.dataset.yksStreaming = "1"; else delete document.body.dataset.yksStreaming;
     } catch {}
   }
+  function traceUiError(task, runId, e, stage) {
+    trace({
+      event: "answer_ui_error",
+      taskId: task?.id || "",
+      runId: runId || "",
+      source: task?.source || "",
+      type: task?.question?.type || "",
+      target: task?.target?.kind || "",
+      stage: stage || "ui",
+      ok: false,
+      error: {
+        name: e?.name || "Error",
+        code: e?.code || "UI_ERROR",
+        message: String(e?.message || e)
+      }
+    });
+  }
   // ---------------- 面板 ----------------
     function mountAIPanel() {
     if (mounted$8) return root$7;
@@ -4867,14 +5205,18 @@
     renderer = new StreamRenderer;
     renderer.attach(aiBubble.querySelector(".ykt-sr-content"));
     if (displayContent) await renderer.finish(displayContent); else if (run?.ok) aiBubble.querySelector(".ykt-sr-content").innerHTML = '<span class="muted">✅ 已生成答案</span>'; else aiBubble.querySelector(".ykt-sr-content").innerHTML = '<span class="err">（空回复）</span>';
-    if (run?.ok && run.answer) {
+    if (run?.ok && run.answer) try {
       const card = renderAnswerCard(aiBubble, {
         task: task,
         answer: run.answer,
-        autoSubmit: autoSubmit
+        autoSubmit: autoSubmit,
+        runId: run?.runId || ""
       });
       // 自动提交时等待卡片内部提交完成
             if (autoSubmit && card?.__submitPromise) await card.__submitPromise;
+    } catch (e) {
+      traceUiError(task, run?.runId, e, "render_card");
+      addBubble$1("ai", `<span class="err">答案卡片渲染失败：${escapeHtml$1(e?.message || e)}</span>`);
     } else if (run && run.ok === false) renderRunError(aiBubble, run, task);
     const elapsed = Date.now() - startedAt;
     answerLog("run_done", {
@@ -4977,6 +5319,9 @@
         autoSubmit: autoSubmit,
         soft: soft
       });
+    } catch (e) {
+      traceUiError(task, "", e, "execute");
+      throw e;
     } finally {
       streaming$1 = false;
       setStreamingFlag$1(false);
@@ -5016,7 +5361,9 @@
         allowLegacyText: false
       });
       if (!r.ok) return r;
-      const submitResult = await submitAnswerTask(task, r.answer);
+      const submitResult = await submitAnswerTask(task, r.answer, {
+        runId: r.runId
+      });
       return {
         ...r,
         submitResult: submitResult
@@ -5069,12 +5416,18 @@
         historyMessages: [ ...history$1 ],
         soft: !!text
       };
-      const r = await executeTask(task, {
-        userText: text,
-        historyMessages: [ ...history$1 ],
-        autoSubmit: false,
-        soft: !!text
-      });
+      let r;
+      try {
+        r = await executeTask(task, {
+          userText: text,
+          historyMessages: [ ...history$1 ],
+          autoSubmit: false,
+          soft: !!text
+        });
+      } catch (e) {
+        traceUiError(task, "", e, "send");
+        throw e;
+      }
       if (r?.ok) {
         history$1.push({
           role: "user",
@@ -10354,7 +10707,9 @@
           run: run,
           task: task
         };
-        const submitted = await submitAnswerTask(task, run.answer);
+        const submitted = await submitAnswerTask(task, run.answer, {
+          runId: run.runId
+        });
         return {
           run: run,
           task: task,
@@ -11233,6 +11588,15 @@
       dropStatus(problemId) {
         repo.problemStatus.delete(String(problemId));
         return true;
+      },
+      /** 打开/关闭强化遥测（测试用） */
+      setTelemetry(on = true) {
+        setEnabled(!!on);
+        setEnhanced(!!on);
+        return {
+          enabled: enabled(),
+          enhanced: enhancedEnabled()
+        };
       },
       /** 设置测试配置（直接写 ui.config 并持久化，兼容 Android GM shim） */
       setTestConfig({regex: regex = false, profile: profile = null} = {}) {
