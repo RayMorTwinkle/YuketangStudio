@@ -14,6 +14,10 @@ const VENDOR = {
   cssKatex:   () => import('../vendor/katex.inline.css.txt').then(m => m.default),
   cssFA:      () => import('../vendor/fontawesome.inline.css.txt').then(m => m.default),
 };
+// Node 单测直接 import 源码时没有 window；这里只做安全引用，
+// 真正调用 GM_* / DOM 的路径仍然要求浏览器环境。
+const _win = typeof window !== 'undefined' ? window : {};
+
 export const gm = {
   notify(opt) {
     if (typeof window.GM_notification === 'function') window.GM_notification(opt);
@@ -32,7 +36,7 @@ export const gm = {
     if (typeof window.GM_xmlhttpRequest === 'function') return window.GM_xmlhttpRequest(opt);
     throw new Error('GM_xmlhttpRequest is not available');
   },
-  uw: window.unsafeWindow || window,
+  uw: _win.unsafeWindow || _win,
 };
 
 export function loadScriptOnce(src, timeoutMs = 30000) {

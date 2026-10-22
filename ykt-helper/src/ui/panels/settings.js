@@ -366,7 +366,7 @@ export function mountSettingsPanel() {
     const oldText = $modelFetch.textContent;
     $modelFetch.disabled = true;
     $modelFetch.textContent = '获取中…';
-    let data = null;
+    let data;
     let lastStatus = 0;
     try {
       const r = await fetch(url, { headers });

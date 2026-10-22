@@ -1,18 +1,22 @@
 // src/state/actions.js
-import { PROBLEM_TYPE_MAP } from '../core/types.js';
+import { PROBLEM_TYPE_MAP, DEFAULT_SYSTEM_PROMPT_AI } from '../core/types.js';
 import { log } from '../core/log.js';
 import { randInt, gm } from '../core/env.js'
 import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
 import { submitAnswer } from '../tsm/answer.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
-import { parseAIAnswer } from '../tsm/ai-format.js';
 import { submitProblemAnswer, parseManualAnswer } from '../tsm/submit-flow.js';
-import { askAIForProblem } from '../ui/panels/ai.js';
 import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 import { isMobileVersionPage, isNarrowDevice } from '../ui/toolbar.js';
 import { syncMobileSlidesIntoRepo } from '../core/vuex-helper.js';
+import { buildClassroomTask } from '../answer/adapters/classroom.js';
+import { runAnswer } from '../answer/engine.js';
+import { submitAnswerTask } from '../answer/submit.js';
+import { displayAnswer } from '../answer/model.js';
+import { getOverride } from '../ui/panels/ai.js';
+import { captureSlideImage } from '../capture/screenshoot.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
@@ -78,20 +82,10 @@ function enqueueAutoAnswer(fn) {
   return run;
 }
 
-/** 等 AI 面板空闲（用户正在聊天时排队；超时放弃） */
-async function waitAIIdle(timeoutMs = 90000) {
-  const t0 = Date.now();
-  while (document.body?.dataset?.yksStreaming === '1') {
-    if (Date.now() - t0 > timeoutMs) return false;
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return true;
-}
-
 /**
- * 自动作答：走 AI 解答面板 + submit_answer 工具。
- * - 模型调用工具 → 直接提交（不再二次确认）
- * - 两次都没调用 → 看「无 API Key 时提交兜底答案」开关：勾选则解析正文提交，未勾选则放弃
+ * 自动作答：AnswerEngine V2（headless）。
+ * - 成功 → 唯一提交入口 submitAnswerTask
+ * - 失败 → 不猜答案、不误提交；没有 API Key 时才走本地默认答案
  */
 async function handleAutoAnswerInternal(problem) {
   const status = repo.problemStatus.get(String(problem.problemId));
@@ -114,7 +108,7 @@ async function handleAutoAnswerInternal(problem) {
   status.answering = true;
   try {
     log.dbg('[雨课堂助手][INFO][AutoAnswer] =================================');
-    log.dbg('[雨课堂助手][INFO][AutoAnswer] 开始自动答题（工具调用模式）');
+    log.dbg('[雨课堂助手][INFO][AutoAnswer] 开始自动答题（AnswerEngine V2）');
     log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目ID:', problem.problemId);
     log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目类型:', PROBLEM_TYPE_MAP[problem.problemType]);
     log.dbg('[雨课堂助手][INFO][AutoAnswer] 题目内容:', problem.body?.slice(0, 50) + '...');
@@ -149,37 +143,48 @@ async function handleAutoAnswerInternal(problem) {
 
     ui.toast('AI 正在分析题目...', 2000);
     const r = await enqueueAutoAnswer(async () => {
-      const idle = await waitAIIdle();
-      if (!idle) throw new Error('AI 面板长时间占用，已跳过本次自动作答');
-      return askAIForProblem(problem, { autoSubmit: true });
+      const slide = status.slideId ? repo.slides.get(String(status.slideId)) : null;
+      let image = problem.__imageDataUrl || '';
+      if (!image && status.slideId) {
+        try { image = await captureSlideImage(String(status.slideId)) || ''; } catch { /* ignore */ }
+      }
+      const task = buildClassroomTask({
+        problem,
+        slide,
+        status,
+        lessonId: repo.currentLessonId,
+        imageDataUrl: image,
+        source: 'classroom',
+      });
+      if (!task) throw new Error('题目信息不完整，无法自动作答');
+      const transport = !task.target.allowSubmit ? 'text' : (ui.config.regexToolCall ? 'regex' : 'tools');
+      const run = await runAnswer(task, {
+        transport,
+        baseSystem: String(ui.config.systemPromptAI || '').trim() || DEFAULT_SYSTEM_PROMPT_AI,
+        autoSubmit: true,
+        override: getOverride() || undefined,
+        stream: false,
+        allowLegacyText: false,
+      });
+      if (!run.ok) return { run, task };
+      const submitted = await submitAnswerTask(task, run.answer);
+      return { run, task, submitted };
     });
 
-    if (r?.submitInfo?.route) {
+    if (r?.run?.ok && r?.submitted?.route) {
       status.done = true;
-      log.dbg('[雨课堂助手][INFO][AutoAnswer] 工具提交成功:', r.submitInfo.route);
-      ui.toast(r.submitInfo.route === 'retry' ? '自动作答完成（补交）' : '自动作答完成', 3000);
-      showAutoAnswerPopup(problem, r.submitInfo.display || '');
+      log.dbg('[雨课堂助手][INFO][AutoAnswer] 提交成功:', r.submitted.route);
+      ui.toast(r.submitted.route === 'retry' ? '自动作答完成（补交）' : '自动作答完成', 3000);
+      showAutoAnswerPopup(problem, displayAnswer(r.run.answer));
       return;
     }
 
-    // 模型两次都没调用工具（或工具提交失败）
-    log.warn('[雨课堂助手][WARN][AutoAnswer] 模型未完成工具提交:', r?.submitInfo || null);
-    if (ui.config.autoAnswerFallbackDefault) {
-      const parsed = parseAIAnswer(problem, r?.res?.content || '');
-      if (parsed) {
-        const route = await submitProblemAnswer(problem, parsed, {
-          startTime: status.startTime,
-          endTime: status.endTime,
-          forceRetry: false,
-        });
-        status.done = true;
-        ui.toast(route === 'retry' ? '自动作答完成（补交）' : '自动作答完成', 3000);
-        showAutoAnswerPopup(problem, r?.res?.content || '');
-        return;
-      }
-      log.warn('[雨课堂助手][WARN][AutoAnswer] 正文也无法解析出答案，放弃');
-    }
-    ui.toast('自动作答失败：模型未调用提交工具', 4000);
+    // 失败：严格失败，不用正文猜字母提交
+    const err = r?.run?.error;
+    log.warn('[雨课堂助手][WARN][AutoAnswer] 未完成提交:', {
+      code: err?.code, message: err?.message, attempts: r?.run?.attempts,
+    });
+    ui.toast(`自动作答失败：${err?.message || '模型未给出可提交的答案'}`, 4000);
   } catch (e) {
     log.err('[雨课堂助手][ERR][AutoAnswer] 失败:', e);
     log.err('[雨课堂助手][ERR][AutoAnswer] 错误堆栈:', e.stack);
@@ -317,16 +322,7 @@ export const actions = {
     return submitProblemAnswer(problem, result, opts);
   },
 
-  parseManual(problemType, content) {
-    switch (problemType) {
-      // 选择/投票：只取选项字母（防混入空格/标点被当成答案提交）
-      case 1: case 2: case 3: return (String(content).toUpperCase().match(/[A-Z]/g) || []).sort();
-      // 填空：按行或逗号/分号分多空
-      case 4: return String(content).split(/[\n,，;；]+/).map(s => s.trim()).filter(Boolean);
-      case 5: return { content, pics: [] };
-      default: return null;
-    }
-  },
+
 
   navigateTo(presId, slideId) {
     repo.currentPresentationId = presId;

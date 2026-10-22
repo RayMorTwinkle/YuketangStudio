@@ -1,3 +1,4 @@
+/* global GM_info */
 // src/core/update-check.js
 // 更新检测：GET api.raymor.top/yuketangstudio/latest（svc 国内渠道元数据）
 // 响应 {version, userscript, apk, notes}
@@ -43,7 +44,8 @@ export function cmpVer(a, b) {
 /** 当前脚本版本（GM_info 优先；无 GM 环境退回构建注入版本） */
 export function curVersion() {
   try {
-    if (typeof GM_info !== 'undefined' && GM_info.script?.version) return GM_info.script.version;
+    const gi = typeof GM_info !== 'undefined' ? GM_info : null;
+    if (gi?.script?.version) return gi.script.version;
   } catch {}
   try { return __BUILD_VERSION__; } catch {}
   return '0.0.0';

@@ -9,6 +9,8 @@ import { PROBLEM_TYPE_MAP } from '../../core/types.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 import { ui } from '../ui-api.js';
+import { askAnswer } from './ai.js';
+import { resolveProblemListTask } from '../../answer/context.js';
 
 let mounted = false;
 let root;
@@ -268,13 +270,15 @@ function buildRow(e, prob) {
     if (presId && slideId) actions.navigateTo(String(presId), String(slideId));
     else ui.toast('缺少跳转信息', 1500);
   });
-  mk('AI解答', '', () => {
-    if (slideId) {
-      window.dispatchEvent(new CustomEvent('ykt:presentation:slide-selected', {
-        detail: { slideId: String(slideId), imageUrl: (e.slide?.image || e.slide?.thumbnail || repo.slides.get(String(slideId))?.image) || '' },
-      }));
+  mk('AI解答', '', async () => {
+    try {
+      const r = await resolveProblemListTask(e);
+      if (!r.task) { ui.toast('题目信息不完整，无法解答', 2000); return; }
+      ui.showAIPanel?.(true);
+      await askAnswer(r.task);
+    } catch (err) {
+      ui.toast('AI 解答失败：' + (err?.message || err), 3000);
     }
-    window.dispatchEvent(new CustomEvent('ykt:open-ai'));
   });
   mk('刷新', '', async (ev) => {
     const btn = ev.currentTarget;

@@ -100,6 +100,7 @@ export const ui = {
   updatePresentationList: PresPanel.updatePresentationList,
   updateSlideView: PresPanel.updateSlideView,
   askAIForCurrent: AIPanel.askAIForCurrent,
+  askAnswer: AIPanel.askAnswer,
   updateActiveProblems: ActivePanel.updateActiveProblems,
   updateProblemList: ProblemListPanel.updateProblemList,
 

@@ -1,5 +1,16 @@
 # 更新日志
 
+0.6.16:
+
+- ♻️ **答题链路重构（Answer Engine V2）**：新增 `src/answer/` 单一事实源（`AnswerTask` / `Answer` / 唯一提交入口）；AI 解答、作业、PPT 答题、自动作答、题目列表全部走同一条链路
+- 🛠 **题型不再靠数字/`__` 字段猜**：单选/多选/判断/填空/主观/投票用 canonical type；作业 `Judgement` 不再被当成投票题
+- 🛠 **严格解析**：选择题只接受选项标签，不再从任意文本抽 A-Z；判断题 A/B 标签时不按位置猜 √/×；填空校验空位数
+- 🛠 **降级重建 prompt**：端点不支持 tools 时切到 `<answer>` 契约，不再出现「提示要工具但请求里没有工具」
+- 🛠 **作业/自动作答会话隔离**：不再复用/污染手动 AI 历史，不再读取 AI 输入框残留文字；自动作答 headless，不占 AI 面板
+- 🛠 **提交统一**：课堂提交 / 作业暂存 / 仅展示一个分发器；作业填空/主观也走 `cache_each_result`（暂存不等于交卷）；历史题没有 status/lesson 时只展示
+- 🧪 新增 `scripts/test-answer-core.mjs`、`scripts/e2e-answer.mjs`（ego）、`scripts/e2e-android.mjs`（真机 debug 广播，测试模式不真实提交）
+- 🧹 删除未使用 provider（openai/kimi/deepseek/gemini/openrouter）和旧 `parseAIAnswer` / `normalizeToolArgs` / `<answer>` 旧解析路径
+
 0.6.15:
 
 - 🛠 **作业 AI 解答支持全部题型**：单选/多选/判断/填空/主观都启用 `submit_answer`（填空/主观暂存用文本 content）；未知题型才禁用

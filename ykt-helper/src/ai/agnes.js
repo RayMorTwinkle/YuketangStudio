@@ -292,7 +292,6 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
   const FIRST_BYTE_MS = 30000;
   const IDLE_AFTER_DATA_MS = 15000;
   let timer;
-  let gotData = false;
   const arm = (ms, msg) => {
     clearTimeout(timer);
     timer = setTimeout(() => ctrl.abort(mkAbort(msg)), ms);
@@ -302,7 +301,6 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
   // 每收到一段数据：进入「最后字符后 15s」倒计时
   const bumpIdle = () => {
     if (!body.stream) return;
-    gotData = true;
     arm(IDLE_AFTER_DATA_MS, '输出超时（15s 无新数据）');
   };
   const onAbort = () => ctrl.abort(mkAbort('aborted'));
@@ -365,7 +363,7 @@ async function fetchStream(url, apiKey, body, opts, timeoutMs) {
   }
 }
 
-function gmXhrStream(url, apiKey, body, opts, timeoutMs) {
+function gmXhrStream(url, apiKey, body, opts, _timeoutMs) {
   return new Promise((resolve, reject) => {
     const clearWait = armWaitTimers(opts);
     const acc = { content: '', reasoning: '', toolCalls: [] };

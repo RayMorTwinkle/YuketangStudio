@@ -2,7 +2,7 @@
 // 工具箱「作业」tab：本课作业列表 + 当前试卷题目 + 批量下载/批量 AI + 单题 AI（复用 AI 解答面板）
 import { ui } from '../ui-api.js';
 import { confirmDialog } from '../confirm.js';
-import { askAIForProblem, getOverride } from './ai.js';
+import { askAnswer, getOverride } from './ai.js';
 import { log } from '../../core/log.js';
 import {
   fetchCourses, fetchAssignments, findCourseByQuiz, fetchQuizDataById, oldUrl, newUrl,
@@ -11,6 +11,8 @@ import {
   isQuizPage, readQuizData, quizMeta, composeSlide, canvasBlob, saveBlob, zipStore, quizQuestionDataUrl,
 } from '../../quiz/quiz-paper.js';
 import { agnesChat } from '../../ai/agnes.js';
+import { buildAssignmentTask } from '../../answer/adapters/assignment.js';
+import { normalizeType, typeLabel } from '../../answer/model.js';
 
 let mounted = false;
 let root = null;
@@ -49,21 +51,8 @@ function deadlineText(ms) {
   return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-const TYPE_CODE = {
-  SingleChoice: 1,
-  MultipleChoice: 2,
-  Judgement: 3,
-  Judgment: 3,
-  FillBlank: 4,
-  Subjective: 5,
-};
-
 function typeText(t) {
-  const map = {
-    FillBlank: '填空题', SingleChoice: '单选题', MultipleChoice: '多选题',
-    Judgement: '判断题', Subjective: '主观题', Poll: '投票', Exam: '试卷', Link: '外链题',
-  };
-  return map[t] || t || '题目';
+  return typeLabel(normalizeType(t, { source: 'assignment' }));
 }
 
 function setStatus(text) {
@@ -254,25 +243,17 @@ async function aiForQuestion(index) {
   try {
     setStatus(`正在准备第 ${index + 1} 题的题图…`);
     const dataUrl = await quizQuestionDataUrl(viewData, index, 2);
-    const p = viewData.Slides[index].Problem || {};
-    const code = TYPE_CODE[p.Type] || 0;
-    // 单选/多选/判断/填空/主观都启用「暂存答案」工具；未知题型不启用
-    const supported = code >= 1 && code <= 5;
     const quizId = String(viewAssignment?.oldId || window.quizID || '');
-    ui.showAIPanel?.(true);
-    await askAIForProblem({
-      problemId: `quiz_${quizId}_${index}`,
-      problemType: code || 4,
-      __quizType: p.Type,
-      body: `第 ${index + 1} 题（${typeText(p.Type)}，${p.Score ?? ''} 分）`,
-      options: [],
-      __imageDataUrl: dataUrl,
-      __optionLabels: (p.Bullets || []).map((b) => String(b?.Label || '')).filter(Boolean),
-      __noSubmit: !supported,
-      __submitTarget: supported ? 'quiz' : undefined,
-      __quizId: quizId,
-      __problemId: p.ProblemID,
+    const task = buildAssignmentTask({
+      quizData: viewData,
+      index,
+      assignment: viewAssignment,
+      quizId,
+      imageDataUrl: dataUrl,
     });
+    if (!task) throw new Error('题目信息不完整');
+    ui.showAIPanel?.(true);
+    await askAnswer(task);
     setStatus('');
   } catch (e) {
     setStatus('AI 解答失败：' + (e?.message || e));

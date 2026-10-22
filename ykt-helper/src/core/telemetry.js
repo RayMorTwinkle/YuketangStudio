@@ -1,3 +1,4 @@
+/* global GM_info */
 // src/core/telemetry.js
 // 匿名使用统计：installId（首启生成 UUID）+ 平台 + 版本 + 是否用码 +
 // 当日调用次数 + 首字时间/总时长聚合 → POST /yuketangstudio/telemetry
@@ -85,7 +86,7 @@ function platform() {
   return 'pc';
 }
 function version() {
-  try { return (typeof GM_info !== 'undefined' && GM_info.script.version) || 'dev'; }
+  try { const gi = typeof GM_info !== 'undefined' ? GM_info : null; return (gi && gi.script && gi.script.version) || 'dev'; }
   catch { return 'dev'; }
 }
 function today() {

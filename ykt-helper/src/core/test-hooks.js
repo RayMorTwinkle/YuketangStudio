@@ -6,7 +6,11 @@ import { isTestMode } from './test-mode.js';
 import { repo } from '../state/repo.js';
 import { ui } from '../ui/ui-api.js';
 import { log } from './log.js';
-import { sendCurrent, askAIForProblem } from '../ui/panels/ai.js';
+import { sendCurrent, askAIForProblem, askAnswer, getAIHistory, resetAIView } from '../ui/panels/ai.js';
+import { buildAssignmentTask } from '../answer/adapters/assignment.js';
+import { resolveProblemListTask } from '../answer/context.js';
+import { getAnswerLog } from '../answer/debug.js';
+import { actions } from '../state/actions.js';
 
 const L = (...a) => log.info('[test]', ...a);
 
@@ -104,6 +108,102 @@ export function installTestHooks() {
     async ask() {
       try { ui.showAIPanel?.(true); } catch {}
       return sendCurrent({ auto: true });
+    },
+
+    /** 注入一个作业题并返回 AnswerTask（不打开面板） */
+    injectAssignmentTask(type = 'SingleChoice', opts = {}) {
+      const pid = opts.problemId || (920000 + (++seq));
+      const bullets = opts.bullets || [{ Label: 'A' }, { Label: 'B' }];
+      const problem = {
+        ProblemID: pid,
+        Type: type,
+        Score: opts.score ?? 1,
+        Bullets: bullets,
+        Blanks: opts.blanks,
+      };
+      const quizData = { Title: opts.title || '测试作业', Slides: [{ Problem: problem }] };
+      const task = buildAssignmentTask({
+        quizData,
+        index: 0,
+        assignment: { id: opts.assignmentId || 'test-assignment', oldId: opts.quizId || 'test-quiz', title: opts.title || '测试作业' },
+        quizId: opts.quizId || 'test-quiz',
+        imageDataUrl: opts.imageDataUrl || '',
+      });
+      window.__yktTestTask = task;
+      L('已注入作业题', { problemId: pid, type });
+      return task;
+    },
+
+    /** 注入作业题并在 AI 面板解答（mock 响应由 mockTool/mockText 决定） */
+    async askAssignment(type = 'SingleChoice', opts = {}) {
+      const task = api.injectAssignmentTask(type, opts);
+      try { ui.showAIPanel?.(true); } catch {}
+      return askAnswer(task, { autoSubmit: !!opts.autoSubmit });
+    },
+
+    /** 从题目列表条目发起 AI 解答 */
+    async askProblemList(problemId) {
+      const entry = repo.encounteredProblems.find((p) => String(p.problemId) === String(problemId));
+      if (!entry) throw new Error('题目列表里没有该题');
+      const r = await resolveProblemListTask(entry);
+      if (!r.task) throw new Error('题目信息不完整');
+      try { ui.showAIPanel?.(true); } catch {}
+      return askAnswer(r.task);
+    },
+
+    /** 删除题目 status（模拟历史题） */
+    dropStatus(problemId) {
+      repo.problemStatus.delete(String(problemId));
+      return true;
+    },
+
+    /** 设置测试配置（直接写 ui.config 并持久化，兼容 Android GM shim） */
+    setTestConfig({ regex = false, profile = null } = {}) {
+      ui.config.regexToolCall = !!regex;
+      ui.config.aiAutoAnalyze = false;
+      const p = profile || { id: 'test-mock', name: 'Mock', baseUrl: 'https://example.com/v1', apiKey: 'mock', model: 'mock' };
+      ui.config.ai = { ...(ui.config.ai || {}), profiles: [p], activeProfileId: p.id };
+      ui.saveConfig();
+      return { regexToolCall: ui.config.regexToolCall, ai: ui.config.ai };
+    },
+
+    /** 读当前测试配置 */
+    getConfig() {
+      return { regexToolCall: !!ui.config.regexToolCall, ai: ui.config.ai };
+    },
+
+    /** 清空 AI 面板视图/历史（题目保留） */
+    clearUI() {
+      resetAIView();
+      return true;
+    },
+
+    /** 自动作答状态（调试） */
+    getAutoState(problemId) {
+      const pid = String(problemId ?? [...repo.problems.keys()].find(k => String(k).startsWith('91')));
+      const status = repo.problemStatus.get(pid) || null;
+      const problem = repo.problems.get(pid) || null;
+      return {
+        pid,
+        status: status ? { ...status } : null,
+        problem: problem ? { problemId: problem.problemId, problemType: problem.problemType, result: problem.result } : null,
+        ai: ui.config.ai,
+        mock: window.__yktTestMock || null,
+        mockSubmit: window.__yktTestMockSubmit || null,
+      };
+    },
+
+    getHistory: getAIHistory,
+
+    /** 读取答题链路调试日志 */
+    getAnswerLog,
+
+    /** 走真实自动作答入口（actions.handleAutoAnswer，headless） */
+    async askAutoAction(problemId) {
+      const pid = problemId ?? [...repo.problems.keys()].find(k => String(k).startsWith('91'));
+      const problem = pid != null ? repo.problems.get(String(pid)) : null;
+      if (!problem) throw new Error('请先 injectProblem()');
+      return actions.handleAutoAnswer(problem);
     },
 
     /** 模拟「自动作答」：指定题目 + 直接提交（不弹确认） */

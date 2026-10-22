@@ -4,6 +4,7 @@
 // 这里负责解析、拼题图、导出 JPG/ZIP/PDF/长图。
 import { log } from '../core/log.js';
 import { ensureJsPDF } from '../core/env.js';
+import { getTestSubmitMode } from '../core/test-mode.js';
 
 export function isQuizPage() {
   return /^\/v\/quiz\/quiz_info\/\d+/.test(location.pathname);
@@ -274,6 +275,13 @@ export async function quizQuestionDataUrl(data, index, scale = 2) {
  * POST /v/quiz/cache_each_result/{quizId}/ { results:[{problemID,result,time}] }
  */
 export async function cacheQuizAnswer({ quizId, problemId, result }) {
+  // 测试模式：绝不发真实暂存请求（真机/ego 验证用）
+  const mock = getTestSubmitMode();
+  if (mock) {
+    await new Promise((r) => setTimeout(r, 250));
+    if (mock === 'fail') throw new Error('模拟暂存失败');
+    return { success: true, mocked: true, quizId, problemId };
+  }
   const token = (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || '';
   const res = Array.isArray(result)
     ? result.join('')
