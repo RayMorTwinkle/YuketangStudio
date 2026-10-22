@@ -2,6 +2,7 @@
 // 首次使用引导：只讲 3 个入口（工具栏位置 / 历史课件下载 / PPT 问答），
 // 其余功能让用户自行探索。可跳过，跳过后不再出现（按版本号记录）。
 import { storage } from '../core/storage.js';
+import { expandToolbar } from './toolbar.js';
 
 const KEY = 'onboarding.version';
 const VERSION = 1;
@@ -20,6 +21,7 @@ export function maybeShowOnboarding() {
 
 function show() {
   const toolbar = document.getElementById('ykt-helper-toolbar');
+  expandToolbar();   // 上次收起过也先展开，避免引导高亮到一条窄轨
   toolbar?.classList.add('ykt-ob-raised');
 
   const wrap = document.createElement('div');
@@ -30,7 +32,7 @@ function show() {
       <div class="ykt-ob-title">👋 欢迎使用 YuketangStudio</div>
       <div class="ykt-ob-sub">第一次用？30 秒了解 3 个入口；如果你已经会用，完全可以跳过。</div>
       <ul class="ykt-ob-list">
-        <li><b>工具栏</b>：左下角（手机端是左侧竖排的 3 个按钮）</li>
+        <li><b>工具栏</b>：左下角（手机端是左侧竖排按钮，点 ‹ 可收起成窄条）</li>
         <li><b>历史课件下载</b>：主面板 →「课件」</li>
         <li><b>PPT 问答</b>：主面板 →「对话」</li>
       </ul>

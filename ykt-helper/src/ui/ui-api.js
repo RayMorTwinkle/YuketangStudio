@@ -38,6 +38,8 @@ function saveConfig() {
         autoAnswerOnAutoJoin: !!this.config.autoAnswerOnAutoJoin,
       });
     } catch (e) { log.warn('[ui.saveConfig] failed', e); }
+  // 通知工具栏等轻量 UI 同步（提醒/自动作答角标）
+  try { window.dispatchEvent(new CustomEvent('ykt:config:changed')); } catch {}
 }
 
 // 面板层级管理
