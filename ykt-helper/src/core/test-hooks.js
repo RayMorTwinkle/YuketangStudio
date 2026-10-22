@@ -6,7 +6,7 @@ import { isTestMode } from './test-mode.js';
 import { repo } from '../state/repo.js';
 import { ui } from '../ui/ui-api.js';
 import { log } from './log.js';
-import { sendCurrent, askAIForProblem, askAnswer, getAIHistory, resetAIView, buildDiagnosticReport } from '../ui/panels/ai.js';
+import { sendCurrent, askAIForProblem, askAnswer, getAIHistory, resetAIView, buildDiagnosticReport, copyDiagnosticReport } from '../ui/panels/ai.js';
 import { buildAssignmentTask } from '../answer/adapters/assignment.js';
 import { resolveProblemListTask } from '../answer/context.js';
 import { getAnswerLog } from '../answer/debug.js';
@@ -178,6 +178,11 @@ export function installTestHooks() {
     /** 读当前测试配置 */
     getConfig() {
       return { regexToolCall: !!ui.config.regexToolCall, ai: ui.config.ai };
+    },
+
+    /** 走真实「诊断」按钮逻辑（复制+保存） */
+    copyDiagnostic() {
+      return copyDiagnosticReport();
     },
 
     /** 生成诊断报告（不复制/不写文件） */

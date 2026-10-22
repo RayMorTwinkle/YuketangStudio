@@ -5384,12 +5384,9 @@
     try {
       const {json: json, summary: summary, task: task} = buildDiagnosticReport();
       let copied = false;
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(json);
-          copied = true;
-        }
-      } catch {/* fallback below */}
+      if (navigator.clipboard?.writeText) 
+      // 某些 WebView/权限状态下 writeText 会一直 pending；最多等 600ms，不阻塞保存/上报
+      copied = await Promise.race([ navigator.clipboard.writeText(json).then(() => true).catch(() => false), new Promise(resolve => setTimeout(() => resolve(false), 600)) ]);
       if (!copied) try {
         const ta = document.createElement("textarea");
         ta.value = json;
@@ -11782,6 +11779,10 @@
           regexToolCall: !!ui.config.regexToolCall,
           ai: ui.config.ai
         };
+      },
+      /** 走真实「诊断」按钮逻辑（复制+保存） */
+      copyDiagnostic() {
+        return copyDiagnosticReport();
       },
       /** 生成诊断报告（不复制/不写文件） */
       diagnostic() {
