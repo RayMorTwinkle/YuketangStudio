@@ -2,6 +2,8 @@ import tpl from './active-problems.html';
 import { log } from '../../core/log.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
+import { remainingSeconds } from '../../core/problem-timing.js';
+import { askProblem } from './ai.js';
 
 let mounted = false;
 let root;
@@ -39,8 +41,8 @@ export function updateActiveProblems() {
     if (!p || p.result) return;
 
     // endTime 可能是 null（不限时）或基于服务端时钟（clockOffset 修正）
-    const hasDeadline = Number.isFinite(status.endTime);
-    const remain = hasDeadline ? Math.max(0, Math.floor((status.endTime - (now + (status.clockOffset || 0))) / 1000)) : null;
+    const remain = remainingSeconds(status.endTime, status.clockOffset, now);
+    const hasDeadline = remain !== null;
     if (hasDeadline && remain <= 0) {
       log.dbg(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
       return;
@@ -78,7 +80,7 @@ export function updateActiveProblems() {
 
     const ai = document.createElement('button');
     ai.textContent = 'AI 解答';
-    ai.onclick = () => window.dispatchEvent(new CustomEvent('ykt:open-ai'));
+    ai.onclick = () => { askProblem(pid).catch((e) => log.warn('[ActiveProblems] askProblem failed', e)); };
     bar.appendChild(ai);
 
     card.appendChild(bar);

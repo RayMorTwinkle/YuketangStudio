@@ -11,6 +11,7 @@ import { actions } from '../../state/actions.js';
 import { ui } from '../ui-api.js';
 import { askAnswer } from './ai.js';
 import { resolveProblemListTask } from '../../answer/context.js';
+import { normalizeTimestamp, isDeadlineReached } from '../../core/problem-timing.js';
 
 let mounted = false;
 let root;
@@ -89,10 +90,9 @@ function problemState(pidStr, prob) {
   const status = repo.problemStatus.get(pidStr);
   const answered = !!(prob?.result || prob?.status?.myAnswer || status?.done);
   if (answered) return 'done';
-  const endTime = Number(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
-  if (Number.isFinite(endTime) && endTime > 0) {
-    const serverNow = Date.now() + (status?.clockOffset || 0);
-    if (serverNow > endTime) return 'expired';
+  const endTime = normalizeTimestamp(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
+  if (endTime != null) {
+    if (isDeadlineReached(endTime, status?.clockOffset)) return 'expired';
     return 'active';
   }
   return status ? 'active' : 'todo';
@@ -100,8 +100,8 @@ function problemState(pidStr, prob) {
 
 function endTimeText(pidStr, prob) {
   const status = repo.problemStatus.get(pidStr);
-  const endTime = Number(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
-  if (!Number.isFinite(endTime) || endTime <= 0) return '不限时';
+  const endTime = normalizeTimestamp(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
+  if (endTime == null) return '不限时';
   const d = new Date(endTime);
   return `截止 ${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }

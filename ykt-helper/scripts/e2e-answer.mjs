@@ -243,6 +243,75 @@ await okAsync('历史题无 status → 只展示，复制答案', async () => {
   assert.equal(r.card.btn, '复制答案');
 });
 
+console.log('== 倒计时时间戳 ==');
+await okAsync('unlockproblem 的 dt 为秒 → 状态写入毫秒', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI();
+    const pid = T.injectProblem(1, { body: '秒级时间戳' });
+    const dt = Math.floor(Date.now() / 1000) + 300;
+    const st = T.unlockProblem(pid, { dt, limit: 60 });
+    return { pid, dt, startTime: st?.startTime, endTime: st?.endTime };
+  });
+  assert.equal(r.startTime, r.dt * 1000);
+  assert.equal(r.endTime, r.dt * 1000 + 60000);
+});
+
+console.log('== 答题提醒 AI ==');
+await okAsync('提醒卡片 AI 使用该题 task，而不是当前页', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI();
+    const pid1 = T.injectProblem(1, { body: '提醒里的题', options: [{ key: 'A', value: '甲' }, { key: 'B', value: '乙' }] });
+    // 再注入一题，让“当前页”变成另一道题；提醒卡片 AI 仍必须答 pid1
+    const pid2 = T.injectProblem(1, { body: '当前页另一题', options: [{ key: 'A', value: '甲' }, { key: 'B', value: '乙' }] });
+    T.mockTool({ answers: ['A'] });
+    const run = await T.askProblem(pid1);
+    return {
+      ok: run?.ok,
+      taskId: T.diagnostic()?.task?.id || '',
+      pid1: String(pid1),
+      pid2: String(pid2),
+      card: window.__e2e.card(),
+    };
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.taskId, `classroom:${r.pid1}`);
+  assert.notEqual(r.pid1, r.pid2);
+  assert.equal(r.card.answer, 'A');
+});
+
+await okAsync('通知弹窗 AI 使用该题 task', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI();
+    const pid1 = T.injectProblem(1, { body: '通知弹窗里的题', options: [{ key: 'A', value: '甲' }, { key: 'B', value: '乙' }] });
+    T.injectProblem(1, { body: '当前页另一题', options: [{ key: 'A', value: '甲' }, { key: 'B', value: '乙' }] });
+    T.mockTool({ answers: ['B'] });
+    document.querySelectorAll('.ykt-problem-notify').forEach((e) => e.remove());
+    T.notifyProblem(pid1);
+    await new Promise((r) => setTimeout(r, 60));
+    const popup = document.querySelector('.ykt-problem-notify');
+    const btn = popup ? [...popup.querySelectorAll('button')].find((b) => b.textContent.includes('AI 解答')) : null;
+    btn?.click();
+    await new Promise((r) => setTimeout(r, 1200));
+    return { taskId: T.diagnostic()?.task?.id || '', pid1: String(pid1), hasPopup: !!popup, hasBtn: !!btn };
+  });
+  assert.equal(r.hasPopup, true);
+  assert.equal(r.hasBtn, true);
+  assert.equal(r.taskId, `classroom:${r.pid1}`);
+});
+
+await okAsync('同一题 60s 内重复提醒只弹一次', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI();
+    const pid = T.injectProblem(1, { body: '重复提醒' });
+    document.querySelectorAll('.ykt-problem-notify').forEach((e) => e.remove());
+    T.notifyProblem(pid);
+    T.notifyProblem(pid);
+    await new Promise((r) => setTimeout(r, 50));
+    return { count: document.querySelectorAll('.ykt-problem-notify').length };
+  });
+  assert.equal(r.count, 1);
+});
+
 console.log('== regex 模式 ==');
 const regexPage = await setup('answer-e2e-regex', { regex: true });
 await okAsync('regex 单选：<answer>B</answer> → B', async () => {

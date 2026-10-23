@@ -12,6 +12,7 @@ import { buildQuestionBlock, buildAnswerContract, buildMessages } from '../src/a
 import { toClassroomResult, toQuizResult } from '../src/answer/serialize.js';
 import { runAnswer } from '../src/answer/engine.js';
 import { sanitizeTraceEvent } from '../src/core/telemetry.js';
+import { normalizeTimestamp, deadlineFromLimit, remainingSeconds, isDeadlineReached } from '../src/core/problem-timing.js';
 
 let pass = 0;
 let fail = 0;
@@ -45,6 +46,31 @@ const classroomTask = buildClassroomTask({
   slide: { id: 's1', index: 1, presentationId: 'p1' },
   status: classroomStatus,
   lessonId: 'L1',
+});
+
+console.log('== 时间归一化 ==');
+ok('秒级时间戳 → 毫秒', () => {
+  assert.equal(normalizeTimestamp(1_700_000_000), 1_700_000_000_000);
+});
+ok('毫秒时间戳保持毫秒', () => {
+  assert.equal(normalizeTimestamp(1_700_000_000_123), 1_700_000_000_123);
+});
+ok('空/非法时间戳 → null', () => {
+  assert.equal(normalizeTimestamp(null), null);
+  assert.equal(normalizeTimestamp(0), null);
+  assert.equal(normalizeTimestamp('x'), null);
+});
+ok('dt(秒) + limit(秒) → 正确毫秒截止时间', () => {
+  assert.equal(deadlineFromLimit(1_700_000_000, 60), 1_700_000_060_000);
+});
+ok('剩余秒数带 clockOffset', () => {
+  assert.equal(remainingSeconds(1_700_000_060_000, 0, 1_700_000_000_000), 60);
+  assert.equal(remainingSeconds(1_700_000_060_000, 5_000, 1_700_000_000_000), 55);
+});
+ok('到点/过期判断', () => {
+  assert.equal(isDeadlineReached(1_700_000_060_000, 0, 1_700_000_060_000), true);
+  assert.equal(isDeadlineReached(1_700_000_060_000, 0, 1_700_000_059_999), false);
+  assert.equal(isDeadlineReached(null), false);
 });
 
 console.log('== 适配器 ==');

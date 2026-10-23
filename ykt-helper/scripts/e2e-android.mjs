@@ -210,6 +210,48 @@ for (let round = 1; round <= 3; round++) {
   });
 }
 
+console.log('== 真机提醒 AI ==');
+await check('提醒卡片 AI 使用该题 task（不是当前页）', async () => {
+  const r = await run('notify-card', ASYNC(`
+    T.reset();T.clearUI();
+    const pid1=T.injectProblem(1,{body:'提醒里的题',options:[{key:'A',value:'甲'},{key:'B',value:'乙'}]});
+    const pid2=T.injectProblem(1,{body:'当前页另一题',options:[{key:'A',value:'甲'},{key:'B',value:'乙'}]});
+    T.mockTool({answers:['A']});
+    const run=await T.askProblem(pid1);
+    window.__e2eResult={ok:run?.ok,task:T.diagnostic()?.task?.id||'',pid1:String(pid1),pid2:String(pid2)};
+  `), 9000);
+  if (!r.ok || r.task !== `classroom:${r.pid1}` || r.pid1 === r.pid2) throw new Error(JSON.stringify(r));
+});
+
+await check('通知弹窗 AI 使用该题 task', async () => {
+  const r = await run('notify-popup', ASYNC(`
+    T.reset();T.clearUI();
+    const pid1=T.injectProblem(1,{body:'通知弹窗里的题',options:[{key:'A',value:'甲'},{key:'B',value:'乙'}]});
+    T.injectProblem(1,{body:'当前页另一题',options:[{key:'A',value:'甲'},{key:'B',value:'乙'}]});
+    T.mockTool({answers:['B']});
+    document.querySelectorAll('.ykt-problem-notify').forEach(e=>e.remove());
+    T.notifyProblem(pid1);
+    await new Promise(x=>setTimeout(x,80));
+    const popup=document.querySelector('.ykt-problem-notify');
+    const btn=popup?[...popup.querySelectorAll('button')].find(b=>b.textContent.includes('AI 解答')):null;
+    btn?.click();
+    await new Promise(x=>setTimeout(x,1200));
+    window.__e2eResult={task:T.diagnostic()?.task?.id||'',pid1:String(pid1),hasPopup:!!popup,hasBtn:!!btn};
+  `), 9000);
+  if (!r.hasPopup || !r.hasBtn || r.task !== `classroom:${r.pid1}`) throw new Error(JSON.stringify(r));
+});
+
+await check('unlockproblem dt 秒 → 状态毫秒', async () => {
+  const r = await run('notify-time', ASYNC(`
+    T.reset();T.clearUI();
+    const pid=T.injectProblem(1,{body:'秒级时间戳'});
+    const dt=Math.floor(Date.now()/1000)+300;
+    const st=T.unlockProblem(pid,{dt,limit:60});
+    window.__e2eResult={dt,startTime:st?.startTime,endTime:st?.endTime};
+  `), 5000);
+  if (r.startTime !== r.dt * 1000 || r.endTime !== r.dt * 1000 + 60000) throw new Error(JSON.stringify(r));
+});
+
 console.log('== 真机 regex 模式 ==');
 await setRegex(true);
 for (let round = 1; round <= 2; round++) {

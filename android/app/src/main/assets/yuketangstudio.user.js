@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.7.3
+// @version      0.7.4
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -673,7 +673,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.7.3" !== "undefined" && "0.7.3") return String("0.7.3");
+      if (typeof "0.7.4" !== "undefined" && "0.7.4") return String("0.7.4");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -1907,7 +1907,7 @@
       }
     });
   }
-  const L$2 = (...a) => log$1.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
+  const L$3 = (...a) => log$1.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
   const W$1 = (...a) => log$1.warn("[雨课堂助手][WARN][vuex-helper]", ...a);
   const E = (...a) => log$1.err("[雨课堂助手][ERR][vuex-helper]", ...a);
   let _vueMissWarned = false;
@@ -2028,12 +2028,12 @@
       };
       const unwatch = store.watch(lastSid, (n, o) => {
         if (!n || n === o) return;
-        L$2("移动版时间线幻灯片切换", {
+        L$3("移动版时间线幻灯片切换", {
           newSid: n
         });
         callback(n, null);
       });
-      L$2("已启动移动版时间线幻灯片监听");
+      L$3("已启动移动版时间线幻灯片监听");
       return unwatch;
     }
     // 移动版实时课堂：watch「最后一个含 sid 卡片的 sid 值」——
@@ -2048,18 +2048,18 @@
       };
       const unwatch = store.watch(lastSid, (n, o) => {
         if (!n || n === o) return;
-        L$2("移动版时间线页面切换", {
+        L$3("移动版时间线页面切换", {
           newSid: n
         });
         callback(n, null);
       });
-      L$2("已启动移动版时间线页面监听");
+      L$3("已启动移动版时间线页面监听");
       return unwatch;
     }
     const unwatch = store.watch(state => state.currSlide, (ns, os) => {
       const newSid = ns?.sid == null ? null : String(ns.sid);
       const oldSid = os?.sid == null ? null : String(os.sid);
-      L$2("主界面页面切换", {
+      L$3("主界面页面切换", {
         oldSid: oldSid,
         newSid: newSid,
         newType: ns?.type,
@@ -2071,7 +2071,7 @@
     }, {
       deep: false
     });
-    L$2("已启动主界面页面切换监听");
+    L$3("已启动主界面页面切换监听");
     return unwatch;
   }
   /** 统一从各种移动版 store 形态取「幻灯片列表」：
@@ -2132,7 +2132,7 @@
       });
       updated++;
     }
-    if (updated) L$2("移动版幻灯片镜像进 repo:", updated, "个课件");
+    if (updated) L$3("移动版幻灯片镜像进 repo:", updated, "个课件");
     return updated;
   }
   function waitForVueReady(timeoutMs = 15e3) {
@@ -2141,7 +2141,7 @@
       const check = () => {
         const app = getVueApp();
         if (app && getStore(app)) {
-          L$2("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
+          L$3("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
           resolve(app);
         } else if (Date.now() - t0 >= timeoutMs) {
           W$1(`waitForVueReady: ${timeoutMs}ms 内未等到 Vue store，放弃（跟随/识别功能降级）`);
@@ -2497,6 +2497,15 @@
     }
     return null;
   }
+  function findSlideForProblem(problemId) {
+    const pid = asIdStr(problemId);
+    if (!pid) return null;
+    for (const [, pres] of repo.presentations) {
+      const hit = (pres?.slides || []).find(s => String(s.problem?.problemId ?? s.problem?.id) === pid);
+      if (hit) return hit;
+    }
+    return null;
+  }
   /** 当前应分析的 slide：显式指定 > 主界面 > 课件浏览选中 > 最近题目关联页 */  function pickCurrentSlide({preferredSlideId: preferredSlideId = null} = {}) {
     const preferred = asIdStr(preferredSlideId);
     if (preferred) {
@@ -2609,6 +2618,44 @@
       status: status,
       lessonId: repo.currentLessonId,
       imageDataUrl: image
+    });
+    return {
+      task: task,
+      slide: slide,
+      status: status,
+      reason: task ? "" : "题目信息不完整"
+    };
+  }
+  /**
+   * 活跃题目（答题提醒卡片）→ AnswerTask。
+   * 必须使用该题自己的 slide/problem，绝不回退到当前页，否则通知里的 AI 会答成别的题。
+   */  async function resolveActiveProblemTask(problemId) {
+    const pid = asIdStr(problemId);
+    if (!pid) return {
+      task: null,
+      reason: "没有题目 ID"
+    };
+    const status = repo.problemStatus.get(pid) || null;
+    let problem = repo.problems.get(pid) || null;
+    if (!problem) {
+      const entry = repo.encounteredProblems.find(p => String(p.problemId) === pid);
+      if (entry) problem = entry;
+    }
+    if (!problem) return {
+      task: null,
+      status: status,
+      reason: "题目数据尚未加载"
+    };
+    const slide = (status?.slideId ? repo.slides.get(String(status.slideId)) || findSlideAcrossPresentations$1(String(status.slideId)) : null) || findSlideForProblem(pid);
+    let image = "";
+    if (slide?.id) image = await imageForSlide(slide);
+    const task = buildClassroomTask({
+      problem: problem,
+      slide: slide,
+      status: status,
+      lessonId: repo.currentLessonId,
+      imageDataUrl: image,
+      source: "classroom"
     });
     return {
       task: task,
@@ -4816,7 +4863,8 @@
   // src/ui/panels/ai.js
   // AI 解答面板：只负责 UI / 流式渲染 / 触发 AnswerEngine。
   // 答题上下文、解析、提交全部在 src/answer/ 下，面板不再判断 __submitTarget 之类字段。
-    let mounted$8 = false;
+    const L$2 = (...a) => log$1.dbg("[ai]", ...a);
+  let mounted$8 = false;
   let root$7;
   let history$1 = [];
  // 手动问答历史（作业/自动作答绝不写入）
@@ -4920,6 +4968,20 @@
     };
     root$7.__yksOnHide = () => {};
     return root$7;
+  }
+  function showAIPanel(v = true) {
+    if (!mounted$8) mountAIPanel();
+    root$7.classList.toggle("visible", !!v);
+    if (v) {
+      lastTask = null;
+      renderCtxStatus();
+      if (history$1.length === 0) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
+      if (ui.config.aiAutoAnalyze && history$1.length === 0 && !streaming$1) queueMicrotask(() => sendCurrent$1());
+      setTimeout(() => $$4("#ykt-ai-input")?.focus(), 60);
+    }
+    L$2("showAIPanel", {
+      visible: v
+    });
   }
   function abortStreaming$1(reason = "已取消") {
     if (abortCtrl$1) try {
@@ -5480,6 +5542,24 @@
       setStreamingFlag$1(false);
       abortCtrl$1 = null;
       if (sendBtn) sendBtn.disabled = false;
+    }
+  }
+  /**
+   * 答题提醒卡片 / 通知 → 指定题目解答。
+   * 显式带 problemId 构建任务，不依赖当前页，避免和题目页 AI 行为不一致。
+   */  async function askProblem(problemId) {
+    const r = await resolveActiveProblemTask(problemId);
+    if (!r.task) {
+      ui.toast?.("题目信息不完整，无法解答", 2200);
+      return null;
+    }
+    showAIPanel(true);
+    try {
+      return await askAnswer(r.task);
+    } catch (e) {
+      log$1.warn("[ai] askProblem failed", e);
+      ui.toast?.("AI 解答失败：" + (e?.message || e), 2600);
+      return null;
     }
   }
   /** 兼容旧调用：指定题目 + 可选自动提交 */  async function askAIForProblem(problem, {autoSubmit: autoSubmit = false} = {}) {
@@ -7443,6 +7523,33 @@
     }
   }
   var tpl$5 = '<div id="ykt-active-problems-panel" class="ykt-active-wrapper">\n  <div id="ykt-active-problems" class="active-problems"></div>\n</div>\n';
+  // src/core/problem-timing.js
+  // 题目时间唯一入口：服务端可能给秒级或毫秒级时间戳，统一在这里归一化。
+  // 所有倒计时/过期判断都从这里取，避免 actions / active-problems / 通知弹窗各自算一套。
+  /** 秒级/毫秒级时间戳 → 毫秒；非法/空 → null */  function normalizeTimestamp(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    // 1e11 约等于 1973 年的毫秒值；小于它的正数按秒处理
+        return Math.abs(n) < 1e11 ? Math.round(n * 1e3) : Math.round(n);
+  }
+  /** 解锁时间 + 限时秒数 → 截止时间（毫秒）；无有效限时 → null */  function deadlineFromLimit(startTime, limitSeconds) {
+    const start = normalizeTimestamp(startTime);
+    const seconds = Number(limitSeconds);
+    if (start == null || !Number.isFinite(seconds) || seconds <= 0) return null;
+    return start + Math.round(seconds * 1e3);
+  }
+  /** 服务端时间轴上的“现在” */  function serverNow(clockOffset = 0, now = Date.now()) {
+    return now + (Number(clockOffset) || 0);
+  }
+  /** 是否已到截止时间；endTime 为空表示不限时 */  function isDeadlineReached(endTime, clockOffset = 0, now = Date.now()) {
+    const end = normalizeTimestamp(endTime);
+    return end != null && serverNow(clockOffset, now) >= end;
+  }
+  /** 剩余秒数；endTime 为空表示不限时，返回 null */  function remainingSeconds(endTime, clockOffset = 0, now = Date.now()) {
+    const end = normalizeTimestamp(endTime);
+    if (end == null) return null;
+    return Math.max(0, Math.floor((end - serverNow(clockOffset, now)) / 1e3));
+  }
   let mounted$6 = false;
   let root$6;
   function $$2(sel) {
@@ -7475,8 +7582,8 @@
       const p = repo.problems.get(String(pid));
       if (!p || p.result) return;
       // endTime 可能是 null（不限时）或基于服务端时钟（clockOffset 修正）
-            const hasDeadline = Number.isFinite(status.endTime);
-      const remain = hasDeadline ? Math.max(0, Math.floor((status.endTime - (now + (status.clockOffset || 0))) / 1e3)) : null;
+            const remain = remainingSeconds(status.endTime, status.clockOffset, now);
+      const hasDeadline = remain !== null;
       if (hasDeadline && remain <= 0) {
         log$1.dbg(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
         return;
@@ -7516,7 +7623,9 @@
       bar.appendChild(go);
       const ai = document.createElement("button");
       ai.textContent = "AI 解答";
-      ai.onclick = () => window.dispatchEvent(new CustomEvent("ykt:open-ai"));
+      ai.onclick = () => {
+        askProblem(pid).catch(e => log$1.warn("[ActiveProblems] askProblem failed", e));
+      };
       bar.appendChild(ai);
       card.appendChild(bar);
       box.appendChild(card);
@@ -7601,18 +7710,17 @@
     const status = repo.problemStatus.get(pidStr);
     const answered = !!(prob?.result || prob?.status?.myAnswer || status?.done);
     if (answered) return "done";
-    const endTime = Number(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
-    if (Number.isFinite(endTime) && endTime > 0) {
-      const serverNow = Date.now() + (status?.clockOffset || 0);
-      if (serverNow > endTime) return "expired";
+    const endTime = normalizeTimestamp(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
+    if (endTime != null) {
+      if (isDeadlineReached(endTime, status?.clockOffset)) return "expired";
       return "active";
     }
     return status ? "active" : "todo";
   }
   function endTimeText(pidStr, prob) {
     const status = repo.problemStatus.get(pidStr);
-    const endTime = Number(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
-    if (!Number.isFinite(endTime) || endTime <= 0) return "不限时";
+    const endTime = normalizeTimestamp(status?.endTime ?? prob?.endTime ?? prob?.status?.endTime);
+    if (endTime == null) return "不限时";
     const d = new Date(endTime);
     return `截止 ${d.getMonth() + 1}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
@@ -8985,7 +9093,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.7.3";
+      return "0.7.4";
     } catch {}
     return "0.0.0";
   }
@@ -9160,8 +9268,8 @@
   function mountAboutPanel() {
     if (mounted$2) return root$2;
     const host = document.createElement("div");
-    // "0.7.3" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.7.3"}<`);
+    // "0.7.4" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.7.4"}<`);
     document.body.appendChild(host.firstElementChild);
     root$2 = document.getElementById("ykt-about-panel");
     const $btn = root$2.querySelector("#ykt-about-check");
@@ -9963,6 +10071,7 @@
       ev.preventDefault();
     });
   }
+  const _recentProblemNotices = new Map;
   const ui = {
     get config() {
       return _config;
@@ -9972,6 +10081,7 @@
     updateSlideView: updateSlideView,
     askAIForCurrent: askAIForCurrent,
     askAnswer: askAnswer,
+    askProblem: askProblem,
     updateActiveProblems: updateActiveProblems,
     updateProblemList: updateProblemList,
     // 提升面板层级的辅助函数
@@ -10010,8 +10120,17 @@
     // 题目提醒
     notifyProblem(problem, slide) {
       try {
+        // 同题 60s 内只提醒一次：WS 可能重复推 unlockproblem，重复弹窗/响铃没有意义
+        const notifyPid = String(problem?.problemId ?? problem?.id ?? "");
+        const notifyNow = Date.now();
+        if (notifyPid) {
+          const last = _recentProblemNotices.get(notifyPid);
+          if (last && notifyNow - last < 6e4) return;
+          _recentProblemNotices.set(notifyPid, notifyNow);
+          for (const [k, t] of _recentProblemNotices) if (notifyNow - t > 6e4) _recentProblemNotices.delete(k);
+        }
         // 1) 原生通知（如果可用，备用，不阻碍自定义弹窗）
-        try {
+                try {
           this.nativeNotify?.({
             title: "雨课堂习题提示",
             text: this.getProblemDetail(problem),
@@ -10117,17 +10236,28 @@
         head.appendChild(closeBtn);
         body.appendChild(head);
         body.appendChild(detail);
-        // 实时倒计时：用服务端时钟（clockOffset）换算，每秒刷新
-                const pid = String(problem?.problemId ?? problem?.id ?? "");
+        const pid = String(problem?.problemId ?? problem?.id ?? "");
         const st = pid ? repo.problemStatus.get(pid) : null;
-        const endTime = Number(st?.endTime ?? problem?.endTime);
-        if (Number.isFinite(endTime) && endTime > 0) {
+        // 通知里也能直接进入“这道题”的 AI 解答（显式 task，不依赖当前页）
+                if (pid) {
+          const aiBtn = document.createElement("button");
+          aiBtn.textContent = "AI 解答";
+          aiBtn.style.cssText = "margin-top:10px;padding:5px 12px;border:1px solid rgba(255,255,255,.35);border-radius:6px;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;font-size:12px";
+          aiBtn.onclick = () => {
+            wrapper.remove();
+            askProblem?.(pid).catch(e => log$1.warn("[notify] askProblem failed", e));
+          };
+          body.appendChild(aiBtn);
+        }
+        // 实时倒计时：用服务端时钟（clockOffset）换算，每秒刷新
+                const endTime = normalizeTimestamp(st?.endTime ?? problem?.endTime);
+        if (endTime != null) {
           const cd = document.createElement("div");
           cd.style.cssText = "margin-top:8px;font-size:12px;opacity:.85;font-variant-numeric:tabular-nums";
           body.appendChild(cd);
           const offset = Number(st?.clockOffset) || 0;
           const tick = () => {
-            const remain = Math.max(0, Math.floor((endTime - (Date.now() + offset)) / 1e3));
+            const remain = remainingSeconds(endTime, offset);
             const mm = String(Math.floor(remain / 60)).padStart(2, "0");
             const ss = String(remain % 60).padStart(2, "0");
             cd.textContent = remain > 0 ? `⏱ 剩余 ${mm}:${ss}` : "⏱ 已结束";
@@ -10958,7 +11088,8 @@
       log$1.dbg("[雨课堂助手][DBG][onUnlockProblem] 题目ID:", data.prob);
       log$1.dbg("[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:", data.sid);
       log$1.dbg("[雨课堂助手][DBG][onUnlockProblem] 课件ID:", data.pres);
-      const dt = Number.isFinite(+data.dt) ? +data.dt : Date.now();
+      // 服务端 dt 可能是秒或毫秒；limit 是秒。统一在这里归一化。
+            const dt = normalizeTimestamp(data.dt) ?? Date.now();
       const limitS = Number(data.limit);
       // clockOffset = 服务端时钟 - 本地时钟：endTime 基于服务端时间轴，判过期时必须换算
             const clockOffset = dt - Date.now();
@@ -10967,7 +11098,7 @@
         presentationId: data.pres,
         slideId: String(data.sid),
         startTime: dt,
-        endTime: Number.isFinite(limitS) && limitS > 0 ? dt + 1e3 * limitS : null,
+        endTime: deadlineFromLimit(dt, limitS),
         // null = 不限时
         clockOffset: clockOffset,
         done: !!problem.result,
@@ -10975,8 +11106,7 @@
         answering: !!prev?.answering
       };
       repo.problemStatus.set(String(data.prob), status);
-      const serverNow = Date.now() + clockOffset;
-      if (status.endTime != null && serverNow > status.endTime || problem.result) {
+      if (isDeadlineReached(status.endTime, clockOffset) || problem.result) {
         log$1.dbg("[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过");
         return;
       }
@@ -11736,6 +11866,37 @@
           ui.showAIPanel?.(true);
         } catch {}
         return askAnswer(r.task);
+      },
+      /** 从答题提醒卡片发起 AI 解答（显式 problemId，等价点卡片上的 AI 按钮） */
+      async askProblem(problemId) {
+        const r = await askProblem(problemId);
+        if (!r) throw new Error("题目信息不完整");
+        return r;
+      },
+      /** 直接触发一次 unlockproblem（验证 dt 秒/毫秒归一化与状态写入） */
+      unlockProblem(problemId, {dt: dt, limit: limit} = {}) {
+        const pid = String(problemId);
+        const st = repo.problemStatus.get(pid);
+        const problem = repo.problems.get(pid);
+        if (!st || !problem) throw new Error("题目不存在");
+        actions.onUnlockProblem({
+          prob: pid,
+          sid: st.slideId,
+          pres: "test-presentation",
+          dt: dt,
+          limit: limit
+        });
+        return repo.problemStatus.get(pid);
+      },
+      /** 弹一次题目提醒（用于验证通知弹窗里的 AI 入口） */
+      notifyProblem(problemId) {
+        const pid = String(problemId);
+        const problem = repo.problems.get(pid);
+        if (!problem) throw new Error("题目不存在");
+        const st = repo.problemStatus.get(pid);
+        const slide = st?.slideId ? repo.slides.get(String(st.slideId)) : null;
+        ui.notifyProblem(problem, slide);
+        return true;
       },
       /** 删除题目 status（模拟历史题） */
       dropStatus(problemId) {

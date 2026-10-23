@@ -20,6 +20,16 @@ function findSlideAcrossPresentations(idStr) {
   return null;
 }
 
+function findSlideForProblem(problemId) {
+  const pid = asIdStr(problemId);
+  if (!pid) return null;
+  for (const [, pres] of repo.presentations) {
+    const hit = (pres?.slides || []).find((s) => String(s.problem?.problemId ?? s.problem?.id) === pid);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /** 当前应分析的 slide：显式指定 > 主界面 > 课件浏览选中 > 最近题目关联页 */
 export function pickCurrentSlide({ preferredSlideId = null } = {}) {
   const preferred = asIdStr(preferredSlideId);
@@ -109,6 +119,36 @@ export async function resolveProblemListTask(entry) {
     status,
     lessonId: repo.currentLessonId,
     imageDataUrl: image,
+  });
+  return { task, slide, status, reason: task ? '' : '题目信息不完整' };
+}
+
+
+/**
+ * 活跃题目（答题提醒卡片）→ AnswerTask。
+ * 必须使用该题自己的 slide/problem，绝不回退到当前页，否则通知里的 AI 会答成别的题。
+ */
+export async function resolveActiveProblemTask(problemId) {
+  const pid = asIdStr(problemId);
+  if (!pid) return { task: null, reason: '没有题目 ID' };
+  const status = repo.problemStatus.get(pid) || null;
+  let problem = repo.problems.get(pid) || null;
+  if (!problem) {
+    const entry = repo.encounteredProblems.find((p) => String(p.problemId) === pid);
+    if (entry) problem = entry;
+  }
+  if (!problem) return { task: null, status, reason: '题目数据尚未加载' };
+  const slide = (status?.slideId ? (repo.slides.get(String(status.slideId)) || findSlideAcrossPresentations(String(status.slideId))) : null)
+    || findSlideForProblem(pid);
+  let image = '';
+  if (slide?.id) image = await imageForSlide(slide);
+  const task = buildClassroomTask({
+    problem,
+    slide,
+    status,
+    lessonId: repo.currentLessonId,
+    imageDataUrl: image,
+    source: 'classroom',
   });
   return { task, slide, status, reason: task ? '' : '题目信息不完整' };
 }

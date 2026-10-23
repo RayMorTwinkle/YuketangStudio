@@ -17,6 +17,7 @@ import { submitAnswerTask } from '../answer/submit.js';
 import { displayAnswer } from '../answer/model.js';
 import { getOverride } from '../ui/panels/ai.js';
 import { captureSlideImage } from '../capture/screenshoot.js';
+import { normalizeTimestamp, deadlineFromLimit, isDeadlineReached } from '../core/problem-timing.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
@@ -256,7 +257,8 @@ export const actions = {
     log.dbg('[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:', data.sid);
     log.dbg('[雨课堂助手][DBG][onUnlockProblem] 课件ID:', data.pres);
 
-    const dt = Number.isFinite(+data.dt) ? +data.dt : Date.now();
+    // 服务端 dt 可能是秒或毫秒；limit 是秒。统一在这里归一化。
+    const dt = normalizeTimestamp(data.dt) ?? Date.now();
     const limitS = Number(data.limit);
     // clockOffset = 服务端时钟 - 本地时钟：endTime 基于服务端时间轴，判过期时必须换算
     const clockOffset = dt - Date.now();
@@ -265,7 +267,7 @@ export const actions = {
       presentationId: data.pres,
       slideId: String(data.sid),
       startTime: dt,
-      endTime: Number.isFinite(limitS) && limitS > 0 ? dt + 1000 * limitS : null,   // null = 不限时
+      endTime: deadlineFromLimit(dt, limitS),   // null = 不限时
       clockOffset,
       done: !!problem.result,
       autoAnswerTime: null,
@@ -273,8 +275,7 @@ export const actions = {
     };
     repo.problemStatus.set(String(data.prob), status);
 
-    const serverNow = Date.now() + clockOffset;
-    if ((status.endTime != null && serverNow > status.endTime) || problem.result) {
+    if (isDeadlineReached(status.endTime, clockOffset) || problem.result) {
       log.dbg('[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过');
       return;
     }

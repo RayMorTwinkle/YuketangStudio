@@ -12,7 +12,7 @@ import { resolveCurrentSlideImage } from '../slide-image.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { getCurrentMainPageMeta } from '../../core/vuex-helper.js';
 import { buildClassroomTask } from '../../answer/adapters/classroom.js';
-import { resolveCurrentTask, pickCurrentSlide } from '../../answer/context.js';
+import { resolveCurrentTask, pickCurrentSlide, resolveActiveProblemTask } from '../../answer/context.js';
 import { runAnswer } from '../../answer/engine.js';
 import { submitAnswerTask } from '../../answer/submit.js';
 import { buildUserContent } from '../../answer/prompt.js';
@@ -680,6 +680,23 @@ export async function askAnswer(task, { autoSubmit = false, userText = '', soft 
     setStreamingFlag(false);
     abortCtrl = null;
     if (sendBtn) sendBtn.disabled = false;
+  }
+}
+
+/**
+ * 答题提醒卡片 / 通知 → 指定题目解答。
+ * 显式带 problemId 构建任务，不依赖当前页，避免和题目页 AI 行为不一致。
+ */
+export async function askProblem(problemId) {
+  const r = await resolveActiveProblemTask(problemId);
+  if (!r.task) { ui.toast?.('题目信息不完整，无法解答', 2200); return null; }
+  showAIPanel(true);
+  try {
+    return await askAnswer(r.task);
+  } catch (e) {
+    log.warn('[ai] askProblem failed', e);
+    ui.toast?.('AI 解答失败：' + (e?.message || e), 2600);
+    return null;
   }
 }
 

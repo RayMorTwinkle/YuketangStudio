@@ -11,6 +11,7 @@ import * as ActivePanel from './panels/active-problems.js';
 import * as ProblemListPanel from './panels/problem-list.js';
 import * as Shell from './panels/shell.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
+import { normalizeTimestamp, remainingSeconds } from '../core/problem-timing.js'
 
 const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
 // Object.assign 是浅拷贝——嵌套的 ai 若来自 DEFAULT_CONFIG 会与默认配置共享引用，
@@ -93,6 +94,8 @@ function enableNotifyDrag(wrapper, handle, bringToFront) {
   });
 }
 
+const _recentProblemNotices = new Map();
+
 export const ui = {
   get config() { return _config; },
   saveConfig,
@@ -101,6 +104,7 @@ export const ui = {
   updateSlideView: PresPanel.updateSlideView,
   askAIForCurrent: AIPanel.askAIForCurrent,
   askAnswer: AIPanel.askAnswer,
+  askProblem: AIPanel.askProblem,
   updateActiveProblems: ActivePanel.updateActiveProblems,
   updateProblemList: ProblemListPanel.updateProblemList,
 
@@ -147,6 +151,17 @@ export const ui = {
   // 题目提醒
   notifyProblem(problem, slide) {
     try {
+      // 同题 60s 内只提醒一次：WS 可能重复推 unlockproblem，重复弹窗/响铃没有意义
+      const notifyPid = String(problem?.problemId ?? problem?.id ?? '');
+      const notifyNow = Date.now();
+      if (notifyPid) {
+        const last = _recentProblemNotices.get(notifyPid);
+        if (last && notifyNow - last < 60_000) return;
+        _recentProblemNotices.set(notifyPid, notifyNow);
+        for (const [k, t] of _recentProblemNotices) {
+          if (notifyNow - t > 60_000) _recentProblemNotices.delete(k);
+        }
+      }
       // 1) 原生通知（如果可用，备用，不阻碍自定义弹窗）
       try {
         this.nativeNotify?.({
@@ -257,17 +272,27 @@ export const ui = {
       body.appendChild(head);
       body.appendChild(detail);
 
-      // 实时倒计时：用服务端时钟（clockOffset）换算，每秒刷新
       const pid = String(problem?.problemId ?? problem?.id ?? '');
       const st = pid ? repo.problemStatus.get(pid) : null;
-      const endTime = Number(st?.endTime ?? problem?.endTime);
-      if (Number.isFinite(endTime) && endTime > 0) {
+
+      // 通知里也能直接进入“这道题”的 AI 解答（显式 task，不依赖当前页）
+      if (pid) {
+        const aiBtn = document.createElement('button');
+        aiBtn.textContent = 'AI 解答';
+        aiBtn.style.cssText = 'margin-top:10px;padding:5px 12px;border:1px solid rgba(255,255,255,.35);border-radius:6px;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;font-size:12px';
+        aiBtn.onclick = () => { wrapper.remove(); AIPanel.askProblem?.(pid).catch((e) => log.warn('[notify] askProblem failed', e)); };
+        body.appendChild(aiBtn);
+      }
+
+      // 实时倒计时：用服务端时钟（clockOffset）换算，每秒刷新
+      const endTime = normalizeTimestamp(st?.endTime ?? problem?.endTime);
+      if (endTime != null) {
         const cd = document.createElement('div');
         cd.style.cssText = 'margin-top:8px;font-size:12px;opacity:.85;font-variant-numeric:tabular-nums';
         body.appendChild(cd);
         const offset = Number(st?.clockOffset) || 0;
         const tick = () => {
-          const remain = Math.max(0, Math.floor((endTime - (Date.now() + offset)) / 1000));
+          const remain = remainingSeconds(endTime, offset);
           const mm = String(Math.floor(remain / 60)).padStart(2, '0');
           const ss = String(remain % 60).padStart(2, '0');
           cd.textContent = remain > 0 ? `⏱ 剩余 ${mm}:${ss}` : '⏱ 已结束';

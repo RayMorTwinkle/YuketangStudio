@@ -6,7 +6,7 @@ import { isTestMode } from './test-mode.js';
 import { repo } from '../state/repo.js';
 import { ui } from '../ui/ui-api.js';
 import { log } from './log.js';
-import { sendCurrent, askAIForProblem, askAnswer, getAIHistory, resetAIView, buildDiagnosticReport, copyDiagnosticReport } from '../ui/panels/ai.js';
+import { sendCurrent, askAIForProblem, askAnswer, askProblem as askProblemById, getAIHistory, resetAIView, buildDiagnosticReport, copyDiagnosticReport } from '../ui/panels/ai.js';
 import { buildAssignmentTask } from '../answer/adapters/assignment.js';
 import { resolveProblemListTask } from '../answer/context.js';
 import { getAnswerLog } from '../answer/debug.js';
@@ -150,6 +150,34 @@ export function installTestHooks() {
       if (!r.task) throw new Error('题目信息不完整');
       try { ui.showAIPanel?.(true); } catch {}
       return askAnswer(r.task);
+    },
+
+    /** 从答题提醒卡片发起 AI 解答（显式 problemId，等价点卡片上的 AI 按钮） */
+    async askProblem(problemId) {
+      const r = await askProblemById(problemId);
+      if (!r) throw new Error('题目信息不完整');
+      return r;
+    },
+
+    /** 直接触发一次 unlockproblem（验证 dt 秒/毫秒归一化与状态写入） */
+    unlockProblem(problemId, { dt, limit } = {}) {
+      const pid = String(problemId);
+      const st = repo.problemStatus.get(pid);
+      const problem = repo.problems.get(pid);
+      if (!st || !problem) throw new Error('题目不存在');
+      actions.onUnlockProblem({ prob: pid, sid: st.slideId, pres: 'test-presentation', dt, limit });
+      return repo.problemStatus.get(pid);
+    },
+
+    /** 弹一次题目提醒（用于验证通知弹窗里的 AI 入口） */
+    notifyProblem(problemId) {
+      const pid = String(problemId);
+      const problem = repo.problems.get(pid);
+      if (!problem) throw new Error('题目不存在');
+      const st = repo.problemStatus.get(pid);
+      const slide = st?.slideId ? repo.slides.get(String(st.slideId)) : null;
+      ui.notifyProblem(problem, slide);
+      return true;
     },
 
     /** 删除题目 status（模拟历史题） */
