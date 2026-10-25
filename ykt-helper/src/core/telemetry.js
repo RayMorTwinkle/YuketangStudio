@@ -427,6 +427,52 @@ function scheduleTraceFlush(delay = 5000) {
   }, delay);
 }
 
+// ============================================================
+// 诊断报告上传：用户点「诊断」时主动上传完整 JSON（不依赖强化遥测开关）
+// ============================================================
+const DIAGNOSTIC_ENDPOINT = 'https://api.raymor.top/yuketangstudio/diagnostic';
+
+export async function uploadDiagnostic(report) {
+  // 测试模式：不访问真实服务器
+  try {
+    const mock = typeof window !== 'undefined' ? window.__yktTestMockDiagnostic : null;
+    if (mock === 'fail') throw new Error('mock diagnostic upload failed');
+    if (mock === 'ok') return { ok: true, id: 'diag_test_' + Date.now().toString(36), date: today() };
+  } catch (e) {
+    if (String(e?.message || '').includes('mock diagnostic')) throw e;
+  }
+  const body = {
+    installId: installId(),
+    platform: platform(),
+    version: version(),
+    report,
+  };
+  return new Promise((resolve, reject) => {
+    gm.xhr({
+      method: 'POST',
+      url: DIAGNOSTIC_ENDPOINT,
+      headers: { 'Content-Type': 'application/json' },
+      data: JSON.stringify(body),
+      timeout: 15000,
+      onload: (r) => {
+        if (r.status < 200 || r.status >= 300) {
+          reject(new Error('HTTP ' + r.status));
+          return;
+        }
+        try {
+          const data = JSON.parse(r.responseText || '{}');
+          if (!data || !data.id) throw new Error('响应缺少诊断 ID');
+          resolve(data);
+        } catch (e) {
+          reject(e);
+        }
+      },
+      onerror: () => reject(new Error('网络错误')),
+      ontimeout: () => reject(new Error('上传超时')),
+    });
+  });
+}
+
 /** 发送队列；成功移除已发送项，失败保留并 30s 后重试 */
 export async function flushTraces() {
   if (!enhancedEnabled()) return;

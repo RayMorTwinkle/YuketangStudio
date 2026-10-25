@@ -57,6 +57,22 @@ class YktBridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun closeCollect() = activity.closeCollectPage()
 
+    // ---------- 剪贴板 ----------
+    // WebView 里 navigator.clipboard / execCommand 在部分机型不可用；
+    // 诊断 ID 需要可靠复制，直接走原生剪贴板。
+    @JavascriptInterface
+    fun copyText(text: String) {
+        try {
+            activity.runOnUiThread {
+                val cm = activity.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("YuketangStudio", text))
+                Toast.makeText(activity, "已复制", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            activity.log("copyText 失败: ${e.message}")
+        }
+    }
+
     // ---------- 通知 ----------
     @JavascriptInterface
     fun notify(title: String, text: String, image: String, action: String) {

@@ -208,9 +208,16 @@ export function installTestHooks() {
       return { regexToolCall: !!ui.config.regexToolCall, ai: ui.config.ai };
     },
 
-    /** 走真实「诊断」按钮逻辑（复制+保存） */
+    /** 走真实「诊断」按钮逻辑（上传诊断；测试时用 mockDiagnostic 拦截网络） */
     copyDiagnostic() {
       return copyDiagnosticReport();
+    },
+
+    /** 模拟诊断上传：ok / fail；清除则不拦截 */
+    mockDiagnostic(mode = 'ok') {
+      if (mode == null || mode === 'off') delete window.__yktTestMockDiagnostic;
+      else window.__yktTestMockDiagnostic = mode;
+      return true;
     },
 
     /** 生成诊断报告（不复制/不写文件） */

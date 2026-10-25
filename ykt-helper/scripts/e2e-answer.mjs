@@ -105,6 +105,35 @@ await okAsync('诊断报告：包含 task/lastRun/answerLog', async () => {
   assert.ok(r.version);
 });
 
+await okAsync('诊断上传成功 → 返回短 ID，不依赖本地文件', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI();
+    T.injectProblem(1, { body: '诊断上传', options: [{ key: 'A', value: '甲' }, { key: 'B', value: '乙' }] });
+    T.mockDiagnostic('ok');
+    const out = await T.copyDiagnostic();
+    return { ok: out?.ok, id: out?.id || '', uploaded: out?.uploaded, hasJson: !!out?.json };
+  });
+  assert.equal(r.ok, true);
+  assert.match(r.id, /^diag_/);
+  assert.equal(r.uploaded, true);
+  assert.equal(r.hasJson, true);
+});
+
+await okAsync('诊断上传失败 → 复制 JSON 兜底，不落文件', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI();
+    T.injectProblem(1, { body: '诊断上传失败', options: [{ key: 'A', value: '甲' }, { key: 'B', value: '乙' }] });
+    T.mockDiagnostic('fail');
+    const out = await T.copyDiagnostic();
+    T.mockDiagnostic('off');
+    return { ok: out?.ok, uploaded: out?.uploaded, copied: out?.copied, hasJson: !!out?.json, error: out?.error || '' };
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.uploaded, false);
+  assert.equal(r.hasJson, true);
+  assert.match(r.error, /mock diagnostic/);
+});
+
 await okAsync('课堂单选：模型只回「答案: A」→ 手动兜底成卡片', async () => {
   const r = await toolsPage.evaluate(async () => {
     const T = window.__yktTest; T.reset(); T.clearUI();

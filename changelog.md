@@ -1,5 +1,13 @@
 # 更新日志
 
+0.7.5:
+
+- 🩺 **诊断按钮改为直接上传服务器**：点击后把完整诊断 JSON POST 到 `api.raymor.top/yuketangstudio/diagnostic`，成功后只复制短 ID（如 `diag_20261025_...`），不再要求用户保存/寻找 JSON 文件
+- ☁️ 服务端新增 `POST /yuketangstudio/diagnostic` + `GET /yuketangstudio/admin/diagnostics?id=...`；报告落 `data/diagnostics/YYYY-MM-DD.jsonl`，保留 30 天
+- 📋 上传失败时自动复制完整 JSON 作为兜底，仍然不落本地文件；提示语直接说明可粘贴给维护者
+- 🤖 Android 增加原生剪贴板桥 `YktBridge.copyText`，WebView 的 `navigator.clipboard/execCommand` 失败时也能可靠复制诊断 ID
+- 🧪 真机验证：诊断上传成功返回 ID、上传失败 JSON 兜底、原生剪贴板复制均通过
+
 0.7.4:
 
 - 🛠 **答题提醒 / 通知里的「AI 解答」改为显式题目任务**：从提醒卡片或通知弹窗进入时，直接使用该题的 `problemId/slideId/status` 构建 `AnswerTask`，不再回退到“当前页”，不会再答成老师已经翻到的另一道题

@@ -20,7 +20,6 @@ import { stripRegexAnswer } from '../../answer/parse.js';
 import { answerLog, getAnswerLog } from '../../answer/debug.js';
 import * as telemetry from '../../core/telemetry.js';
 import { renderAnswerCard } from './answer-card.js';
-import { saveBlob } from '../../quiz/quiz-paper.js';
 import { mdToHtml, renderRich, StreamRenderer, warmupRichAssets } from '../rich.js';
 
 export { mdToHtml, renderRich, StreamRenderer, warmupRichAssets };
@@ -72,7 +71,7 @@ export function mountAIPanel() {
   document.body.appendChild(host.firstElementChild);
   root = document.getElementById('ykt-ai-answer-panel');
 
-  $('#ykt-ai-report')?.addEventListener('click', () => copyDiagnosticReport());
+  $('#ykt-ai-report')?.addEventListener('click', () => uploadDiagnosticReport());
 
   $('#ykt-ai-clear').addEventListener('click', () => {
     abortStreaming('清空会话');
@@ -604,39 +603,89 @@ export function buildDiagnosticReport() {
   return { json, summary, task };
 }
 
-export async function copyDiagnosticReport() {
+async function copyText(text) {
+  let copied = false;
+  // Android 原生桥最可靠（WebView 的 clipboard/execCommand 在部分机型会失败）
+  try {
+    if (window.YktBridge?.copyText) {
+      window.YktBridge.copyText(text);
+      return true;
+    }
+  } catch { /* fall through */ }
+  if (navigator.clipboard?.writeText) {
+    // 某些 WebView/权限状态下 writeText 会一直 pending；最多等 600ms
+    copied = await Promise.race([
+      navigator.clipboard.writeText(text).then(() => true).catch(() => false),
+      new Promise((resolve) => setTimeout(() => resolve(false), 600)),
+    ]);
+  }
+  if (!copied) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+      document.body.appendChild(ta);
+      ta.select();
+      copied = document.execCommand('copy');
+      ta.remove();
+    } catch { copied = false; }
+  }
+  return copied;
+}
+
+/**
+ * 诊断按钮：上传完整 JSON 到服务器，成功后只复制短 ID；
+ * 上传失败才复制完整 JSON 作为兜底。不再保存本地文件。
+ */
+export async function uploadDiagnosticReport() {
   try {
     const { json, summary, task } = buildDiagnosticReport();
-    let copied = false;
-    if (navigator.clipboard?.writeText) {
-      // 某些 WebView/权限状态下 writeText 会一直 pending；最多等 600ms，不阻塞保存/上报
-      copied = await Promise.race([
-        navigator.clipboard.writeText(json).then(() => true).catch(() => false),
-        new Promise((resolve) => setTimeout(() => resolve(false), 600)),
-      ]);
+    let report;
+    try { report = JSON.parse(json); }
+    catch (e) {
+      ui.toast?.('诊断报告序列化失败', 3000);
+      return { ok: false, error: String(e?.message || e) };
     }
-    if (!copied) {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = json;
-        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
-        document.body.appendChild(ta);
-        ta.select();
-        copied = document.execCommand('copy');
-        ta.remove();
-      } catch { copied = false; }
+
+    let uploaded = null;
+    let uploadError = '';
+    try {
+      uploaded = await telemetry.uploadDiagnostic(report);
+    } catch (e) {
+      uploadError = String(e?.message || e);
     }
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = `YuketangStudio-diagnostic-${stamp}.json`;
-    try { await saveBlob(new Blob([json], { type: 'application/json;charset=utf-8' }), filename); } catch { /* 仅复制也可 */ }
-    ui.toast?.(copied ? '诊断报告已复制并保存，直接发我即可' : '诊断报告已保存为文件', 3000);
-    answerLog('diagnostic_report', { taskId: task?.id || '', copied, bytes: json.length });
-    return { ok: true, json, summary, filename, copied };
+
+    if (uploaded?.id) {
+      const short = [
+        '诊断已上传',
+        `ID: ${uploaded.id}`,
+        `时间: ${report.time}`,
+        `版本: ${report.version} / ${report.platform}`,
+        `任务: ${task?.id || '无'}`,
+        `runId: ${lastRunResult?.runId || '无'}`,
+      ].join('\n');
+      const copied = await copyText(short);
+      ui.toast?.(`诊断已上传：${uploaded.id}${copied ? '（ID 已复制）' : ''}`, 4200);
+      answerLog('diagnostic_upload', {
+        taskId: task?.id || '', diagnosticId: uploaded.id, ok: true, bytes: json.length, copied,
+      });
+      return { ok: true, id: uploaded.id, date: uploaded.date, json, summary, copied, uploaded: true };
+    }
+
+    const copied = await copyText(json);
+    ui.toast?.(copied ? '诊断上传失败，已复制 JSON，可直接粘贴给我' : '诊断上传失败，请稍后重试', 5000);
+    answerLog('diagnostic_upload', {
+      taskId: task?.id || '', ok: false, bytes: json.length, error: uploadError, copied,
+    });
+    return { ok: false, error: uploadError || 'upload failed', json, summary, copied, uploaded: false };
   } catch (e) {
     ui.toast?.('诊断报告生成失败：' + (e?.message || e), 3000);
     return { ok: false, error: String(e?.message || e) };
   }
 }
+
+/** 兼容旧调用名 */
+export const copyDiagnosticReport = uploadDiagnosticReport;
 
 // ---------------- 对外入口 ----------------
 

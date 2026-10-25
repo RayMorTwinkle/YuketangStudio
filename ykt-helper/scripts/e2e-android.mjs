@@ -18,6 +18,7 @@ function b64(s) {
 }
 async function evalJs(js, { wait = 900 } = {}) {
   try { adb(['logcat', '-c']); } catch { /* ignore */ }
+  await sleep(120);
   const code = `eval(decodeURIComponent(escape(atob('${b64(js)}'))))`;
   adb(['shell', `am broadcast -p ${PKG} -a ${ACTION_EVAL} --es js "${code.replace(/"/g, '\\"')}"`]);
   const end = Date.now() + wait;
@@ -38,6 +39,14 @@ async function evalJs(js, { wait = 900 } = {}) {
     await sleep(200);
   }
   return undefined;
+}
+/** 清掉上一轮结果，避免广播延迟时把旧结果当成本轮结果 */
+async function clearResult() {
+  for (let i = 0; i < 3; i++) {
+    const ok = await evalJs('window.__e2eResult=null; window.__e2eResult===null', { wait: 700 });
+    if (ok === true) return;
+    await sleep(250);
+  }
 }
 function nav(url) {
   adb(['shell', `am broadcast -p ${PKG} -a ${ACTION_NAV} --es url '${url}'`]);
@@ -62,11 +71,17 @@ async function setRegex(on) {
   await setTestConfig(!!on);
 }
 async function run(name, js, wait = 5000) {
-  await evalJs(js, { wait: 500 });
+  // 加 token：避免上一轮异步任务还没结束，run 读到旧的 __e2eResult
+  const token = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  await clearResult();
+  await evalJs(`window.__e2eToken=${JSON.stringify(token)};${js}`, { wait: 900 });
   const end = Date.now() + wait;
   let result;
   while (Date.now() < end) {
-    result = await evalJs('window.__e2eResult ? JSON.stringify(window.__e2eResult) : null', { wait: 900 });
+    result = await evalJs(
+      `window.__e2eToken === ${JSON.stringify(token)} && window.__e2eResult ? JSON.stringify(window.__e2eResult) : null`,
+      { wait: 900 },
+    );
     if (result && !(typeof result === 'object' && !Array.isArray(result) && Object.keys(result).length === 0)) break;
     await sleep(500);
   }
@@ -209,6 +224,30 @@ for (let round = 1; round <= 3; round++) {
     if (!r.ok || r.transport !== 'text' || r.card?.title !== '💡 参考答案（不提交）') throw new Error(JSON.stringify(r));
   });
 }
+
+console.log('== 真机诊断上传 ==');
+await check('诊断上传成功 → 短 ID（mock）', async () => {
+  const r = await run('diag-ok', ASYNC(`
+    T.reset();T.clearUI();
+    T.injectProblem(1,{body:'诊断上传',options:[{key:'A',value:'甲'},{key:'B',value:'乙'}]});
+    T.mockDiagnostic('ok');
+    const out=await T.copyDiagnostic();
+    window.__e2eResult={ok:out?.ok,id:out?.id||'',uploaded:out?.uploaded,hasJson:!!out?.json};
+  `), 6000);
+  if (!r.ok || !/^diag_/.test(r.id || '') || r.uploaded !== true || r.hasJson !== true) throw new Error(JSON.stringify(r));
+});
+
+await check('诊断上传失败 → JSON 兜底（不落文件）', async () => {
+  const r = await run('diag-fail', ASYNC(`
+    T.reset();T.clearUI();
+    T.injectProblem(1,{body:'诊断上传失败',options:[{key:'A',value:'甲'},{key:'B',value:'乙'}]});
+    T.mockDiagnostic('fail');
+    const out=await T.copyDiagnostic();
+    T.mockDiagnostic('off');
+    window.__e2eResult={ok:out?.ok,uploaded:out?.uploaded,hasJson:!!out?.json,error:out?.error||''};
+  `), 6000);
+  if (r.ok !== false || r.uploaded !== false || r.hasJson !== true || !/mock diagnostic/.test(r.error || '')) throw new Error(JSON.stringify(r));
+});
 
 console.log('== 真机提醒 AI ==');
 await check('提醒卡片 AI 使用该题 task（不是当前页）', async () => {
