@@ -7,8 +7,8 @@ import {
 import { buildClassroomTask } from '../src/answer/adapters/classroom.js';
 import { buildAssignmentTask } from '../src/answer/adapters/assignment.js';
 import { buildProblemListTask } from '../src/answer/adapters/problem-list.js';
-import { normalizeAnswer, parseRegex, parseLegacy, stripRegexAnswer } from '../src/answer/parse.js';
-import { buildQuestionBlock, buildAnswerContract, buildMessages } from '../src/answer/prompt.js';
+import { normalizeAnswer, normalizeConfidence, parseRegex, parseLegacy, stripRegexAnswer } from '../src/answer/parse.js';
+import { buildQuestionBlock, buildAnswerContract, buildMessages, SUBMIT_ANSWER_TOOL } from '../src/answer/prompt.js';
 import { toClassroomResult, toQuizResult } from '../src/answer/serialize.js';
 import { runAnswer } from '../src/answer/engine.js';
 import { sanitizeTraceEvent } from '../src/core/telemetry.js';
@@ -238,6 +238,19 @@ ok('可提交 → tools 契约', () => {
   assert.match(c, /submit_answer/);
   assert.match(c, /本题会提交到课堂/);
 });
+ok('填空答案要求普通文本（工具描述 + tools/regex 契约）', () => {
+  assert.match(SUBMIT_ANSWER_TOOL.function.description, /普通文本/);
+  assert.match(SUBMIT_ANSWER_TOOL.function.parameters.properties.answers.description, /普通文本/);
+  const fillTask = buildAssignmentTask({
+    quizData: { Slides: [{ Problem: { ProblemID: 9, Type: 'FillBlank', Bullets: [] } }] },
+    index: 0, quizId: '1',
+  });
+  assert.equal(fillTask.question.type, QTYPE.FILL);
+  assert.match(buildAnswerContract(fillTask, 'tools'), /普通文本/);
+  assert.doesNotMatch(buildAnswerContract(fillTask, 'tools'), /<answer>/);
+  assert.match(buildAnswerContract(fillTask, 'regex'), /普通文本/);
+  assert.match(buildAnswerContract(fillTask, 'regex'), /<answer>/);
+});
 ok('课堂 result：多选数组', () => {
   const a = normalizeAnswer(classroomTask, { answers: ['A', 'C'] });
   assert.deepEqual(toClassroomResult(classroomTask, a), ['A', 'C']);
@@ -367,6 +380,28 @@ await okAsync('HTTP 429 不重试', async () => {
   assert.equal(r.ok, false);
   assert.equal(r.error.code, ERROR.HTTP);
   assert.equal(r.attempts, 1);
+});
+
+// ===== 置信度（normalizeConfidence / normalizeAnswer.confidence） =====
+ok('置信度归一化：小数原样、百分数/100、越界钳制、非法为 null', () => {
+  assert.equal(normalizeConfidence(0.85), 0.85);
+  assert.equal(normalizeConfidence(0), 0);
+  assert.equal(normalizeConfidence(1), 1);
+  assert.equal(normalizeConfidence('0.4'), 0.4);
+  assert.equal(normalizeConfidence('85%'), 0.85);
+  assert.equal(normalizeConfidence(85), 0.85);
+  assert.equal(normalizeConfidence(100), 1);
+  assert.equal(normalizeConfidence(150), 1);
+  assert.equal(normalizeConfidence(-0.2), 0);
+  assert.equal(normalizeConfidence(null), null);
+  assert.equal(normalizeConfidence('abc'), null);
+  assert.equal(normalizeConfidence(undefined), null);
+});
+ok('normalizeAnswer 透传 confidence 并归一化', () => {
+  const a = normalizeAnswer(classroomTask, { answers: ['A'], confidence: 85 }, 'tool');
+  assert.equal(a.confidence, 0.85);
+  const b = normalizeAnswer(classroomTask, { answers: ['A'] }, 'tool');
+  assert.equal(b.confidence, null);
 });
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);

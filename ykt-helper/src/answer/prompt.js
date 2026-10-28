@@ -10,7 +10,8 @@ export const SUBMIT_ANSWER_TOOL = {
     name: 'submit_answer',
     description:
       '把本题的最终答案提交/暂存到雨课堂。确定答案后必须调用本工具；只输出文字不算完成。'
-      + '选择题传选项标签；判断题传选项标签（A/B 或 √/×）；填空题按空位顺序每空一项；主观题传完整作答文本。',
+      + '选择题传选项标签；判断题传选项标签（A/B 或 √/×）；填空题按空位顺序每空一项；主观题传完整作答文本。'
+      + '填空答案必须是普通文本：不要带 TeX/LaTeX 或 Markdown 格式，数学式写成普通文字（如 1/2、x^2，不要写 \\frac{1}{2}、$x^2$、**加粗**）。',
     parameters: {
       type: 'object',
       properties: {
@@ -20,11 +21,15 @@ export const SUBMIT_ANSWER_TOOL = {
           description:
             '答案数组。单选/多选/投票：["A"] 或 ["A","C"]；'
             + '判断题：["A"]/["B"] 或 ["√"]/["×"]；'
-            + '填空：每个空一项，如 ["12","3.5"]；主观/问答：一个元素，内容为完整作答文本。',
+            + '填空：每个空一项，如 ["12","3.5"]，必须是普通文本（数学式写 1/2、x^2，不带 TeX/LaTeX 或 Markdown）；主观/问答：一个元素，内容为完整作答文本。',
         },
         reason: {
           type: 'string',
           description: '一句话说明选择该答案的理由（可选）。',
+        },
+        confidence: {
+          type: 'number',
+          description: '你对这个答案的把握：0 到 1 的小数（如 0.9 很有把握，0.4 不太确定）。可选。',
         },
       },
       required: ['answers'],
@@ -56,7 +61,7 @@ function optionLines(q) {
 export function buildQuestionBlock(task) {
   const q = task?.question || {};
   const lines = ['【题目信息（来自系统，比截图更可靠）】'];
-  lines.push(`来源：${task?.source === 'assignment' ? '作业题' : task?.source === 'problem-list' ? '历史题目' : '课堂实时题'}`);
+  lines.push(`来源：${task?.source === 'assignment' ? '作业题' : task?.source === 'exercise' ? '新版作业题' : task?.source === 'problem-list' ? '历史题目' : '课堂实时题'}`);
   lines.push(`题型：${q.typeLabel || typeLabel(q.type)}`);
   if (q.body) lines.push(`题干：${q.body}`);
   lines.push(...optionLines(q));
@@ -97,7 +102,7 @@ export function buildAnswerContract(task, transport, { autoSubmit = false, soft 
       '- 单选/多选/投票：选项标签数组，例如 ["A"] 或 ["A","C"]；',
       '- 判断题：必须是选项标签（如 ["A"]/["B"]，或题目选项本身就是 √/× 时用 ["√"]/["×"]）；',
       '- 如果题目只给了 A/B 标签，只能输出 A/B，不要输出 √/× 或解释；',
-      '- 填空：按空位顺序，每个空一项；',
+      '- 填空：按空位顺序，每个空一项；每空必须是普通文本，不要用 TeX/LaTeX 或 Markdown 格式（数学式写 1/2、x^2，不写 \\frac{1}{2}、$x^2$、**加粗**）；',
       '- 主观/问答：一个元素，内容为完整作答文本。',
     );
     if (autoSubmit) lines.push('本次为自动作答：必须调用 submit_answer，否则本次作答视为失败。');
@@ -120,7 +125,7 @@ export function buildAnswerContract(task, transport, { autoSubmit = false, soft 
         lines.push('- 判断题：<answer>B</answer>（只输出选项标签；如果选项本身就是 √/×，才输出 √/×）');
         break;
       case QTYPE.FILL:
-        lines.push('- 填空：每个空一行，例如 <answer>\\n12\\n3.5\\n</answer>');
+        lines.push('- 填空：每个空一行，例如 <answer>\\n12\\n3.5\\n</answer>；每空必须是普通文本，不要用 TeX/LaTeX 或 Markdown 格式（数学式写 1/2、x^2，不写 \\frac{1}{2}、$x^2$、**加粗**）');
         break;
       case QTYPE.SUBJECTIVE:
         lines.push('- 主观/问答：<answer>完整作答文本</answer>');

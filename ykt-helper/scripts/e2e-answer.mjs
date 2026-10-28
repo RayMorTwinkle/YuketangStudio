@@ -5,8 +5,18 @@
 // 依赖：dist/YuketangStudio-<version>.user.js 已构建（npm run build）。
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-const DIST = '/Users/Ray/Desktop/AI工作台/YuketangStudio-main/ykt-helper/dist/YuketangStudio-latest.user.js';
+// ego 的 nodejs（stdin 模式）会清洗自定义 env 且 cwd=/，但保留 PWD（npm 调用目录）。
+// 依次尝试：ykt-helper 根 → 仓库根，兼容从任意一层 npm run。
+const ROOT = process.env.YKS_ROOT || process.env.PWD || process.cwd();
+const CANDIDATES = [
+  resolve(ROOT, 'dist/YuketangStudio-latest.user.js'),
+  resolve(ROOT, 'ykt-helper/dist/YuketangStudio-latest.user.js'),
+];
+const DIST = CANDIDATES.find((p) => existsSync(p));
+if (!DIST) throw new Error(`找不到 dist 产物（尝试过 ${CANDIDATES.join('、')}），请先 npm run build`);
 const SRC = await readFile(DIST, 'utf8');
 
 let pass = 0;

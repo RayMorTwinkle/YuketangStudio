@@ -687,3 +687,59 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
   padding: 3px 8px; border: 1px solid var(--ykt-border-strong);
   border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px;
 }
+
+/* type 19 详情 / type 20 回顾（新版作业/考试题目视图） */
+#ykt-assign-tab .ap-head-meta{ color: var(--ykt-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ykt-assign-tab .ap-desc{
+  margin: 0 16px 8px; padding: 8px 10px; font-size: 12px;
+  border: 1px solid var(--ykt-border); border-radius: 8px; background: #f7f9fc;
+}
+#ykt-assign-tab .ap-desc:empty{ display: none; }
+#ykt-assign-tab .ap-active-list{ padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+#ykt-assign-tab .ap-active-item{
+  border: 1px solid var(--ykt-border); border-radius: 8px; padding: 10px 12px; background: #fff;
+}
+#ykt-assign-tab .ap-active-head{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+#ykt-assign-tab .ap-active-idx{
+  min-width: 20px; height: 20px; line-height: 20px; text-align: center; font-size: 11px;
+  border-radius: 10px; background: var(--ykt-accent); color: #fff;
+}
+#ykt-assign-tab .ap-active-score{ color: var(--ykt-muted); font-size: 12px; }
+#ykt-assign-tab .ap-active-links{ margin-left: auto; display: flex; gap: 8px; align-items: center; }
+#ykt-assign-tab .ap-active-links button{
+  padding: 3px 10px; border: 1px solid var(--ykt-border-strong);
+  border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px;
+}
+#ykt-assign-tab .ap-active-links button:hover{ border-color: var(--ykt-accent); color: var(--ykt-accent); }
+#ykt-assign-tab .ap-active-links a{ color: var(--ykt-accent); font-size: 12px; }
+#ykt-assign-tab .ap-badge{
+  padding: 1px 8px; border-radius: 10px; font-size: 11px;
+  background: #f0f2f5; color: var(--ykt-muted);
+}
+#ykt-assign-tab .ap-badge.ap-ok{ background: #e6f6ec; color: #1a7f37; }
+#ykt-assign-tab .ap-badge.ap-bad{ background: #ffebe9; color: #cf222e; }
+#ykt-assign-tab .ap-problem-body{ font-size: 13px; margin: 8px 0; line-height: 1.6; overflow-wrap: anywhere; }
+#ykt-assign-tab .ap-problem-body img{ max-width: 100%; }
+#ykt-assign-tab .ap-problem-body table{ border-collapse: collapse; }
+#ykt-assign-tab .ap-problem-body td,
+#ykt-assign-tab .ap-problem-body th{ border: 1px solid var(--ykt-border); padding: 4px 8px; }
+#ykt-assign-tab .ap-option{ display: flex; gap: 8px; font-size: 13px; padding: 2px 0; line-height: 1.6; }
+#ykt-assign-tab .ap-opt-key{ flex: 0 0 auto; font-weight: 600; }
+#ykt-assign-tab .ap-opt-html{ overflow-wrap: anywhere; }
+#ykt-assign-tab .ap-ans{
+  margin-top: 8px; padding: 6px 10px; border-left: 3px solid var(--ykt-accent);
+  background: #f7f9fc; border-radius: 0 6px 6px 0; font-size: 12px;
+}
+#ykt-assign-tab .ap-ans-k{ display: block; color: var(--ykt-muted); margin-bottom: 2px; }
+#ykt-assign-tab .ap-ans-v{ line-height: 1.6; overflow-wrap: anywhere; }
+#ykt-assign-tab .ap-ans-v img{ max-width: 100%; }
+#ykt-assign-tab .ap-attach{ margin-top: 6px; font-size: 12px; }
+#ykt-assign-tab .ap-attach a{ color: var(--ykt-accent); }
+
+/* AI 答案卡置信度 */
+.ykt-tool-confidence{
+  display: inline-block; margin: 2px 0 4px; padding: 1px 8px;
+  font-size: 11px; border-radius: 10px;
+  background: #eef3ff; color: #1f4fd8;
+}
+.ykt-tool-confidence.ykt-conf-low{ background: #fff3cd; color: #8a6d00; }

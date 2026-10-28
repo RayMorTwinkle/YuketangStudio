@@ -6,12 +6,19 @@ import { askAnswer, getOverride } from './ai.js';
 import { log } from '../../core/log.js';
 import {
   fetchCourses, fetchAssignments, findCourseByQuiz, fetchQuizDataById, oldUrl, newUrl,
+  enrichAssignments,
 } from '../../quiz/assignments.js';
+import { fetchExerciseDetail } from '../../quiz/exercise.js';
+import { fetchExamReview } from '../../quiz/exam.js';
+import { uvIdFromCookie } from '../../quiz/active-core.js';
+import { fetchAsDataURL } from '../../core/env.js';
+import { sanitizeHtml } from '../rich.js';
 import {
   isQuizPage, readQuizData, quizMeta, composeSlide, canvasBlob, saveBlob, zipStore, quizQuestionDataUrl,
 } from '../../quiz/quiz-paper.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { buildAssignmentTask } from '../../answer/adapters/assignment.js';
+import { buildExerciseTask } from '../../answer/adapters/exercise.js';
 import { normalizeType, typeLabel } from '../../answer/model.js';
 
 let mounted = false;
@@ -98,6 +105,10 @@ function showQuestionsView(data, title, assignment) {
 function renderQuestions() {
   const box = $('#ykt-ap-questions');
   if (!box) return;
+  if (viewData?.mode === 'exercise' || viewData?.mode === 'exam-review') {
+    renderActiveQuestions();
+    return;
+  }
   const slides = (viewData?.Slides || []);
   const rows = slides.map((s, i) => {
     if (!s?.Problem) return '';
@@ -120,6 +131,195 @@ function renderQuestions() {
   $('#ykt-ap-goto-submit')?.addEventListener('click', () => {
     if (viewAssignment?.oldId) location.href = oldUrl(viewAssignment);
   });
+}
+
+/** 列表行 meta：类型 + 截止 + 题数/分值 + enrich 出的作答状态。 */
+function rowMetaParts(a) {
+  const parts = [a.type === 20 ? '考试' : a.type === 4 ? '作业（老版）' : '作业'];
+  parts.push(`截止 ${deadlineText(a.deadline)}`);
+  if (a.problemCount != null) parts.push(`${a.problemCount} 题`);
+  if (a.totalScore != null) parts.push(`${a.totalScore} 分`);
+  if (a.answeredCount != null) {
+    parts.push(`已答 ${a.answeredCount}${a.totalCount != null ? `/${a.totalCount}` : ''}`);
+  }
+  if (a.score != null) parts.push(`得分 ${a.score}`);
+  if (a.type === 20) {
+    if (a.examStatus === 'submitted') parts.push('已交卷');
+    else if (a.examStatus === 'absent') parts.push('缺考');
+    else if (a.examStatus === 'invalid') parts.push('已作废');
+  } else if (a.type === 19 && a.graded === false && (a.answeredCount ?? 0) > 0) {
+    parts.push('待批改');
+  }
+  if (a.statusMessage) parts.push(a.statusMessage);
+  return parts.map((s) => escapeHtml(String(s))).join(' · ');
+}
+
+function activeProblemBadge(q, isExam) {
+  if (isExam) {
+    if (q.status === 'graded') {
+      if (q.correct === true) return '<span class="ap-badge ap-ok">答对</span>';
+      if (q.correct === false) return '<span class="ap-badge ap-bad">答错</span>';
+      return '<span class="ap-badge">已批改</span>';
+    }
+    if (q.status === 'unanswered') return '<span class="ap-badge ap-bad">未作答</span>';
+    if (q.status === 'submitted') return '<span class="ap-badge">已作答</span>';
+    return '';
+  }
+  if (q.status === 'graded') return '<span class="ap-badge ap-ok">已批改</span>';
+  if (q.status === 'submitted') return '<span class="ap-badge">已交待批改</span>';
+  if (q.status === 'answered') return '<span class="ap-badge">已作答</span>';
+  if (q.status === 'unanswered') return '<span class="ap-badge ap-bad">未作答</span>';
+  return '';
+}
+
+/** 服务端 HTML 统一走 sanitizeHtml；为空不渲染。 */
+function activeAnswerBlock(label, html) {
+  const clean = sanitizeHtml(html || '');
+  if (!clean.trim()) return '';
+  return `<div class="ap-ans"><span class="ap-ans-k">${escapeHtml(label)}</span><div class="ap-ans-v">${clean}</div></div>`;
+}
+
+function activeProblemCard(q, i, isExam) {
+  const options = (q.options || []).map((o) => `
+    <div class="ap-option"><span class="ap-opt-key">${escapeHtml(o.label)}</span><span class="ap-opt-html">${sanitizeHtml(o.html)}</span></div>`).join('');
+  const files = (q.attachments || []).map((f) => (f.url
+    ? `<div class="ap-attach"><a href="${escapeHtml(f.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(f.name)}</a></div>`
+    : `<div class="ap-attach">${escapeHtml(f.name)}</div>`)).join('');
+  const comments = (q.comments || []).map((c) => activeAnswerBlock(c.name || '评论', c.html)).join('');
+  return `<div class="ap-active-item">
+    <div class="ap-active-head">
+      <span class="ap-active-idx">${q.index ?? i + 1}</span>
+      <b>${escapeHtml(q.typeText || '题目')}</b>
+      ${q.score != null ? `<span class="ap-active-score">${q.score} 分</span>` : ''}
+      ${activeProblemBadge(q, isExam)}
+      ${q.myScore != null ? `<span class="ap-badge">得分 ${q.myScore}</span>` : ''}
+      <span class="ap-active-links">
+        ${q.externalUrl ? `<a href="${escapeHtml(q.externalUrl)}" target="_blank" rel="noopener noreferrer">打开外链题</a>` : ''}
+        <button type="button" data-qact="aai" data-i="${i}">AI 解答</button>
+      </span>
+    </div>
+    <div class="ap-problem-body">${sanitizeHtml(q.bodyHtml)}</div>
+    ${options}
+    ${activeAnswerBlock('我的作答', q.answerHtml)}
+    ${isExam ? activeAnswerBlock('参考答案', q.correctAnswerHtml) : ''}
+    ${activeAnswerBlock('解析', q.explanationHtml)}
+    ${activeAnswerBlock('评语', q.remarkHtml)}
+    ${comments}
+    ${files}
+  </div>`;
+}
+
+/** type 19 详情 / type 20 回顾共用的题目视图（viewData.mode = exercise|exam-review）。 */
+function renderActiveQuestions() {
+  const box = $('#ykt-ap-questions');
+  if (!box) return;
+  const d = viewData || {};
+  const isExam = d.mode === 'exam-review';
+  const p = d.progress || {};
+  const head = [];
+  if (p.answeredCount != null) {
+    head.push(`已答 ${p.answeredCount}${p.totalCount != null ? `/${p.totalCount}` : ''}`);
+  }
+  if (p.score != null) head.push(`得分 ${p.score}${p.totalScore != null ? `/${p.totalScore}` : ''}`);
+  if (isExam) {
+    if (p.examStatus === 'submitted') head.push('已交卷');
+    else if (p.examStatus === 'absent') head.push('缺考');
+    else if (p.examStatus === 'invalid') head.push('已作废');
+  } else if (p.graded === false && (p.answeredCount ?? 0) > 0) {
+    head.push('待批改');
+  }
+  if (!isExam && d.lateAllowed) head.push('允许迟交');
+  const rows = (d.problems || []).map((q, i) => activeProblemCard(q, i, isExam)).join('');
+  const desc = sanitizeHtml(d.descriptionHtml || '');
+  box.innerHTML = `
+    <div class="ap-qhead">
+      <button type="button" id="ykt-ap-back">← 返回作业列表</button>
+      <b>${escapeHtml(viewTitle || '详情')}</b>
+      <span class="ap-head-meta">${head.map((s) => escapeHtml(String(s))).join(' · ')}</span>
+    </div>
+    ${desc ? `<div class="ap-desc">${desc}</div>` : ''}
+    <div class="ap-active-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
+  $('#ykt-ap-back')?.addEventListener('click', showListView);
+  injectActiveFont(d.fontUrl);
+}
+
+/** 加密字体：GM_xhr 拉 dataURL 注入 @font-face；失败保持原字符（降级）。 */
+let activeFontUrl = '';
+async function injectActiveFont(fontUrl) {
+  if (!fontUrl || fontUrl === activeFontUrl) return;
+  activeFontUrl = fontUrl;
+  try {
+    const dataUrl = (await fetchAsDataURL(fontUrl, 20000)).replace(/'/g, '%27');
+    if (activeFontUrl !== fontUrl) return;
+    document.getElementById('ykt-active-font')?.remove();
+    const style = document.createElement('style');
+    style.id = 'ykt-active-font';
+    style.textContent = `@font-face{font-family:'ykt-encrypted';src:url('${dataUrl}');}`
+      + ` #ykt-assign-tab .xuetangx-com-encrypted-font{font-family:'ykt-encrypted' !important;}`;
+    document.head.appendChild(style);
+  } catch (e) {
+    log.warn('[assign] font inject failed', e);
+  }
+}
+
+/** type 19「详情」/ type 20「回顾」入口。 */
+async function openActiveDetail(a) {
+  if (busy) return;
+  if (!a.leafTypeId) { ui.toast?.('缺少作业标识，请先在官网打开一次该作业', 2500); return; }
+  setBusy(true);
+  try {
+    if (a.type === 20) {
+      setStatus(`正在读取「${a.title}」回顾…`);
+      const detail = await fetchExamReview(a);
+      if (detail.mode !== 'exam-review') {
+        setStatus(detail.progress?.statusMessage || '该考试暂不可回顾（未出分或未公布），请在官网查看。');
+        return;
+      }
+      showQuestionsView(detail, a.title, a);
+    } else {
+      setStatus(`正在读取「${a.title}」…`);
+      const detail = await fetchExerciseDetail({
+        leafTypeId: a.leafTypeId,
+        classroomId: a.classroomId,
+        uvId: uvIdFromCookie(document.cookie),
+      });
+      showQuestionsView(detail, detail.title || a.title, a);
+    }
+  } catch (e) {
+    log.warn('[assign] active detail failed', e);
+    setStatus('读取失败：' + (e?.message || e));
+  } finally {
+    setBusy(false);
+  }
+}
+
+/** 新版作业/考试题目的 AI 解答（仅展示，不提交）。 */
+async function aiForActiveProblem(index) {
+  try {
+    const q = viewData?.problems?.[index];
+    if (!q) return;
+    const task = buildExerciseTask({ problem: q, assignment: viewAssignment });
+    if (!task) throw new Error('题目信息不完整');
+    ui.showAIPanel?.(true);
+    await askAnswer(task);
+  } catch (e) {
+    ui.toast?.('AI 解答失败：' + (e?.message || e), 3500);
+  }
+}
+
+/** 列表里的 19/20 行补作答状态：不阻塞首屏，完成后重渲染。 */
+async function enrichIfNeeded() {
+  if (!list.some((r) => r.type === 19 || r.type === 20)) return;
+  setStatus('正在获取新版作业/考试状态…');
+  try {
+    list = await enrichAssignments(list);
+  } catch (e) {
+    log.warn('[assign] enrich failed', e);
+    setStatus('状态获取失败：' + (e?.message || e));
+    return;
+  }
+  renderList();
+  setStatus(list.length ? `共 ${list.length} 项` : '没有找到作业');
 }
 
 function renderCurrentCard() {
@@ -148,14 +348,19 @@ function renderList() {
   box.innerHTML = list.map((a) => {
     const oldU = oldUrl(a);
     const newU = newUrl(a, cid);
-    const kind = a.type === 20 ? '考试' : a.type === 4 ? '作业（老版）' : '作业';
+    const detailBtn = a.type === 19 && a.leafTypeId
+      ? `<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}">详情</button>` : '';
+    const reviewBtn = a.type === 20 && a.canReview && a.leafTypeId
+      ? `<button type="button" data-act="review" data-id="${escapeHtml(a.id)}">回顾</button>` : '';
     return `<div class="ap-row" data-id="${escapeHtml(a.id)}">
       <input type="checkbox" class="ap-check" data-id="${escapeHtml(a.id)}" ${selected.has(a.id) ? 'checked' : ''}>
       <div class="ap-main">
         <div class="ap-title">${escapeHtml(a.title)}</div>
-        <div class="ap-meta">${kind} · 截止 ${deadlineText(a.deadline)}${a.problemCount != null ? ` · ${a.problemCount} 题` : ''}${a.totalScore != null ? ` · ${a.totalScore} 分` : ''}</div>
+        <div class="ap-meta">${rowMetaParts(a)}</div>
       </div>
       <div class="ap-links">
+        ${detailBtn}
+        ${reviewBtn}
         ${a.oldId ? `<button type="button" data-q="${escapeHtml(a.id)}">题目</button>` : ''}
         ${oldU ? `<button type="button" data-link="${escapeHtml(oldU)}">老界面</button>` : ''}
         ${newU ? `<button type="button" data-link="${escapeHtml(newU)}">新界面</button>` : ''}
@@ -170,14 +375,16 @@ async function loadList(courseId) {
   setStatus('正在读取作业列表…');
   try {
     list = await fetchAssignments(cid);
-    renderList();
-    setStatus(list.length ? `共 ${list.length} 项` : '没有找到作业');
   } catch (e) {
     log.warn('[assign] load failed', e);
     list = [];
     renderList();
     setStatus('读取失败：' + (e?.message || e));
+    return;
   }
+  renderList();
+  setStatus(list.length ? `共 ${list.length} 项` : '没有找到作业');
+  await enrichIfNeeded();
 }
 
 async function loadCourses() {
@@ -200,6 +407,7 @@ async function loadCourses() {
         selected.clear();
         renderList();
         setStatus(`共 ${list.length} 项`);
+        await enrichIfNeeded();
         return;
       }
     }
@@ -390,6 +598,14 @@ export function mountAssignmentsPanel() {
   $('#ykt-ap-list')?.addEventListener('click', (e) => {
     const link = e.target.closest('button[data-link]');
     if (link) { location.href = link.dataset.link; return; }
+    const act = e.target.closest('button[data-act]');
+    if (act) {
+      if (act.dataset.act === 'detail' || act.dataset.act === 'review') {
+        const a = list.find((x) => x.id === act.dataset.id);
+        if (a) openActiveDetail(a);
+      }
+      return;
+    }
     const q = e.target.closest('button[data-q]');
     if (q) {
       const a = list.find((x) => x.id === q.dataset.q);
@@ -409,6 +625,7 @@ export function mountAssignmentsPanel() {
     const i = Number(btn.dataset.i);
     if (btn.dataset.qact === 'dl') downloadQuestion(i);
     else if (btn.dataset.qact === 'ai') aiForQuestion(i);
+    else if (btn.dataset.qact === 'aai') aiForActiveProblem(i);
   });
 
   document.body.appendChild(root);

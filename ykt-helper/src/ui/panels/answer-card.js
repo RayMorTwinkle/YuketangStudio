@@ -28,6 +28,15 @@ export function renderAnswerCard(parent, { task, answer, autoSubmit = false, run
     : (isQuiz ? '📥 暂存答案（作业）' : '📤 提交答案');
   card.appendChild(title);
 
+  if (typeof answer?.confidence === 'number' && Number.isFinite(answer.confidence)) {
+    const conf = document.createElement('div');
+    conf.className = 'ykt-tool-confidence';
+    const pct = Math.round(answer.confidence * 100);
+    conf.textContent = `置信度 ${pct}%`;
+    if (pct < 50) conf.classList.add('ykt-conf-low');
+    card.appendChild(conf);
+  }
+
   const ans = document.createElement('div');
   ans.className = 'ykt-tool-answer';
   ans.textContent = toDisplayAnswer(answer);

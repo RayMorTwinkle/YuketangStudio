@@ -158,9 +158,24 @@ function parseSubjective(answers) {
 }
 
 /**
+ * 置信度归一化：'85%' → 0.85；>1 且 ≤100 的数视为百分数（85 → 0.85）；
+ * 非有限数 → null；结果钳制到 [0, 1]。
+ */
+export function normalizeConfidence(value) {
+  if (value === null || value === undefined) return null;
+  const raw = typeof value === 'string' ? value.trim() : value;
+  if (raw === '') return null;
+  const percent = typeof raw === 'string' && raw.endsWith('%');
+  const numeric = percent ? Number(raw.replace(/%$/, '')) : Number(raw);
+  if (!Number.isFinite(numeric)) return null;
+  const normalized = percent || (numeric > 1 && numeric <= 100) ? numeric / 100 : numeric;
+  return Math.max(0, Math.min(1, normalized));
+}
+
+/**
  * 归一化一份答案。
  * @param {object} task
- * @param {object|Array|string} raw {answers, reason} / answers / string
+ * @param {object|Array|string} raw {answers, reason, confidence} / answers / string
  * @param {'tool'|'regex'|'text'} source
  * @returns {object} Answer
  */
@@ -179,18 +194,19 @@ export function normalizeAnswer(task, raw, source = 'tool') {
 
   const type = task?.question?.type;
   const reason = String(args.reason || '').trim();
+  const confidence = normalizeConfidence(args.confidence);
   if (type === QTYPE.SINGLE || type === QTYPE.MULTIPLE || type === QTYPE.POLL) {
-    return { kind: 'choice', values: parseChoice(task, answers), text: '', reason, source };
+    return { kind: 'choice', values: parseChoice(task, answers), text: '', reason, confidence, source };
   }
   if (type === QTYPE.JUDGE) {
-    return { kind: 'choice', values: parseJudge(task, answers), text: '', reason, source };
+    return { kind: 'choice', values: parseJudge(task, answers), text: '', reason, confidence, source };
   }
   if (type === QTYPE.FILL) {
-    return { kind: 'fill', values: parseFill(task, answers), text: '', reason, source };
+    return { kind: 'fill', values: parseFill(task, answers), text: '', reason, confidence, source };
   }
   if (type === QTYPE.SUBJECTIVE) {
     const text = parseSubjective(answers);
-    return { kind: 'subjective', values: [text], text, reason, source };
+    return { kind: 'subjective', values: [text], text, reason, confidence, source };
   }
   fail(ERROR.INVALID_ANSWER, `不支持的题型：${type}`);
 }

@@ -45,6 +45,8 @@ Yuketang's native classroom experience has three rough edges:
 - 💬 **PPT chat**: chat with any slide across turns; AI replies render **mermaid flowcharts / mind maps, SVG diagrams, HTML snippets and MathJax formulas** inline
 - ➕ **Chat attachments**: the lower-left "＋" lets you attach multiple PPT pages or upload local images for the AI
 - 📑 **Slides panel**: "follow current page" tracks the teacher's page turns; "problems only" filter; "download full deck (PDF)" with landscape, edge-to-edge pages
+- 📚 **Assignments panel (new in 0.8.0)**: now recognizes **new-style homework (type 19) and exams (type 20)**; the list shows answered x/y, scores, pending-grade / submitted / absent status. "Detail" opens a read-only per-problem view (stem/options/my answer/comments) with **per-problem AI answers (display only, never submitted)**; graded & released exams support a **read-only review** (my answers/reference answers/explanations/correctness). Old-style homework (type 4) download & batch AI unchanged
+- 🤖 **Answer confidence**: the answer card shows "confidence N%", yellow when below 50%, to help decide whether a manual double-check is needed
 - 🗂 **History archiver**: multi-select past lessons from the learning-log page; the script opens each collector tab, de-duplicates by content, and batch-exports PDFs without aborting on a single failure
 - 📱 **Mobile support**: on narrow screens the toolbar becomes 40×40 vertical touch buttons and tabs move to the top; mobile pages show a built-in "switch to desktop" guide
 

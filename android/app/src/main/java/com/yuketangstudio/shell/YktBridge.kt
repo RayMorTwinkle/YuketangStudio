@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -278,30 +279,71 @@ class YktBridge(private val activity: MainActivity) {
      * GM_xmlhttpRequest 的 CORS 兜底（支持任意 method / headers / body）：
      * Ark 等上游的预检不允许 Authorization 头，页面 fetch 会被拦截，
      * 这里走原生 HttpURLConnection，返回文本或 base64（binary=true）。
+     *
+     * 0.8.0：带上 WebView CookieManager 的会话 Cookie（考试登录等需要
+     * 页面登录态的原生请求）；手动跟随 ≤5 跳重定向（301/302/303 → GET，
+     * 307/308 保留方法与 body），每跳重新附加目标域 Cookie，并把响应的
+     * Set-Cookie 写回 CookieManager，让原生会话与 WebView 共享。
      */
     @JavascriptInterface
     fun fetchRequest(method: String, url: String, headersJson: String, body: String, binary: Boolean, callbackId: String) {
         io.execute {
+            var currentUrl = url
+            var currentMethod = method.uppercase()
+            var currentBody = body
             var conn: HttpURLConnection? = null
             try {
-                val m = method.uppercase()
-                conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    requestMethod = m
-                    connectTimeout = 15000
-                    readTimeout = 180000
-                    instanceFollowRedirects = true
-                    doInput = true
-                }
+                // 调用方自定义头（如 xtbz/xt-agent/referer）；显式 Cookie 头优先于 WebView Cookie
+                val baseHeaders = mutableMapOf<String, String>()
                 runCatching {
                     val headers = JSONObject(headersJson)
-                    for (k in headers.keys()) conn.setRequestProperty(k, headers.optString(k))
+                    for (k in headers.keys()) baseHeaders[k] = headers.optString(k)
                 }
-                if (body.isNotEmpty() && m != "GET" && m != "HEAD") {
-                    conn.doOutput = true
-                    conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                var code = 0
+                var bytes = ByteArray(0)
+                var hops = 0
+                while (true) {
+                    val c = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+                        requestMethod = currentMethod
+                        connectTimeout = 15000
+                        readTimeout = 180000
+                        instanceFollowRedirects = false
+                        doInput = true
+                    }
+                    conn = c
+                    runCatching {
+                        val cookie = CookieManager.getInstance().getCookie(currentUrl)
+                        if (!cookie.isNullOrBlank()) c.setRequestProperty("Cookie", cookie)
+                    }
+                    for ((k, v) in baseHeaders) c.setRequestProperty(k, v)
+                    if (currentBody.isNotEmpty() && currentMethod != "GET" && currentMethod != "HEAD") {
+                        c.doOutput = true
+                        c.outputStream.use { it.write(currentBody.toByteArray(Charsets.UTF_8)) }
+                    }
+                    code = c.responseCode
+                    // Set-Cookie → CookieManager（原生与 WebView 会话互通）
+                    runCatching {
+                        val cm = CookieManager.getInstance()
+                        c.headerFields.forEach { (k, values) ->
+                            if (k != null && k.equals("set-cookie", ignoreCase = true)) {
+                                values?.forEach { v -> if (v.isNotBlank()) cm.setCookie(currentUrl, v) }
+                            }
+                        }
+                    }
+                    val location = c.getHeaderField("Location")
+                    val isRedirect = code in 301..399 && code != 304 && !location.isNullOrBlank()
+                    if (!isRedirect || hops >= 5) {
+                        bytes = (if (code in 200..399) c.inputStream else c.errorStream)?.readBytes() ?: ByteArray(0)
+                        break
+                    }
+                    hops++
+                    currentUrl = URL(URL(currentUrl), location).toString()
+                    if (code == 301 || code == 302 || code == 303) {
+                        currentMethod = "GET"
+                        currentBody = ""
+                    }
+                    c.disconnect()
                 }
-                val code = conn.responseCode
-                val bytes = (if (code in 200..299) conn.inputStream else conn.errorStream)?.readBytes() ?: ByteArray(0)
                 if (binary) {
                     val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
                     activity.evalOnAll("window['$callbackId'] && window['$callbackId'](true,$code,${JSONObject.quote(b64)},'')")

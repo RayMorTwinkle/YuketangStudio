@@ -1,5 +1,21 @@
 # 更新日志
 
+0.8.0:
+
+- 📚 **作业列表识别新版作业（type 19）**：列出题目、逐题作答状态（已答/待批改/已批改/得分）、题干/选项/我的作答/评语/附件，点「详情」进入只读视图；服务端 HTML 一律过 `sanitizeHtml`
+- 📝 **新版作业支持逐题 AI 解答**：复用 Answer Engine（`buildExerciseTask`），只展示答案不提交（`target.kind='display'`）；自动暂存仍仅限老版作业（type 4），新版暂存等抓包样本后再接
+- 🎓 **考试（type 20）只读回顾**：已交卷 + 已出分 + 公布时间到才显示「回顾」按钮（`canReviewExam` 四重门禁），展示逐题我的作答/参考答案/解析/得分/对错；绝不自动提交
+- 🔍 **作业列表状态增强**：19/20 行显示 已答 x/y、得分、待批改、已交卷/缺考/作废 等状态（`enrichAssignments` 4 并发补充，列表先渲染再补状态）；登录失效时明确提示「雨课堂登录已失效」
+- 📄 **学习日志分页拉取**：逐页翻取（≤50 页 × 200 条），整页指纹去重（服务器忽略分页参数时停止翻页）+ 短页早停，活动超 200 条的长课程不再漏作业（对齐上游策略）
+- 🎫 **gen_token 请求头对齐上游**：补发 `university-id: 0`、`uv-id: 0`，referer 改绝对地址，消除考试回顾入口潜在 403
+- 🧹 列表去重（`type:id`）与保留窗口（3 个月）过滤：过期 19/20 不再堆积；19/20 误显的「老界面」按钮移除（旧值实为 courseware_id）
+- 🤖 **AI 答案新增置信度**：`submit_answer` 工具可带 `confidence`（0-1），答案卡显示「置信度 N%」（<50% 黄色警示），支持 `85`/`'85%'`/`0.85` 三种写法归一化；遥测含 confidence 字段
+- 🧮 **填空答案禁止 TeX/Markdown**：工具描述与正则模式（兼容模式）契约均要求填空每空用普通文本（数学式写 1/2、x^2，不写 `\frac{1}{2}`、`$x^2$`、`**加粗**`），避免公式格式被原样填进空位
+- 📱 **Android 原生网络桥增强**：`YktBridge.fetchRequest` 附带 WebView 会话 Cookie、手动跟随 ≤5 跳重定向（301/302/303→GET，307/308 保留 body）、Set-Cookie 回写 CookieManager，考试登录链路可走原生兜底
+- 🔐 考试域白名单（`tsinghua-exam.yuketang.cn` / `examination.xuetangx.com`）+ https 强制 + 无凭据/端口校验；gen_token user_id 双重校验
+- 🧪 新增 `scripts/test-active.mjs`（38 用例：状态矩阵/反序 problem_results/公布时间/保留窗口/域名白名单）+ 置信度用例；全部单测 150+ 通过
+- ⚠️ 本次为维护模式破例发布（详见 `ykt-helper/MAINTENANCE.md` 附录）；答题引擎核心仅遥测加字段，type 4 老版链路未动
+
 0.7.5:
 
 - 🩺 **诊断按钮改为直接上传服务器**：点击后把完整诊断 JSON POST 到 `api.raymor.top/yuketangstudio/diagnostic`，成功后只复制短 ID（如 `diag_20261025_...`），不再要求用户保存/寻找 JSON 文件

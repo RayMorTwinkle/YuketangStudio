@@ -54,6 +54,7 @@ function answerSummary(answer) {
     text: answer.text || '',
     textLen: (answer.text || '').length,
     display: answer.kind === 'subjective' ? answer.text : (answer.values || []).join('、'),
+    confidence: answer.confidence ?? null,
     source: answer.source,
   };
 }
