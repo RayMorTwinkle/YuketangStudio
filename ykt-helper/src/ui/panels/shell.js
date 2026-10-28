@@ -10,6 +10,7 @@ import * as SettingsPanel from './settings.js';
 import * as AboutPanel from './about.js';
 import * as ProblemListPanel from './problem-list.js';
 import * as AssignmentsPanel from './assignments-panel.js';
+import * as BrushPanel from './brush.js';
 
 let mounted = false;
 let root;
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'pres',      icon: 'fa-file-powerpoint',label: '课件',     panelId: 'ykt-presentation-panel',  mount: () => PresPanel.mountPresentationPanel() },
   { id: 'problems',  icon: 'fa-list-check',     label: '题目',     panelId: 'ykt-problem-list-panel',  mount: () => ProblemListPanel.mountProblemListPanel() },
   { id: 'assign',    icon: 'fa-file-lines',     label: '作业',     panelId: 'ykt-assign-tab',          mount: () => AssignmentsPanel.mountAssignmentsPanel() },
+  { id: 'brush',     icon: 'fa-forward',       label: '刷课',     panelId: 'ykt-brush-panel',         mount: () => BrushPanel.mountBrushPanel() },
   { id: 'settings',  icon: 'fa-gear',           label: '设置',     panelId: 'ykt-settings-panel',      mount: () => SettingsPanel.mountSettingsPanel() },
   { id: 'about',     icon: 'fa-circle-info',    label: '关于',     panelId: 'ykt-about-panel',        mount: () => AboutPanel.mountAboutPanel() },
 ];

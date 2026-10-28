@@ -1,0 +1,50 @@
+<div id="ykt-brush-panel" class="ykt-panel">
+  <style>
+    #ykt-brush-panel .brush-head { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:12px 14px; border-bottom:1px solid #e5e7eb; }
+    #ykt-brush-panel .brush-head h3 { margin:0 10px 0 0; font-size:16px; }
+    #ykt-brush-panel select,#ykt-brush-panel button { font-size:12px; padding:5px 9px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#111; cursor:pointer; }
+    #ykt-brush-panel button.primary { background:#1d63df; border-color:#1d63df; color:#fff; }
+    #ykt-brush-panel button:disabled { opacity:.45; cursor:not-allowed; }
+    #ykt-brush-panel .brush-score { display:flex; gap:14px; flex-wrap:wrap; padding:8px 14px; background:#f8fafc; border-bottom:1px solid #e5e7eb; font-size:12px; color:#475569; }
+    #ykt-brush-panel .brush-score b { color:#0f172a; font-size:14px; }
+    #ykt-brush-panel .brush-controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 14px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#475569; }
+    #ykt-brush-panel .brush-controls label { display:flex; gap:4px; align-items:center; cursor:pointer; }
+    #ykt-brush-panel .brush-body { display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:280px; }
+    #ykt-brush-panel .brush-queue { overflow:auto; max-height:52vh; padding:8px 12px; }
+    #ykt-brush-panel .brush-log { border-left:1px solid #e5e7eb; padding:8px 10px; overflow:auto; max-height:52vh; font:11px/1.45 ui-monospace,Menlo,monospace; color:#475569; white-space:pre-wrap; background:#fcfcfd; }
+    #ykt-brush-panel .brush-item { display:flex; gap:8px; align-items:flex-start; padding:7px 6px; border-bottom:1px solid #f1f5f9; font-size:12px; }
+    #ykt-brush-panel .brush-item .bi-title { flex:1; min-width:0; }
+    #ykt-brush-panel .brush-item .bi-title b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+    #ykt-brush-panel .bi-meta { color:#64748b; margin-top:2px; font-size:11px; }
+    #ykt-brush-panel .bi-state { flex:0 0 auto; font-size:11px; color:#64748b; }
+    #ykt-brush-panel .bi-state.ok { color:#059669; }
+    #ykt-brush-panel .bi-state.bad { color:#dc2626; }
+    #ykt-brush-panel .bi-state.run { color:#1d63df; }
+    #ykt-brush-panel .brush-empty { color:#94a3b8; padding:20px 6px; font-size:12px; }
+    #ykt-brush-panel .brush-viewer { display:none; width:100%; height:240px; border:0; border-top:1px solid #e5e7eb; background:#fff; }
+    @media (max-width:700px) { #ykt-brush-panel .brush-body { grid-template-columns:1fr; } #ykt-brush-panel .brush-log { border-left:0; border-top:1px solid #e5e7eb; max-height:180px; } }
+  </style>
+  <div class="brush-head">
+    <h3>🎓 刷课</h3>
+    <select id="ykt-brush-course" title="课程"></select>
+    <button id="ykt-brush-scan">扫描内容</button>
+    <button id="ykt-brush-start" class="primary" disabled>开始</button>
+    <button id="ykt-brush-pause" disabled>暂停</button>
+    <button id="ykt-brush-stop" disabled>停止</button>
+  </div>
+  <div class="brush-score" id="ykt-brush-score">
+    <span>我的总评 <b>—</b></span><span>班级平均 <b>—</b></span><span>班级最高 <b>—</b></span><span>班级最低 <b>—</b></span>
+  </div>
+  <div class="brush-controls">
+    <label><input type="checkbox" id="ykt-brush-only-score"> 只刷算分内容</label>
+    <label><input type="checkbox" id="ykt-brush-mute" checked> 静音</label>
+    <label>倍速 <select id="ykt-brush-rate"><option value="1">1x</option><option value="1.5">1.5x</option><option value="2" selected>2x</option></select></label>
+    <label><input type="checkbox" id="ykt-brush-from-start"> 从头开始</label>
+    <span id="ykt-brush-hint">先扫描当前课程；班级上传课件会逐页阅读，测试/作业不自动提交。</span>
+  </div>
+  <div class="brush-body">
+    <div class="brush-queue" id="ykt-brush-queue"><div class="brush-empty">还没有扫描内容。</div></div>
+    <div class="brush-log" id="ykt-brush-log"></div>
+  </div>
+  <iframe class="brush-viewer" id="ykt-brush-viewer" title="班级课件预览"></iframe>
+</div>

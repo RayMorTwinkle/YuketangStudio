@@ -81,8 +81,48 @@ async function ensureLib(globalName, check, inlineSrc, cdnUrl) {
   return w[globalName];
 }
 
+/** 图片 CDN 有时返回 text/plain；data URL 的 MIME 不修，Image 解码会失败。 */
+function normalizeImageDataUrl(dataUrl) {
+  try {
+    const m = /^data:([^;]*);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+    if (!m) return dataUrl;
+    if (/^image\//i.test(m[1])) return dataUrl;
+    const head = atob(m[2].slice(0, 16));
+    const b = (i) => head.charCodeAt(i) & 0xff;
+    let mime = '';
+    if (b(0) === 0xff && b(1) === 0xd8) mime = 'image/jpeg';
+    else if (b(0) === 0x89 && b(1) === 0x50 && b(2) === 0x4e && b(3) === 0x47) mime = 'image/png';
+    else if (b(0) === 0x47 && b(1) === 0x49 && b(2) === 0x46) mime = 'image/gif';
+    else if (b(0) === 0x52 && b(1) === 0x49 && b(2) === 0x46 && b(3) === 0x46 && b(8) === 0x57 && b(9) === 0x45 && b(10) === 0x42 && b(11) === 0x50) mime = 'image/webp';
+    return mime ? `data:${mime};base64,${m[2]}` : dataUrl;
+  } catch { return dataUrl; }
+}
+
 /** GM_xhr 下载任意图片转 dataURL（绕开 CORS；OSS 无跨域头也能拿） */
 export function fetchAsDataURL(url, timeoutMs = 20000) {
+  return fetchViaGM(url, timeoutMs).catch(async (gmErr) => {
+    // 班级课件图片（yangtse-oplat 等）带 CORS；部分 GM shim/浏览器里
+    // GM_xhr 不可用或 blob 处理失败，页面 fetch 兜底能少一整类“全部下载失败”。
+    try {
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+      const res = await fetch(url, { credentials: 'omit', signal: ctrl?.signal });
+      if (timer) clearTimeout(timer);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(normalizeImageDataUrl(reader.result));
+        reader.onerror = () => reject(new Error('图片读取失败'));
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      throw gmErr || e;
+    }
+  });
+}
+
+function fetchViaGM(url, timeoutMs) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const done = (fn, v) => { if (!settled) { settled = true; clearTimeout(watchdog); fn(v); } };
@@ -100,7 +140,7 @@ export function fetchAsDataURL(url, timeoutMs = 20000) {
             // 兼容返回 ArrayBuffer/string 的 GM 实现
             if (!(blob instanceof Blob)) blob = new Blob([blob || '']);
             const reader = new FileReader();
-            reader.onload = () => done(resolve, reader.result);
+            reader.onload = () => done(resolve, normalizeImageDataUrl(reader.result));
             reader.onerror = () => done(reject, new Error('图片读取失败'));
             reader.readAsDataURL(blob);
           } catch (e) {

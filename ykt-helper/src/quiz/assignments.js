@@ -5,6 +5,7 @@
 import { log } from '../core/log.js';
 import { proGet } from './active-http.js';
 import { exerciseListPath } from './exercise.js';
+import { normalizeCourse } from './course-cards.js';
 import { examCoverPath } from './exam.js';
 import {
   AuthError, dataOf, parseProgress, parseExamProgress, canReviewExam,
@@ -17,11 +18,7 @@ export async function fetchCourses() {
   const j = await proGet('/v2/api/web/courses/list?identity=2');
   const list = j?.data?.list || j?.list || [];
   return list
-    .map((c) => ({
-      id: String(c.classroom_id || ''),
-      name: c.name || c.course?.name || '课程',
-      role: c.role,
-    }))
+    .map(normalizeCourse)
     .filter((c) => c.id);
 }
 

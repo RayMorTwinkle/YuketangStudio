@@ -51,6 +51,17 @@
       border-color: #1d63df;
       color: #fff;
     }
+    .presentation-source {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #eef2ff;
+      color: #4f46e5;
+      font-size: 11px;
+      font-weight: 500;
+      vertical-align: middle;
+    }
   </style>
   <div class="panel-header">
     <h3>课件查看</h3>
@@ -59,6 +70,7 @@
       <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>
       <button id="ykt-download-pdf">整册下载(PDF)</button>
       <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>
+      <button id="ykt-load-class-cards" title="读取老师直接上传到班级的课件（type=2）">📚 班级课件</button>
       
     </div>
     <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">

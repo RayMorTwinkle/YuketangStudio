@@ -15,10 +15,11 @@ export function csrfToken() {
 }
 
 /** 同源 GET（相对路径）。401/403 → AuthError；其余非 2xx → Error。 */
-export async function proGet(path) {
+export async function proGet(path, extraHeaders = {}) {
   let r;
   try {
-    r = await fetch(path, { credentials: 'include' });
+    const headers = Object.assign({}, extraHeaders);
+    r = await fetch(path, { credentials: 'include', ...(Object.keys(headers).length ? { headers } : {}) });
   } catch {
     throw new Error(`网络请求失败：${path}`);
   }

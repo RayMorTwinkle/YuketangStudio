@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.8.0
+// @version      0.9.0
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
-// @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
+// @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档、班级课件下载、刷课
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
 // @match        https://pro.yuketang.cn/web/*
@@ -56,6 +56,7 @@
 // @connect      *.yuketang.cn
 // @connect      changjiang-private-qn.yuketang.cn
 // @connect      thu-private-qn.yuketang.cn
+// @connect      yangtse-oplat.xuetangx.com
 // 不设域名白名单：AI 供应商是用户自定义端点，逐一枚举永远追不上（GM_xhr 要求 @connect）
 // @connect      *
 // @run-at       document-start
@@ -167,7 +168,46 @@
     if (!check(w)) throw new Error(`${globalName} 未正确加载`);
     return w[globalName];
   }
+  /** 图片 CDN 有时返回 text/plain；data URL 的 MIME 不修，Image 解码会失败。 */  function normalizeImageDataUrl(dataUrl) {
+    try {
+      const m = /^data:([^;]*);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ""));
+      if (!m) return dataUrl;
+      if (/^image\//i.test(m[1])) return dataUrl;
+      const head = atob(m[2].slice(0, 16));
+      const b = i => head.charCodeAt(i) & 255;
+      let mime = "";
+      if (b(0) === 255 && b(1) === 216) mime = "image/jpeg"; else if (b(0) === 137 && b(1) === 80 && b(2) === 78 && b(3) === 71) mime = "image/png"; else if (b(0) === 71 && b(1) === 73 && b(2) === 70) mime = "image/gif"; else if (b(0) === 82 && b(1) === 73 && b(2) === 70 && b(3) === 70 && b(8) === 87 && b(9) === 69 && b(10) === 66 && b(11) === 80) mime = "image/webp";
+      return mime ? `data:${mime};base64,${m[2]}` : dataUrl;
+    } catch {
+      return dataUrl;
+    }
+  }
   /** GM_xhr 下载任意图片转 dataURL（绕开 CORS；OSS 无跨域头也能拿） */  function fetchAsDataURL(url, timeoutMs = 2e4) {
+    return fetchViaGM(url, timeoutMs).catch(async gmErr => {
+      // 班级课件图片（yangtse-oplat 等）带 CORS；部分 GM shim/浏览器里
+      // GM_xhr 不可用或 blob 处理失败，页面 fetch 兜底能少一整类“全部下载失败”。
+      try {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController : null;
+        const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+        const res = await fetch(url, {
+          credentials: "omit",
+          signal: ctrl?.signal
+        });
+        if (timer) clearTimeout(timer);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        return await new Promise((resolve, reject) => {
+          const reader = new FileReader;
+          reader.onload = () => resolve(normalizeImageDataUrl(reader.result));
+          reader.onerror = () => reject(new Error("图片读取失败"));
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        throw gmErr || e;
+      }
+    });
+  }
+  function fetchViaGM(url, timeoutMs) {
     return new Promise((resolve, reject) => {
       let settled = false;
       const done = (fn, v) => {
@@ -194,7 +234,7 @@
               // 兼容返回 ArrayBuffer/string 的 GM 实现
                             if (!(blob instanceof Blob)) blob = new Blob([ blob || "" ]);
               const reader = new FileReader;
-              reader.onload = () => done(resolve, reader.result);
+              reader.onload = () => done(resolve, normalizeImageDataUrl(reader.result));
               reader.onerror = () => done(reject, new Error("图片读取失败"));
               reader.readAsDataURL(blob);
             } catch (e) {
@@ -576,7 +616,7 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$7 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-weight: 500; position: relative; padding-left: 12px; }\n    #ykt-ai-ctx .ctx-status::before { content: \'\'; position: absolute; left: 2px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: currentColor; }\n    #ykt-ai-ctx .ctx-status:hover { text-decoration: underline dotted; }\n    #ykt-ai-ctx .ctx-status.st-ok { color: #1a7f37; }\n    #ykt-ai-ctx .ctx-status.st-warn { color: #b45309; }\n    #ykt-ai-ctx .ctx-status.st-info { color: #1d63df; }\n    #ykt-ai-ctx .ctx-status.st-busy { color: #a16207; }\n    #ykt-ai-ctx .ctx-status.st-idle { color: #64748b; }\n    #ykt-ai-ctx .ctx-status.st-err { color: #b42318; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n    /* 工具调用：提交答案卡片 */\n    .ykt-tool-card { margin-top: 8px; border: 1px solid #cfe0ff; background: #f5f9ff; border-radius: 8px; padding: 8px 10px; }\n    .ykt-tool-card.done { border-color: #b7e4c7; background: #f0fbf4; }\n    .ykt-tool-title { font-size: 12px; font-weight: 600; color: #1d63df; margin-bottom: 4px; }\n    .ykt-tool-answer { font-size: 15px; font-weight: 600; color: #111827; word-break: break-word; white-space: pre-wrap; }\n    .ykt-tool-reason { font-size: 12px; color: #607190; margin-top: 4px; white-space: pre-wrap; }\n    .ykt-tool-actions { margin-top: 8px; }\n    .ykt-tool-submit { padding: 5px 14px; border: none; border-radius: 6px; background: #1d63df; color: #fff; cursor: pointer; font-size: 13px; }\n    .ykt-tool-submit:disabled { opacity: .6; cursor: not-allowed; }\n    .ykt-tool-status { margin-top: 6px; font-size: 12px; color: #2e7d32; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-report" title="上传诊断报告到服务器">诊断</button>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
+  var tpl$8 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-weight: 500; position: relative; padding-left: 12px; }\n    #ykt-ai-ctx .ctx-status::before { content: \'\'; position: absolute; left: 2px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: currentColor; }\n    #ykt-ai-ctx .ctx-status:hover { text-decoration: underline dotted; }\n    #ykt-ai-ctx .ctx-status.st-ok { color: #1a7f37; }\n    #ykt-ai-ctx .ctx-status.st-warn { color: #b45309; }\n    #ykt-ai-ctx .ctx-status.st-info { color: #1d63df; }\n    #ykt-ai-ctx .ctx-status.st-busy { color: #a16207; }\n    #ykt-ai-ctx .ctx-status.st-idle { color: #64748b; }\n    #ykt-ai-ctx .ctx-status.st-err { color: #b42318; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n    /* 工具调用：提交答案卡片 */\n    .ykt-tool-card { margin-top: 8px; border: 1px solid #cfe0ff; background: #f5f9ff; border-radius: 8px; padding: 8px 10px; }\n    .ykt-tool-card.done { border-color: #b7e4c7; background: #f0fbf4; }\n    .ykt-tool-title { font-size: 12px; font-weight: 600; color: #1d63df; margin-bottom: 4px; }\n    .ykt-tool-answer { font-size: 15px; font-weight: 600; color: #111827; word-break: break-word; white-space: pre-wrap; }\n    .ykt-tool-reason { font-size: 12px; color: #607190; margin-top: 4px; white-space: pre-wrap; }\n    .ykt-tool-actions { margin-top: 8px; }\n    .ykt-tool-submit { padding: 5px 14px; border: none; border-radius: 6px; background: #1d63df; color: #fff; cursor: pointer; font-size: 13px; }\n    .ykt-tool-submit:disabled { opacity: .6; cursor: not-allowed; }\n    .ykt-tool-status { margin-top: 6px; font-size: 12px; color: #2e7d32; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-report" title="上传诊断报告到服务器">诊断</button>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
   // src/core/dom.js
   // 轻量 DOM 工具——escapeHtml 此前在 ai.js / chat.js / auto-answer-popup.js 各抄了一份
     function escapeHtml$1(s) {
@@ -673,7 +713,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.8.0" !== "undefined" && "0.8.0") return String("0.8.0");
+      if (typeof "0.9.0" !== "undefined" && "0.9.0") return String("0.9.0");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -3825,7 +3865,7 @@
     if (!r.ok || j.success === false) throw new Error(j.msg || `HTTP ${r.status}`);
     return j;
   }
-  function sleep(ms) {
+  function sleep$1(ms) {
     return new Promise(r => setTimeout(r, Math.max(0, ms | 0)));
   }
   function calcAutoWaitMs() {
@@ -3963,7 +4003,7 @@
       const ms = typeof waitMs === "number" ? Math.max(0, waitMs) : calcAutoWaitMs();
       if (ms > 0) {
         const guard = typeof endTime === "number" ? Math.max(0, endTime - serverNow() - 80) : ms;
-        await sleep(Math.min(ms, guard));
+        await sleep$1(Math.min(ms, guard));
       }
     }
     const now = serverNow();
@@ -4945,8 +4985,8 @@
   // AI 解答面板：只负责 UI / 流式渲染 / 触发 AnswerEngine。
   // 答题上下文、解析、提交全部在 src/answer/ 下，面板不再判断 __submitTarget 之类字段。
     const L$2 = (...a) => log$1.dbg("[ai]", ...a);
-  let mounted$8 = false;
-  let root$7;
+  let mounted$9 = false;
+  let root$8;
   let history$1 = [];
  // 手动问答历史（作业/自动作答绝不写入）
     let streaming$1 = false;
@@ -4960,8 +5000,8 @@
     let lastThumbKey = "";
   let ctxPollTimer = null;
   const systemPrompt$1 = () => String(ui?.config?.systemPromptAI || "").trim() || DEFAULT_SYSTEM_PROMPT_AI;
-  function $$4(sel) {
-    return root$7?.querySelector(sel);
+  function $$5(sel) {
+    return root$8?.querySelector(sel);
   }
   function setStreamingFlag$1(on) {
     try {
@@ -4987,13 +5027,13 @@
   }
   // ---------------- 面板 ----------------
     function mountAIPanel() {
-    if (mounted$8) return root$7;
+    if (mounted$9) return root$8;
     const host = document.createElement("div");
-    host.innerHTML = tpl$7;
+    host.innerHTML = tpl$8;
     document.body.appendChild(host.firstElementChild);
-    root$7 = document.getElementById("ykt-ai-answer-panel");
-    $$4("#ykt-ai-report")?.addEventListener("click", () => uploadDiagnosticReport());
-    $$4("#ykt-ai-clear").addEventListener("click", () => {
+    root$8 = document.getElementById("ykt-ai-answer-panel");
+    $$5("#ykt-ai-report")?.addEventListener("click", () => uploadDiagnosticReport());
+    $$5("#ykt-ai-clear").addEventListener("click", () => {
       abortStreaming$1("清空会话");
       history$1 = [];
       lastTask = null;
@@ -5002,8 +5042,8 @@
       renderCtxStatus();
       addBubble$1("ai", mdToHtml("会话已清空。点击「发送」（输入留空）可解答当前页题目。"));
     });
-    const $input = $$4("#ykt-ai-input");
-    const $send = $$4("#ykt-ai-send");
+    const $input = $$5("#ykt-ai-input");
+    const $send = $$5("#ykt-ai-send");
     $send.addEventListener("click", () => sendCurrent$1());
     $input.addEventListener("keydown", e => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -5011,7 +5051,7 @@
         sendCurrent$1();
       }
     });
-    const statusEl = $$4("#ykt-ai-text-status");
+    const statusEl = $$5("#ykt-ai-text-status");
     if (statusEl) {
       statusEl.setAttribute("role", "button");
       statusEl.setAttribute("tabindex", "0");
@@ -5033,32 +5073,32 @@
       renderCtxStatus();
     });
     warmupRichAssets();
-    mounted$8 = true;
+    mounted$9 = true;
     renderCtxStatus();
     if (!ctxPollTimer) ctxPollTimer = setInterval(() => {
-      if (root$7?.classList.contains("visible")) renderCtxStatus({
+      if (root$8?.classList.contains("visible")) renderCtxStatus({
         light: true
       });
     }, 2e3);
-    root$7.__yksOnShow = () => {
+    root$8.__yksOnShow = () => {
       // 手动打开 AI tab：清掉上一次的显式任务，回到当前页
       lastTask = null;
       renderCtxStatus();
-      if (history$1.length === 0 && !$$4("#ykt-ai-log").children.length) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
+      if (history$1.length === 0 && !$$5("#ykt-ai-log").children.length) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
       if (ui.config.aiAutoAnalyze && history$1.length === 0 && !streaming$1 && !lastTask) queueMicrotask(() => sendCurrent$1());
     };
-    root$7.__yksOnHide = () => {};
-    return root$7;
+    root$8.__yksOnHide = () => {};
+    return root$8;
   }
   function showAIPanel(v = true) {
-    if (!mounted$8) mountAIPanel();
-    root$7.classList.toggle("visible", !!v);
+    if (!mounted$9) mountAIPanel();
+    root$8.classList.toggle("visible", !!v);
     if (v) {
       lastTask = null;
       renderCtxStatus();
       if (history$1.length === 0) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
       if (ui.config.aiAutoAnalyze && history$1.length === 0 && !streaming$1) queueMicrotask(() => sendCurrent$1());
-      setTimeout(() => $$4("#ykt-ai-input")?.focus(), 60);
+      setTimeout(() => $$5("#ykt-ai-input")?.focus(), 60);
     }
     L$2("showAIPanel", {
       visible: v
@@ -5086,7 +5126,7 @@
     });
   }
   function updateCtxPlaceholder(task) {
-    const input = $$4("#ykt-ai-input");
+    const input = $$5("#ykt-ai-input");
     if (!input) return;
     if (!task) {
       input.placeholder = "当前页无题目，可输入问题提问（Enter 发送）";
@@ -5095,8 +5135,8 @@
     if (task.target?.kind === "quiz") input.placeholder = "留空发送 = 解答本题并暂存（Enter 发送）"; else if (task.target?.allowSubmit) input.placeholder = "留空发送 = 解答本题并提交（Enter 发送）"; else input.placeholder = "留空发送 = 解答本题（仅展示，不提交）";
   }
   function renderCtxStatus({light: light = false, force: force = false} = {}) {
-    if (!mounted$8) return;
-    const statusEl = $$4("#ykt-ai-text-status");
+    if (!mounted$9) return;
+    const statusEl = $$5("#ykt-ai-text-status");
     if (!statusEl) return;
     const task = taskForStatus();
     const problem = task?.question;
@@ -5132,7 +5172,7 @@
     statusEl.textContent = text;
     statusEl.title = `${title}\n（点击重新检测）`;
     updateCtxPlaceholder(task);
-    if (!light && root$7?.classList.contains("visible")) renderCtxThumb({
+    if (!light && root$8?.classList.contains("visible")) renderCtxThumb({
       force: force,
       task: task
     });
@@ -5145,7 +5185,7 @@
     }
   }
   async function renderCtxThumb({force: force = false, task: task = null} = {}) {
-    const span = $$4("#ykt-ai-ctx-thumb");
+    const span = $$5("#ykt-ai-ctx-thumb");
     if (!span) return;
     const key = task ? `task:${task.id}:${task.question?.image?.dataUrl ? "img" : "noimg"}` : `slide:${pickCurrentSlide().slide?.id || "none"}`;
     if (!force && key === lastThumbKey) return;
@@ -5171,7 +5211,7 @@
   }
   // ---------------- 气泡 / 历史 ----------------
     function addBubble$1(kind, htmlOrNode) {
-    const $log = $$4("#ykt-ai-log");
+    const $log = $$5("#ykt-ai-log");
     const div = document.createElement("div");
     div.className = `ykt-ai-msg ${kind}`;
     if (typeof htmlOrNode === "string") div.innerHTML = htmlOrNode; else div.appendChild(htmlOrNode);
@@ -5195,7 +5235,7 @@
     };
   }
   function renderHistory$1() {
-    const $log = $$4("#ykt-ai-log");
+    const $log = $$5("#ykt-ai-log");
     $log.innerHTML = "";
     for (const m of history$1) {
       const text = (Array.isArray(m.content) ? m.content : [ {
@@ -5253,7 +5293,7 @@
       rBody.textContent = acc.reasoning;
       rBody.scrollTop = rBody.scrollHeight;
     }
-    const $log = $$4("#ykt-ai-log");
+    const $log = $$5("#ykt-ai-log");
     if ($log) $log.scrollTop = $log.scrollHeight;
   }
   /**
@@ -5418,7 +5458,7 @@
       }
       streaming$1 = true;
       setStreamingFlag$1(true);
-      const sendBtn = $$4("#ykt-ai-send");
+      const sendBtn = $$5("#ykt-ai-send");
       if (sendBtn) sendBtn.disabled = true;
       executeTask(lastRequest.task, {
         userText: lastRequest.userText,
@@ -5636,7 +5676,7 @@
    * 显式任务入口：作业 / 题目列表 / 自动作答 / 测试。
    * 使用独立消息数组，不读写手动 history。
    */  async function askAnswer(task, {autoSubmit: autoSubmit = false, userText: userText = "", soft: soft = false} = {}) {
-    if (!mounted$8) mountAIPanel();
+    if (!mounted$9) mountAIPanel();
     if (!task) {
       ui.toast?.("没有题目", 2e3);
       return null;
@@ -5647,7 +5687,7 @@
     }
     streaming$1 = true;
     setStreamingFlag$1(true);
-    const sendBtn = $$4("#ykt-ai-send");
+    const sendBtn = $$5("#ykt-ai-send");
     if (sendBtn) sendBtn.disabled = true;
     lastTask = task;
     lastRequest = {
@@ -5738,12 +5778,12 @@
     });
   }
   /** 手动发送当前页/追问 */  async function sendCurrent$1({retryText: retryText = null} = {}) {
-    if (!mounted$8) mountAIPanel();
+    if (!mounted$9) mountAIPanel();
     if (streaming$1) {
       ui.toast?.("AI 正在作答，请稍候", 1500);
       return null;
     }
-    const $input = $$4("#ykt-ai-input");
+    const $input = $$5("#ykt-ai-input");
     const text = retryText !== null ? retryText : String($input?.value || "").trim();
     // 作业/题目列表任务的追问：独立会话，不污染手动 history
         if (lastTask && !retryText) {
@@ -5754,7 +5794,7 @@
       });
     }
     // 先上锁再 await，防止双击/回车连发产生两个并发请求
-        const sendBtn = $$4("#ykt-ai-send");
+        const sendBtn = $$5("#ykt-ai-send");
     streaming$1 = true;
     setStreamingFlag$1(true);
     if (sendBtn) sendBtn.disabled = true;
@@ -5819,7 +5859,7 @@
       streaming$1 = true;
       setStreamingFlag$1(true);
     }
-    const sendBtn = $$4("#ykt-ai-send");
+    const sendBtn = $$5("#ykt-ai-send");
     if (sendBtn) sendBtn.disabled = true;
     const {aiBubble: aiBubble, waitActions: waitActions} = createBubbleState({
       userHtml: escapeHtml$1(text),
@@ -5929,7 +5969,7 @@
     history$1 = [];
     lastTask = null;
     lastRequest = null;
-    const log = $$4("#ykt-ai-log");
+    const log = $$5("#ykt-ai-log");
     if (log) log.innerHTML = "";
     renderCtxStatus();
   }
@@ -5947,7 +5987,7 @@
     async function askAIForCurrent() {
     return sendCurrent$1();
   }
-  var tpl$6 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.active {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 / 跟随当前页开关 */\n    #ykt-filter-problems,\n    #ykt-follow-current {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active,\n    #ykt-follow-current.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-follow-current" title="选中项自动跟随课堂翻页；手动选择页面会脱离跟随">🎯 跟随当前页</button>\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      \n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n      <button id="ykt-pdf-cancel" title="取消导出" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:13px;padding:0 2px;">✕</button>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$7 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.active {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n    .pdf-progress {\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      padding: 6px 12px;\n      background: #f0f4ff;\n      border-radius: 6px;\n      margin-top: 6px;\n    }\n    .pdf-progress-bar {\n      flex: 1;\n      height: 8px;\n      background: #dbeafe;\n      border-radius: 4px;\n      overflow: hidden;\n    }\n    .pdf-progress-fill {\n      height: 100%;\n      width: 0%;\n      background: linear-gradient(90deg, #3b82f6, #6366f1);\n      border-radius: 4px;\n      transition: width 0.2s ease;\n    }\n    .pdf-progress-text {\n      font-size: 12px;\n      font-weight: 600;\n      color: #3b82f6;\n      min-width: 36px;\n      text-align: right;\n    }\n    /* 题目页筛选开关 / 跟随当前页开关 */\n    #ykt-filter-problems,\n    #ykt-follow-current {\n      border: 1px solid var(--ykt-border-strong, #ccc);\n      background: #f7f8fa;\n      border-radius: 6px;\n      cursor: pointer;\n      padding: 4px 10px;\n      font-size: 12px;\n      color: var(--ykt-fg, #222);\n    }\n    #ykt-filter-problems.active,\n    #ykt-follow-current.active {\n      background: #1d63df;\n      border-color: #1d63df;\n      color: #fff;\n    }\n    .presentation-source {\n      display: inline-block;\n      margin-left: 8px;\n      padding: 1px 6px;\n      border-radius: 4px;\n      background: #eef2ff;\n      color: #4f46e5;\n      font-size: 11px;\n      font-weight: 500;\n      vertical-align: middle;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <button id="ykt-follow-current" title="选中项自动跟随课堂翻页；手动选择页面会脱离跟随">🎯 跟随当前页</button>\n      <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>\n      <button id="ykt-load-class-cards" title="读取老师直接上传到班级的课件（type=2）">📚 班级课件</button>\n      \n    </div>\n    <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">\n      <div class="pdf-progress-bar">\n        <div id="ykt-pdf-progress-fill" class="pdf-progress-fill"></div>\n      </div>\n      <span id="ykt-pdf-progress-text" class="pdf-progress-text">0%</span>\n      <button id="ykt-pdf-cancel" title="取消导出" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:13px;padding:0 2px;">✕</button>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // src/core/idb-cache.js
   // PDF 导出图片缓存：下载的 dataURL 落 IndexedDB，刷新/中断后重导可断点续传。
   // key = 图片 URL 去掉 query（签名 token 会过期轮换，path 部分才是稳定身份）。
@@ -6784,17 +6824,596 @@
   }
   /** 从当前页面路径提取 classId（含桌面版与移动版 /m/v2 课程日志页） */  function currentClassId() {
     const path = window.location.pathname;
-    const m = path.match(/\/studentLog\/(\d+)/) || path.match(/\/student-lesson-report\/(\d+)/) || path.match(/\/student-v3\/(\d+)/) || path.match(/\/m\/v\d\/course\/[^/]+\/logs\/(\d+)\/(\d+)/);
+    const m = path.match(/\/studentLog\/(\d+)/) || path.match(/\/student-lesson-report\/(\d+)/) || path.match(/\/student-v3\/(\d+)/) || path.match(/\/studentCards\/(\d+)/) || path.match(/\/m\/v\d\/course\/[^/]+\/logs\/(\d+)\/(\d+)/);
  // 移动版：/logs/{courseId}/{classId}
         return m ? m[2] || m[1] : null;
   }
-  let mounted$7 = false;
+  // src/quiz/active-core.js
+  // 新版作业（type 19）/考试（type 20）纯函数核心：数据解包、状态解析、题目解析、试卷拼装、保留窗口。
+  // 协议参考：smartThise/OneTHU PR #28（b9b82ef）/ PR #32（5225a05），适配本项目数据形态。
+  // 本文件只含纯函数（无 fetch/DOM），供 active-http/exercise/exam/assignments 复用与单测覆盖。
+  /** 登录态失效：发现/详情队列遇到后应整体中止并提示用户刷新。 */  class AuthError extends Error {
+    constructor() {
+      super("雨课堂登录已失效，请刷新页面或重新登录后再试。");
+    }
+  }
+  /** 对象则原样返回，否则 null（数组也算非对象）。 */  function record(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+  }
+  /** 字符串则原样返回，否则 ''。 */  function text(value) {
+    return typeof value === "string" ? value : "";
+  }
+  /** string/number → trim 后字符串，否则 ''。 */  function id(value) {
+    return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+  }
+  /** 非负有限数（字符串数字也接受，如 '0.00'→0）；负数/NaN/Infinity/空串 → null。 */  function number(value) {
+    const n = typeof value === "string" && value.trim() ? Number(value) : value;
+    return typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  /** 严格非负安全整数（不接受字符串）。 */  function nonnegativeInteger(value) {
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  /** 严格非负有限数（不接受字符串）。 */  function nonnegativeNumber(value) {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  /** 分数字段归一：'5.00'→5，-1/缺失 → null。 */  function numericScore(value) {
+    return nonnegativeNumber(typeof value === "string" && value.trim() ? Number(value) : value);
+  }
+  /** 我的作答是否有实质内容（trim 后非空字符串 / 递归数组 / 有限数字）。 */  function hasAnswer(value) {
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.some(hasAnswer);
+    return typeof value === "number" && Number.isFinite(value);
+  }
+  /** https 绝对/协议相对 URL 规范化；非 https/非法 → null。 */  function httpsUrl(value) {
+    const raw = text(value);
+    if (!raw.trim()) return null;
+    try {
+      const u = new URL(raw, "https://pro.yuketang.cn/");
+      return u.protocol === "https:" && !u.username && !u.password ? u.href : null;
+    } catch {
+      return null;
+    }
+  }
+  /** 5 实体 HTML 转义。 */  function escapeText$1(value) {
+    return value.replace(/[&<>"']/g, c => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+  /** 正确答案渲染：数组逐项转义后 <br> 连接，字符串原样（服务端 HTML 交由 sanitizeHtml）。 */  function reviewAnswer(value) {
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return value.filter(v => typeof v === "string" || typeof v === "number").map(v => escapeText$1(String(v))).join("<br>");
+    return typeof value === "number" ? String(value) : "";
+  }
+  /** uv_id → university_id → '2598' 兜底（与官网前端行为一致）。 */  function uvIdFromCookie(cookieString) {
+    const raw = typeof cookieString === "string" ? cookieString : "";
+    const jar = new Map;
+    for (const part of raw.split(";")) {
+      const eq = part.indexOf("=");
+      if (eq <= 0) continue;
+      const name = part.slice(0, eq).trim();
+      if (!jar.has(name)) jar.set(name, part.slice(eq + 1).trim());
+    }
+    return jar.get("uv_id") || jar.get("university_id") || "2598";
+  }
+  /**
+   * 解包 {success, data} / {errcode|error_code|code, ...} 信封。
+   * 401000/401/403（任意字段）→ AuthError；其余错误码/未成功/缺数据 → Error。
+   */  function dataOf(value) {
+    const body = record(value);
+    if (!body) throw new Error("雨课堂返回非 JSON，请重新登录后重试。");
+    for (const field of [ "errcode", "error_code", "code" ]) {
+      const code = body[field];
+      if (code === void 0 || code === null || code === 0 || code === "0") continue;
+      if ([ "401000", "401", "403" ].includes(String(code))) throw new AuthError;
+      throw new Error(`雨课堂作业接口失败（${field}=${String(code)}）。`);
+    }
+    if (body.success === false) throw new Error("雨课堂作业接口未成功。");
+    const data = record(body.data);
+    if (!data) throw new Error("雨课堂作业接口未返回数据。");
+    return data;
+  }
+  /** 三个日历月（UTC，月末钳制），与宿主时区无关。 */  function assignmentRetentionCutoff(now = Date.now()) {
+    const date = new Date(now);
+    const day = date.getUTCDate();
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() - 3);
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, lastDay));
+    return date.getTime();
+  }
+  /** 缺失/非法 deadline 不能证明过期，一律保留；否则按三个月窗口过滤。 */  function isAssignmentRetained(assignment, now = Date.now()) {
+    const d = assignment !== null && typeof assignment === "object" ? assignment.deadline : null;
+    return d === null || d === void 0 || !Number.isFinite(d) || d >= assignmentRetentionCutoff(now);
+  }
+  /**
+   * 考试 cover 状态（/v/exam/cover 与 /exam_room/cover 同构）。
+   * 已验证官网判定：result.status 4/5=已交卷，6=缺考；monitor_status=2 覆盖为作废；
+   * 仅已交卷且 score_finish!==false 且 score/total_score 均为非负有限数才算已出分（零分有效）。
+   */  function parseExamProgress(data) {
+    const cover = record(data) ?? {};
+    const result = record(cover.result) ?? {};
+    const code = result.status;
+    const submitted = code === 4 || code === 5;
+    const invalid = (record(cover.face_auth_status) ?? {}).monitor_status === 2;
+    const examStatus = invalid ? "invalid" : submitted ? "submitted" : code === 6 ? "absent" : "unknown";
+    const total = nonnegativeInteger(cover.problem_count);
+    const unfinished = nonnegativeInteger(result.unfinished_count);
+    const totalCount = total !== null && total > 0 ? total : null;
+    // 缺失/越界的未答数不是 0；仅交卷不等于全部作答。
+        const answeredCount = submitted && !invalid && totalCount !== null && unfinished !== null && unfinished <= totalCount ? totalCount - unfinished : null;
+    const score = nonnegativeNumber(result.score);
+    const totalScore = nonnegativeNumber(cover.total_score);
+    const graded = submitted && !invalid && result.score_finish !== false && score !== null && totalScore !== null;
+    return {
+      examStatus: examStatus,
+      graded: graded,
+      score: graded ? score : null,
+      totalScore: graded ? totalScore : null,
+      status: answeredCount === null ? "unknown" : answeredCount === totalCount ? "answered" : answeredCount > 0 ? "partial" : "unanswered",
+      answeredCount: answeredCount,
+      totalCount: totalCount,
+      // cover 只有总题数与未答数，无逐题明细。
+      questions: [],
+      statusMessage: examStatus === "unknown" ? "暂无法获取考试状态，请在官网查看。" : null
+    };
+  }
+  /** 考试回顾门禁：已交卷 + 已出分 + 允许查看 + 成绩公布时间已到，才允许读取题目。 */  function canReviewExam(data, now) {
+    const cover = record(data) ?? {};
+    const progress = parseExamProgress(cover);
+    const release = number(cover.show_score_time);
+    return progress.examStatus === "submitted" && progress.graded === true && cover.show_perm === true && cover.show_score === true && (release === null || release <= (number(cover.server_time) ?? now));
+  }
+  /** 作业批改汇总（graded 仅在证据充分时给出 true/false，否则 null）。 */  function homeworkGraded(problems, aggregate, answered) {
+    if (answered === 0 && (aggregate ?? 0) === 0) return false;
+    const relevant = problems.filter(value => {
+      const user = record(record(value)?.user) ?? {};
+      const answer = record(user.my_answer) ?? {};
+      return (aggregate ?? 0) > 0 || [ 3, 4 ].includes(user.status) || hasAnswer(answer.content) || Array.isArray(answer.attachment) && answer.attachment.length > 0;
+    });
+    if (!relevant.length) return null;
+    let allGraded = true;
+    for (const value of relevant) {
+      const user = record(record(value)?.user) ?? {};
+      const rawScore = user.my_score;
+      const score = typeof rawScore === "string" && rawScore.trim() ? Number(rawScore) : rawScore;
+      // status=3 或 my_score=-1（含 '-1.00'）优先表示待批改。
+            if (user.status === 3 || score === -1) return false;
+      // 缺少批改字段不能被误判为已批改。
+            if (user.status !== 4 && nonnegativeNumber(score) === null) allGraded = false;
+    }
+    return allGraded ? true : null;
+  }
+  /**
+   * 作业（exercise）状态汇总：逐题 user 数据缺失时 answered=null（未知≠未答）。
+   * problems 为空且 answer_count 缺失时抛错（调用方降级为 statusMessage）。
+   */  function parseProgress(data) {
+    const body = record(data) ?? {};
+    const raw = Array.isArray(body.problems) ? body.problems : [];
+    const aggregate = nonnegativeInteger(numericScore(body.answer_count));
+    if (!raw.length && aggregate === null) throw new Error("作业状态数据为空");
+    const questions = raw.map((value, index) => {
+      const problem = record(value) ?? {};
+      const user = record(problem.user);
+      const answer = user ? record(user.my_answer) : null;
+      return {
+        id: id(problem.problem_id) || id(problem.id) || String(index + 1),
+        index: index + 1,
+        // 缺失的 user 数据不能证明该题未作答。
+        answered: !user ? null : user.status === 3 || user.status === 4 || hasAnswer(record(user.my_answer)?.content) || answer !== null && Array.isArray(answer.attachment) && answer.attachment.length > 0
+      };
+    });
+    const answered = questions.filter(q => q.answered === true).length;
+    const allKnown = questions.length > 0 && questions.every(q => q.answered !== null);
+    // 聚合数只能证明有活动，不能定位到具体题目。
+        const count = answered > 0 ? answered : aggregate ?? (allKnown ? 0 : null);
+    const status = allKnown && answered === questions.length ? "answered" : count !== null && count > 0 ? "partial" : allKnown || aggregate === 0 ? "unanswered" : "unknown";
+    const scored = raw.length > 0 && raw.every(value => {
+      const user = record(record(value)?.user) ?? {};
+      const content = record(record(value)?.content) ?? {};
+      return user.status !== 3 && numericScore(user.my_score) !== null && numericScore(content.score) !== null;
+    });
+    const graded = homeworkGraded(raw, aggregate, answered);
+    return {
+      status: status,
+      score: graded === true && scored ? raw.reduce((sum, value) => sum + numericScore((record(record(value)?.user) ?? {}).my_score), 0) : null,
+      totalScore: graded === true && scored ? raw.reduce((sum, value) => sum + numericScore((record(record(value)?.content) ?? {}).score), 0) : null,
+      graded: graded,
+      answeredCount: count,
+      totalCount: questions.length || null,
+      questions: questions,
+      statusMessage: null
+    };
+  }
+  /**
+   * 单题解析（exercise 详情 / 考试试卷共用）。
+   * status：3=已交待批改；4 或非负 my_score=已批改；有作答内容=已作答；
+   * my_answer 显式含 content=未作答；其余=未知。
+   */  function parseProblem(raw, position = 0) {
+    const problem = record(raw) ?? {};
+    const content = record(problem.content) ?? {};
+    const user = record(problem.user) ?? {};
+    const answer = record(user.my_answer) ?? {};
+    const answerHtml = typeof answer.content === "string" ? answer.content : Array.isArray(answer.content) ? answer.content.filter(v => typeof v === "string" || typeof v === "number").map(v => escapeText$1(String(v))).join("<br>") : typeof answer.content === "number" ? String(answer.content) : "";
+    const attachments = (Array.isArray(answer.attachment) ? answer.attachment : []).flatMap(item => {
+      const entry = record(item) ?? {};
+      const name = text(entry.name);
+      const href = httpsUrl(entry.url);
+      return name || href ? [ {
+        name: name || "附件",
+        url: href
+      } ] : [];
+    });
+    const userStatus = number(user.status);
+    const score = number(user.my_score);
+    const pendingScore = String(user.my_score ?? "").trim() !== "" && Number(user.my_score) === -1;
+    const status = userStatus === 3 ? "submitted" : !pendingScore && (userStatus === 4 || score !== null) ? "graded" : answerHtml.trim() || attachments.length ? "answered" : Object.hasOwn(answer, "content") ? "unanswered" : "unknown";
+    const count = number(user.count);
+    const used = number(user.my_count) ?? 0;
+    const type = number(content.ProblemType ?? content.Type) ?? 0;
+    const typeNames = {
+      1: "单选题",
+      2: "多选题",
+      3: "判断题",
+      4: "填空题",
+      5: "主观题",
+      6: "试卷",
+      9: "外链题"
+    };
+    return {
+      id: id(problem.problem_id) || String(position + 1),
+      index: number(problem.index) ?? position + 1,
+      type: type,
+      typeText: text(content.TypeText) || typeNames[type] || "题目",
+      score: number(content.score),
+      bodyHtml: text(content.Body),
+      options: (Array.isArray(content.Options) ? content.Options : []).map((rawOption, i) => {
+        const option = record(rawOption) ?? {};
+        return {
+          label: text(option.name) || String.fromCharCode(65 + i),
+          html: typeof rawOption === "string" ? rawOption : text(option.content ?? option.Body ?? option.text)
+        };
+      }),
+      answerHtml: answerHtml,
+      attachments: attachments,
+      status: status,
+      myScore: status === "graded" ? score : null,
+      remarkHtml: text(user.remark),
+      comments: (Array.isArray(user.comment) ? user.comment : []).flatMap(rawComment => {
+        const item = record(rawComment) ?? {};
+        const html = text(item.content);
+        return html.trim() ? [ {
+          html: html,
+          name: text(item.name),
+          index: number(item.index)
+        } ] : [];
+      }),
+      externalUrl: type === 9 ? httpsUrl((record(content.data) ?? {}).answer_problem_url) : null,
+      maxRetry: number(content.max_retry ?? problem.max_retry) ?? 0,
+      remainingRetries: count !== null && count > 0 ? Math.max(0, count - used) : null,
+      allowResults: (Array.isArray(content.AllowResults) ? content.AllowResults : []).filter(v => typeof v === "string")
+    };
+  }
+  /**
+   * 拼装考试回顾试卷（show_paper × problem_results × exam 域 cover）。
+   * 已验证试卷 index 恒为 0、results 与试卷顺序相反：一律按 problem_id 关联并重排 index=i+1。
+   * show_answer!==true 时隐去参考答案与解析（answer/Remark）。
+   */  function joinExamPaper(paper, results, reviewCover) {
+    const paperBody = record(paper) ?? {};
+    const cover = record(reviewCover) ?? {};
+    const byId = new Map((Array.isArray(record(results)?.problem_results) ? record(results).problem_results : []).map(raw => [ id(record(raw)?.problem_id), record(raw) ?? {} ]).filter(([key]) => key));
+    const problems = (Array.isArray(paperBody.problems) ? paperBody.problems : []).map((raw, i) => {
+      const p = record(raw) ?? {};
+      const pid = id(p.problem_id ?? p.ProblemID);
+      const result = pid ? byId.get(pid) ?? {} : {};
+      const grade = number(result.grade);
+      const parsed = parseProblem({
+        problem_id: pid,
+        index: i + 1,
+        content: {
+          ...p,
+          score: p.score ?? p.Score,
+          Options: (Array.isArray(p.Options) ? p.Options : []).map(rawOption => {
+            const option = record(rawOption) ?? {};
+            return {
+              name: option.key,
+              content: option.value
+            };
+          })
+        },
+        user: {
+          my_answer: {
+            content: result.result
+          }
+        }
+      }, i);
+      return {
+        ...parsed,
+        status: grade !== null ? "graded" : result.finished === false ? "unanswered" : result.finished === true ? "submitted" : "unknown",
+        myScore: grade,
+        correct: grade !== null && typeof result.correct === "boolean" ? result.correct : null,
+        correctAnswerHtml: cover.show_answer === true ? reviewAnswer(result.answer ?? p.Answer) : "",
+        explanationHtml: cover.show_answer === true ? text(p.Remark) : ""
+      };
+    });
+    return {
+      problems: problems,
+      questions: problems.map(p => {
+        const entry = byId.get(p.id);
+        return {
+          id: p.id,
+          index: p.index,
+          answered: typeof entry?.finished === "boolean" ? entry.finished : null
+        };
+      }),
+      fontUrl: httpsUrl(paperBody.font),
+      descriptionHtml: text(cover.description)
+    };
+  }
+  const EXAM_HOSTS = [ "tsinghua-exam.yuketang.cn", "examination.xuetangx.com" ];
+  /**
+   * gen_token 返回的 exam_host 白名单校验：仅 https、无凭据/端口、域名在白名单内。
+   * 非法/不支持 → Error（提示去官网），默认缺省为 examination.xuetangx.com。
+   */  function parseExamHost(value) {
+    let host;
+    try {
+      host = new URL(typeof value === "string" && value ? value : "https://examination.xuetangx.com");
+    } catch {
+      throw new Error("考试结果服务地址暂不支持，请在官网查看。");
+    }
+    if (host.protocol !== "https:" || host.username || host.password || host.port || !EXAM_HOSTS.includes(host.hostname)) throw new Error("考试结果服务地址暂不支持，请在官网查看。");
+    return host.origin;
+  }
+  // src/quiz/active-http.js
+  // 新版作业/考试 HTTP 层。
+  // EP1-EP5（pro 站点）：同源相对路径 fetch（credentials include，登录 Cookie 自动携带）；
+  // EP6-EP9（考试域 tsinghua-exam.yuketang.cn / examination.xuetangx.com）：跨源走
+  //   GM_xmlhttpRequest（userscript.meta 已 @connect *；Android 壳内 gm-shim 的 fetch
+  //   遇跨域 CORS 预检失败会自动回退原生 fetchRequest，无需平台分支）。
+  // 跨源请求绝不携带 pro 平台凭据：GM 按目标域独立 Cookie jar，headers 只发 x-client/xtbz/referer。
+  /** document.cookie 中的 csrftoken（非 HttpOnly；与 quiz-paper.js 暂存、官网前端一致）。 */  function csrfToken() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  /** 同源 GET（相对路径）。401/403 → AuthError；其余非 2xx → Error。 */  async function proGet(path, extraHeaders = {}) {
+    let r;
+    try {
+      const headers = Object.assign({}, extraHeaders);
+      r = await fetch(path, {
+        credentials: "include",
+        ...Object.keys(headers).length ? {
+          headers: headers
+        } : {}
+      });
+    } catch {
+      throw new Error(`网络请求失败：${path}`);
+    }
+    if (r.status === 401 || r.status === 403) throw new AuthError;
+    if (!r.ok) throw new Error(`HTTP ${r.status}：${path}`);
+    return r.json();
+  }
+  /** 同源 POST JSON（相对路径），自动携带 X-CSRFToken；extraHeaders 覆盖默认头。 */  async function proPost(path, payload, extraHeaders = {}) {
+    const token = csrfToken();
+    const headers = {
+      "Content-Type": "application/json",
+      ...token ? {
+        "X-CSRFToken": token
+      } : {},
+      ...extraHeaders
+    };
+    let r;
+    try {
+      r = await fetch(path, {
+        method: "POST",
+        credentials: "include",
+        headers: headers,
+        body: JSON.stringify(payload ?? {})
+      });
+    } catch {
+      throw new Error(`网络请求失败：${path}`);
+    }
+    if (r.status === 401 || r.status === 403) throw new AuthError;
+    if (!r.ok) throw new Error(`HTTP ${r.status}：${path}`);
+    return r.json();
+  }
+  /**
+   * 跨源 GET（GM_xmlhttpRequest）。返回 GM 响应对象（status/responseText/...）。
+   * watchdog 兜底：部分 GM 实现 timeout 字段不生效，不能让 Promise 永远 pending。
+   */  function gmGet(url, headers = {}, timeoutMs = 15e3) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const done = (fn, v) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(watchdog);
+          fn(v);
+        }
+      };
+      const watchdog = setTimeout(() => done(reject, new Error(`考试结果请求超时：${hostOf(url)}`)), timeoutMs + 5e3);
+      try {
+        gm.xhr({
+          method: "GET",
+          url: url,
+          headers: headers,
+          timeout: timeoutMs,
+          onload: res => done(resolve, res),
+          onerror: () => done(reject, new Error(`考试结果请求失败：${hostOf(url)}`)),
+          ontimeout: () => done(reject, new Error(`考试结果请求超时：${hostOf(url)}`)),
+          onabort: () => done(reject, new Error(`考试结果请求中止：${hostOf(url)}`))
+        });
+      } catch (e) {
+        done(reject, e);
+      }
+    });
+  }
+  function hostOf(url) {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return String(url).slice(0, 60);
+    }
+  }
+  // src/quiz/course-cards.js
+  // 班级上传课件（logs/learn type=2）与课程成绩只读数据层。
+  // 课堂课件（type=14）是另一条链路，不能和这里混用：
+  //   - type=14：老师上过课的课堂记录，只下载，不刷
+  //   - type=2：老师直接上传到班级的课件，可下载，也是刷课目标
+    const enc$2 = encodeURIComponent;
+  const PAGE_SIZE$1 = 200;
+  const MAX_PAGES$1 = 20;
+  /** 拉取学习日志原始活动，按页去重，避免服务端忽略分页时死循环。 */  async function fetchLearnActivities(cid) {
+    const all = [];
+    const seenPages = new Set;
+    for (let page = 0; page < MAX_PAGES$1; page++) {
+      const data = dataOf(await proGet(`/v2/api/web/logs/learn/${enc$2(cid)}?actype=-1&page=${page}&offset=${PAGE_SIZE$1}&sort=-1`));
+      const items = Array.isArray(data.activities) ? data.activities : [];
+      const signature = JSON.stringify(items);
+      if (seenPages.has(signature)) break;
+      seenPages.add(signature);
+      all.push(...items);
+      if (items.length < PAGE_SIZE$1) break;
+    }
+    return all;
+  }
+  /**
+   * 从学习日志里挑出班级上传课件。
+   * @returns {{activityId:string,cardsId:string,title:string,count:number,createTime:number}[]}
+   */  function pickClassCards(activities) {
+    const rows = new Map;
+    for (const a of Array.isArray(activities) ? activities : []) {
+      if (!a || a.type !== 2) continue;
+      const cardsId = String(a.courseware_id || "").trim();
+      if (!cardsId) continue;
+      const activityId = String(a.id || "").trim();
+      const key = `${activityId}:${cardsId}`;
+      if (rows.has(key)) continue;
+      rows.set(key, {
+        activityId: activityId,
+        cardsId: cardsId,
+        title: String(a.title || `班级课件 ${cardsId}`),
+        count: Number(a.count) || 0,
+        createTime: Number(a.create_time) || 0
+      });
+    }
+    return [ ...rows.values() ].sort((a, b) => b.createTime - a.createTime);
+  }
+  /** 拉取班级上传课件列表（type=2）。 */  async function fetchClassCards(cid) {
+    return pickClassCards(await fetchLearnActivities(cid));
+  }
+  /** 拉取单个班级课件的完整页面。 */  async function fetchClassCardDetail(cid, cardsId) {
+    const data = dataOf(await proGet(`/v2/api/web/cards/detlist/${enc$2(cardsId)}?classroom_id=${enc$2(cid)}`));
+    return data;
+  }
+  /** 班级课件阅读进度（官方 view_depth）。 */  async function fetchClassCardProgress(cid, cardsId) {
+    const data = dataOf(await proGet(`/v2/api/web/cards/view_depth?classroom_id=${enc$2(cid)}&cards_id=${enc$2(cardsId)}`));
+    return {
+      depth: Number(data?.depth) || 0,
+      duration: Number(data?.duration) || 0,
+      finishTime: data?.finish_time || null,
+      depthDetail: Array.isArray(data?.depth_detail) ? data.depth_detail : []
+    };
+  }
+  function slideCover(slide) {
+    return String(slide?.Cover || slide?.Background?.Data || "").trim();
+  }
+  /**
+   * cards/detlist → 现有 presentation 数据结构。
+   * slide id 加 classcards: 前缀，避免和课堂 slide 的数字 id 冲突。
+   */  function buildClassCardPresentation({cid: cid, cardsId: cardsId, activityId: activityId = "", title: title = "", detail: detail = {}} = {}) {
+    const sourceSlides = Array.isArray(detail?.Slides) ? detail.Slides : [];
+    const slides = sourceSlides.map((s, i) => {
+      const page = Number(s?.PageIndex) || i + 1;
+      const image = slideCover(s);
+      return {
+        id: `classcards:${cardsId}:${s?.SlideID ?? page}`,
+        index: page,
+        page: page,
+        title: `第 ${page} 页`,
+        thumbnail: image,
+        image: image,
+        problem: null,
+        classCard: true
+      };
+    }).filter(s => s.image);
+    if (!slides.length) return null;
+    return {
+      id: `classcards:${cardsId}`,
+      title: String(title || detail?.Title || `班级课件 ${cardsId}`),
+      source: "class-card",
+      cardsId: String(cardsId),
+      activityId: String(activityId || ""),
+      classroomId: String(cid || ""),
+      width: 1280,
+      height: 720,
+      slides: slides
+    };
+  }
+  /** 课程列表里补上成绩接口需要的 skuId。 */  function normalizeCourse(c = {}) {
+    return {
+      id: String(c.classroom_id || ""),
+      name: c.name || c.course_name || c.course?.name || "课程",
+      role: c.role,
+      skuId: String(c.free_sku_id || c.sku_id || ""),
+      courseId: String(c.course_id || ""),
+      teacher: c.teacher_name || c.teacher?.name || ""
+    };
+  }
+  /** 我的成绩 + 班级统计（只读；接口未公开时返回 null 字段）。 */  async function fetchCourseScores(cid, skuId) {
+    if (!cid || !skuId) return {
+      summary: null,
+      statistic: null,
+      items: []
+    };
+    const q = `classroom_id=${enc$2(cid)}&sku_id=${enc$2(skuId)}`;
+    const [detail, statistic] = await Promise.all([ proGet(`/c27/online_courseware/schedule/score_detail/single/${enc$2(skuId)}/0/?${q}`, {
+      xtbz: "ykt"
+    }).then(dataOf), proGet(`/c27/online_courseware/schedule/score_statistic/${enc$2(cid)}/${enc$2(skuId)}/?${q}`, {
+      xtbz: "ykt"
+    }).then(dataOf) ]);
+    const evaluation = Array.isArray(detail?.evaluation_list) ? detail.evaluation_list : [];
+    return {
+      summary: {
+        finalScore: toNumber(detail?.user_final_score),
+        evaluation: evaluation.map(e => ({
+          id: String(e?.id ?? ""),
+          name: String(e?.name || ""),
+          proportion: toNumber(e?.proportion)
+        }))
+      },
+      statistic: {
+        max: toNumber(statistic?.data?.max_score),
+        min: toNumber(statistic?.data?.min_score),
+        average: toNumber(statistic?.data?.average_score),
+        passCount: toNumber(statistic?.data?.pass_user_num),
+        interval: Array.isArray(statistic?.data?.score_interval) ? statistic.data.score_interval : []
+      },
+      items: (Array.isArray(detail?.leaf_level_infos) ? detail.leaf_level_infos : []).map(x => ({
+        id: String(x?.id ?? ""),
+        title: String(x?.leaf_level_title || x?.leaf_chapter_title || ""),
+        leafType: Number(x?.leaf_type) || 0,
+        evaluationId: x?.evaluation_id == null ? null : String(x.evaluation_id),
+        userScore: toNumber(x?.user_score),
+        leafScore: toNumber(x?.leaf_score),
+        isExpired: x?.is_expired === true
+      }))
+    };
+  }
+  function toNumber(v) {
+    const n = typeof v === "string" && v.trim() ? Number(v) : v;
+    return typeof n === "number" && Number.isFinite(n) ? n : null;
+  }
+  let mounted$8 = false;
   let host;
   let staticReportReady = false;
  //已结束课程
     let followCurrent = true;
  // 跟随课堂翻页：true=选中项自动跟随当前页；用户手动点缩略图后脱离
-    function findSlideAcrossPresentations(idStr) {
+    let classCardLoading = false;
+  let classCardLoadedKey = "";
+  function findSlideAcrossPresentations(idStr) {
     for (const [, pres] of repo.presentations) {
       const arr = pres?.slides || [];
       const hit = arr.find(s => String(s.id) === idStr);
@@ -6804,7 +7423,7 @@
   }
   const L$1 = (...a) => log$1.dbg("[presentation]", ...a);
   const W = (...a) => log$1.warn("[presentation]", ...a);
-  function $$3(sel) {
+  function $$4(sel) {
     return document.querySelector(sel);
   }
   /** —— 运行时自愈：把 repo.slides 的数字键迁移为字符串键 —— */  function normalizeRepoSlidesKeys(tag = "presentation.mount") {
@@ -6957,15 +7576,15 @@
     return true;
   }
   function mountPresentationPanel() {
-    if (mounted$7) return host;
+    if (mounted$8) return host;
     normalizeRepoSlidesKeys("presentation.mount");
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = tpl$6;
+    wrapper.innerHTML = tpl$7;
     document.body.appendChild(wrapper.firstElementChild);
     host = document.getElementById("ykt-presentation-panel");
     // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
     // 题目页筛选开关（原「题目列表」功能的替代：点一下只看题目页，再点恢复全部）
-        const filterBtn = $$3("#ykt-filter-problems");
+        const filterBtn = $$4("#ykt-filter-problems");
     const syncFilterBtn = () => filterBtn?.classList.toggle("active", !!ui.config.filterProblemsOnly);
     syncFilterBtn();
     filterBtn?.addEventListener("click", () => {
@@ -6977,7 +7596,7 @@
       updatePresentationList();
     });
     // 跟随当前页开关：开启时选中项自动跟随课堂翻页；手动点缩略图会脱离
-        const followBtn = $$3("#ykt-follow-current");
+        const followBtn = $$4("#ykt-follow-current");
     const syncFollowBtn = () => followBtn?.classList.toggle("active", followCurrent);
     syncFollowBtn();
     followBtn?.addEventListener("click", () => {
@@ -7010,9 +7629,10 @@
         } else renderFollowBadge();
       });
     }).catch(e => W("Vue 初始化失败，跟随功能降级:", e));
-    $$3("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
-    $$3("#ykt-import-history")?.addEventListener("click", openHistoryImporter);
-    mounted$7 = true;
+    $$4("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
+    $$4("#ykt-import-history")?.addEventListener("click", openHistoryImporter);
+    $$4("#ykt-load-class-cards")?.addEventListener("click", () => loadClassCards());
+    mounted$8 = true;
     L$1("mountPresentationPanel 完成");
     // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
         host.__yksOnShow = () => updatePresentationList();
@@ -7133,6 +7753,10 @@
       // 课件标题来自服务端——不用 innerHTML 注入
             const titleSpan = document.createElement("span");
       titleSpan.textContent = presentation.title || `课件 ${id}`;
+      const sourceSpan = document.createElement("span");
+      sourceSpan.className = "presentation-source";
+      sourceSpan.textContent = presentation.source === "class-card" ? "班级上传" : "课堂";
+      titleEl.appendChild(sourceSpan);
       const dlIcon = document.createElement("i");
       dlIcon.className = "fas fa-download download-btn";
       dlIcon.title = "下载课件";
@@ -7198,7 +7822,8 @@
           window.dispatchEvent(new CustomEvent("ykt:presentation:slide-selected", {
             detail: detail
           }));
-          actions.navigateTo(presIdStr, slideIdStr);
+          // 班级上传课件不是课堂 route，只做预览/下载，不调用课堂导航
+                    if (presentation.source !== "class-card") actions.navigateTo(presIdStr, slideIdStr);
         });
         const img = document.createElement("img");
         if (presentation.width && presentation.height) img.style.aspectRatio = `${presentation.width}/${presentation.height}`;
@@ -7222,6 +7847,63 @@
       listEl.appendChild(cont);
     }
   }
+  /** 读取当前班级的 type=2 班级上传课件，并加入课件列表。 */  async function loadClassCards() {
+    const cid = currentClassId();
+    if (!cid) return ui.toast("请先进入课程的「学习内容」或「学习日志」页", 2500);
+    if (classCardLoading) return ui.toast("正在读取班级课件…", 1500);
+    if (classCardLoadedKey === String(cid)) return ui.toast("本课程的班级课件已加载", 1500);
+    classCardLoading = true;
+    const btn = $$4("#ykt-load-class-cards");
+    if (btn) btn.disabled = true;
+    try {
+      const cards = await fetchClassCards(cid);
+      if (!cards.length) {
+        classCardLoadedKey = String(cid);
+        return ui.toast("没有找到老师直接上传到班级的课件", 2500);
+      }
+      let added = 0;
+      let failed = 0;
+      // 少量并发，避免一次打开几十个请求
+            const queue = [ ...cards ];
+      const workers = Array.from({
+        length: Math.min(3, queue.length)
+      }, async () => {
+        while (queue.length) {
+          const item = queue.shift();
+          try {
+            const detail = await fetchClassCardDetail(cid, item.cardsId);
+            const pres = buildClassCardPresentation({
+              cid: cid,
+              cardsId: item.cardsId,
+              activityId: item.activityId,
+              title: item.title,
+              detail: detail
+            });
+            if (!pres) {
+              failed++;
+              continue;
+            }
+            repo.setPresentation(pres.id, pres);
+            added++;
+          } catch (e) {
+            failed++;
+            log$1.warn("[presentation] 班级课件读取失败", item, e?.message || e);
+          }
+        }
+      });
+      await Promise.all(workers);
+      classCardLoadedKey = String(cid);
+      updatePresentationList();
+      const suffix = failed ? `，失败 ${failed} 个` : "";
+      ui.toast(`班级课件：已加载 ${added} 个${suffix}`, 3e3);
+    } catch (e) {
+      ui.toast("读取班级课件失败：" + (e?.message || e), 4e3);
+      log$1.warn("[presentation] loadClassCards failed", e);
+    } finally {
+      classCardLoading = false;
+      if (btn) btn.disabled = false;
+    }
+  }
   function downloadPresentation(presentation) {
     repo.currentPresentationId = String(presentation.id);
     L$1("downloadPresentation -> 设置 currentPresentationId", repo.currentPresentationId);
@@ -7229,8 +7911,8 @@
   }
   function updateSlideView() {
     mountPresentationPanel();
-    const slideView = $$3("#ykt-slide-view");
-    const problemView = $$3("#ykt-problem-view");
+    const slideView = $$4("#ykt-slide-view");
+    const problemView = $$4("#ykt-problem-view");
     slideView.querySelector(".slide-cover")?.classList.add("hidden");
     problemView.innerHTML = "";
     const curId = getCurrentSlideId();
@@ -7652,7 +8334,7 @@
       setTimeout(hideProgress, 1500);
     }
   }
-  var tpl$5 = '<div id="ykt-active-problems-panel" class="ykt-active-wrapper">\n  <div id="ykt-active-problems" class="active-problems"></div>\n</div>\n';
+  var tpl$6 = '<div id="ykt-active-problems-panel" class="ykt-active-wrapper">\n  <div id="ykt-active-problems" class="active-problems"></div>\n</div>\n';
   // src/core/problem-timing.js
   // 题目时间唯一入口：服务端可能给秒级或毫秒级时间戳，统一在这里归一化。
   // 所有倒计时/过期判断都从这里取，避免 actions / active-problems / 通知弹窗各自算一套。
@@ -7680,29 +8362,29 @@
     if (end == null) return null;
     return Math.max(0, Math.floor((end - serverNow(clockOffset, now)) / 1e3));
   }
-  let mounted$6 = false;
-  let root$6;
-  function $$2(sel) {
+  let mounted$7 = false;
+  let root$7;
+  function $$3(sel) {
     return document.querySelector(sel);
   }
   function mountActiveProblemsPanel() {
-    if (mounted$6) return root$6;
+    if (mounted$7) return root$7;
     const wrap = document.createElement("div");
-    wrap.innerHTML = tpl$5;
+    wrap.innerHTML = tpl$6;
     document.body.appendChild(wrap.firstElementChild);
-    root$6 = document.getElementById("ykt-active-problems-panel");
-    mounted$6 = true;
+    root$7 = document.getElementById("ykt-active-problems-panel");
+    mounted$7 = true;
     setInterval(() => updateActiveProblems(), 1e3);
-    return root$6;
+    return root$7;
   }
   function updateActiveProblems() {
     mountActiveProblemsPanel();
-    const box = $$2("#ykt-active-problems");
+    const box = $$3("#ykt-active-problems");
     // 没有任何状态时直接跳过 DOM 重建（每秒重扫问题集，空转不值得）
         if (repo.problemStatus.size === 0) {
-      if (root$6.style.display !== "none") {
+      if (root$7.style.display !== "none") {
         box.innerHTML = "";
-        root$6.style.display = "none";
+        root$7.style.display = "none";
       }
       return;
     }
@@ -7727,9 +8409,9 @@
       });
     });
     if (!items.length) {
-      if (root$6.style.display !== "none") {
+      if (root$7.style.display !== "none") {
         box.innerHTML = "";
-        root$6.style.display = "none";
+        root$7.style.display = "none";
       }
       return;
     }
@@ -7760,19 +8442,19 @@
       card.appendChild(bar);
       box.appendChild(card);
     }
-    root$6.style.display = "";
+    root$7.style.display = "";
   }
-  var tpl$4 = '<div id="ykt-problem-list-panel" class="ykt-panel">\n  <style>\n    #ykt-problem-list-panel { display:flex; flex-direction:column; }\n    #ykt-problem-list-panel .panel-header { display:flex; align-items:center; gap:8px; }\n    #ykt-problem-list-panel .panel-header h3 { margin:0; flex:1; font-size:15px; }\n    #ykt-problem-list-panel .pl-filter { font-size:12px; border:1px solid var(--ykt-border-strong,#ccc); border-radius:6px; padding:4px 6px; background:#fff; }\n    #ykt-problem-list-panel .panel-body { flex:1; min-height:0; overflow-y:auto; padding:10px 12px; }\n    .pl-empty { text-align:center; color:#607190; padding:40px 0; font-size:13px; }\n    .pl-row { border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; margin-bottom:8px; background:#fff; }\n    .pl-row.done { opacity:.62; }\n    .pl-row.expired { border-color:#f0c9c9; }\n    .pl-title { font-size:13px; font-weight:600; color:#1f2937; margin-bottom:4px; line-height:1.4; }\n    .pl-meta { font-size:11px; color:#607190; margin-bottom:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }\n    .pl-badge { display:inline-block; padding:1px 7px; border-radius:9px; font-size:11px; }\n    .pl-badge.todo { background:#fff7ed; color:#c2410c; }\n    .pl-badge.done { background:#f0fdf4; color:#15803d; }\n    .pl-badge.expired { background:#fef2f2; color:#b91c1c; }\n    .pl-actions { display:flex; gap:6px; flex-wrap:wrap; }\n    .pl-actions button { padding:5px 12px; border:1px solid #d5dbe7; border-radius:6px; background:#f7f8fa; cursor:pointer; font-size:12px; }\n    .pl-actions button:hover { border-color:#1d63df; color:#1d63df; }\n    .pl-actions button.primary { background:#1d63df; border-color:#1d63df; color:#fff; }\n    .pl-actions button.primary:hover { background:#1750b8; }\n    .pl-actions button.danger { color:#b91c1c; }\n    .pl-editor { margin-top:8px; border-top:1px dashed #e5e7eb; padding-top:8px; }\n    .pl-editor .pl-hint { font-size:11px; color:#8a94a6; margin-bottom:6px; }\n    .pl-editor textarea { width:100%; box-sizing:border-box; border:1px solid #d5dbe7; border-radius:6px; padding:8px; font-size:13px; font-family:inherit; resize:vertical; min-height:56px; }\n    .pl-editor input[type="text"] { width:100%; box-sizing:border-box; border:1px solid #d5dbe7; border-radius:6px; padding:8px; font-size:14px; height:38px; }\n    .pl-editor .pl-submitbar { display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap; }\n    .pl-editor .pl-submitbar button { padding:7px 16px; border-radius:6px; border:1px solid #d5dbe7; background:#f7f8fa; cursor:pointer; font-size:13px; }\n    .pl-editor .pl-submitbar button.primary { background:#1d63df; border-color:#1d63df; color:#fff; font-weight:600; }\n    .pl-editor .pl-submitbar button.danger { border-color:#f0c9c9; color:#b91c1c; }\n    .pl-editor .pl-answered { font-size:12px; color:#15803d; }\n    /* 确认小弹窗（补交二次确认） */\n    .pl-confirm-mask { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:99999999; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; }\n    .pl-confirm-box { background:#fff; border-radius:10px; max-width:360px; width:100%; padding:18px; font-size:13px; box-shadow:0 10px 40px rgba(0,0,0,.25); }\n    .pl-confirm-box .pl-confirm-actions { display:flex; gap:8px; margin-top:14px; }\n    .pl-confirm-box .pl-confirm-actions button { flex:1; padding:8px; border-radius:6px; cursor:pointer; font-size:13px; }\n    .pl-confirm-box .btn-ok { background:#b91c1c; color:#fff; border:none; font-weight:600; }\n    .pl-confirm-box .btn-no { background:#f7f8fa; border:1px solid #d5dbe7; }\n    @media (max-width:560px){ .pl-actions button{ min-height:36px; } }\n  </style>\n  <div class="panel-header">\n    <h3>题目列表</h3>\n    <select id="ykt-pl-filter" class="pl-filter">\n      <option value="all">全部题目</option>\n      <option value="todo">未作答</option>\n      <option value="done">已作答</option>\n      <option value="expired">已过期</option>\n    </select>\n    <button id="ykt-pl-refresh" class="pl-filter" title="重新计算题目状态">刷新</button>\n  </div>\n  <div class="panel-body" id="ykt-problem-list"></div>\n</div>\n';
+  var tpl$5 = '<div id="ykt-problem-list-panel" class="ykt-panel">\n  <style>\n    #ykt-problem-list-panel { display:flex; flex-direction:column; }\n    #ykt-problem-list-panel .panel-header { display:flex; align-items:center; gap:8px; }\n    #ykt-problem-list-panel .panel-header h3 { margin:0; flex:1; font-size:15px; }\n    #ykt-problem-list-panel .pl-filter { font-size:12px; border:1px solid var(--ykt-border-strong,#ccc); border-radius:6px; padding:4px 6px; background:#fff; }\n    #ykt-problem-list-panel .panel-body { flex:1; min-height:0; overflow-y:auto; padding:10px 12px; }\n    .pl-empty { text-align:center; color:#607190; padding:40px 0; font-size:13px; }\n    .pl-row { border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; margin-bottom:8px; background:#fff; }\n    .pl-row.done { opacity:.62; }\n    .pl-row.expired { border-color:#f0c9c9; }\n    .pl-title { font-size:13px; font-weight:600; color:#1f2937; margin-bottom:4px; line-height:1.4; }\n    .pl-meta { font-size:11px; color:#607190; margin-bottom:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }\n    .pl-badge { display:inline-block; padding:1px 7px; border-radius:9px; font-size:11px; }\n    .pl-badge.todo { background:#fff7ed; color:#c2410c; }\n    .pl-badge.done { background:#f0fdf4; color:#15803d; }\n    .pl-badge.expired { background:#fef2f2; color:#b91c1c; }\n    .pl-actions { display:flex; gap:6px; flex-wrap:wrap; }\n    .pl-actions button { padding:5px 12px; border:1px solid #d5dbe7; border-radius:6px; background:#f7f8fa; cursor:pointer; font-size:12px; }\n    .pl-actions button:hover { border-color:#1d63df; color:#1d63df; }\n    .pl-actions button.primary { background:#1d63df; border-color:#1d63df; color:#fff; }\n    .pl-actions button.primary:hover { background:#1750b8; }\n    .pl-actions button.danger { color:#b91c1c; }\n    .pl-editor { margin-top:8px; border-top:1px dashed #e5e7eb; padding-top:8px; }\n    .pl-editor .pl-hint { font-size:11px; color:#8a94a6; margin-bottom:6px; }\n    .pl-editor textarea { width:100%; box-sizing:border-box; border:1px solid #d5dbe7; border-radius:6px; padding:8px; font-size:13px; font-family:inherit; resize:vertical; min-height:56px; }\n    .pl-editor input[type="text"] { width:100%; box-sizing:border-box; border:1px solid #d5dbe7; border-radius:6px; padding:8px; font-size:14px; height:38px; }\n    .pl-editor .pl-submitbar { display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap; }\n    .pl-editor .pl-submitbar button { padding:7px 16px; border-radius:6px; border:1px solid #d5dbe7; background:#f7f8fa; cursor:pointer; font-size:13px; }\n    .pl-editor .pl-submitbar button.primary { background:#1d63df; border-color:#1d63df; color:#fff; font-weight:600; }\n    .pl-editor .pl-submitbar button.danger { border-color:#f0c9c9; color:#b91c1c; }\n    .pl-editor .pl-answered { font-size:12px; color:#15803d; }\n    /* 确认小弹窗（补交二次确认） */\n    .pl-confirm-mask { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:99999999; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; }\n    .pl-confirm-box { background:#fff; border-radius:10px; max-width:360px; width:100%; padding:18px; font-size:13px; box-shadow:0 10px 40px rgba(0,0,0,.25); }\n    .pl-confirm-box .pl-confirm-actions { display:flex; gap:8px; margin-top:14px; }\n    .pl-confirm-box .pl-confirm-actions button { flex:1; padding:8px; border-radius:6px; cursor:pointer; font-size:13px; }\n    .pl-confirm-box .btn-ok { background:#b91c1c; color:#fff; border:none; font-weight:600; }\n    .pl-confirm-box .btn-no { background:#f7f8fa; border:1px solid #d5dbe7; }\n    @media (max-width:560px){ .pl-actions button{ min-height:36px; } }\n  </style>\n  <div class="panel-header">\n    <h3>题目列表</h3>\n    <select id="ykt-pl-filter" class="pl-filter">\n      <option value="all">全部题目</option>\n      <option value="todo">未作答</option>\n      <option value="done">已作答</option>\n      <option value="expired">已过期</option>\n    </select>\n    <button id="ykt-pl-refresh" class="pl-filter" title="重新计算题目状态">刷新</button>\n  </div>\n  <div class="panel-body" id="ykt-problem-list"></div>\n</div>\n';
   // src/ui/panels/problem-list.js
   // 题目列表：汇聚所有已收集课件内的题目页，支持查看/AI解答/手动作答/过期补交。
   // 数据以 repo.presentations 内的 slide.problem 为准（XHR 拦截到达最全），
   // repo.problems / problemStatus / encounteredProblems 做状态补充。
-    let mounted$5 = false;
-  let root$5;
+    let mounted$6 = false;
+  let root$6;
   const expandedEditors = new Set;
  // problemId 集合：展开中的作答编辑区
-    function $$1(sel) {
-    return root$5?.querySelector(sel);
+    function $$2(sel) {
+    return root$6?.querySelector(sel);
   }
   const HEADERS = () => ({
     "Content-Type": "application/json",
@@ -8058,32 +8740,32 @@
     return row;
   }
   function mountProblemListPanel() {
-    if (mounted$5) return root$5;
+    if (mounted$6) return root$6;
     const wrap = document.createElement("div");
-    wrap.innerHTML = tpl$4;
+    wrap.innerHTML = tpl$5;
     document.body.appendChild(wrap.firstElementChild);
-    root$5 = document.getElementById("ykt-problem-list-panel");
+    root$6 = document.getElementById("ykt-problem-list-panel");
     // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
-        $$1("#ykt-pl-filter")?.addEventListener("change", () => updateProblemList());
-    $$1("#ykt-pl-refresh")?.addEventListener("click", () => updateProblemList());
+        $$2("#ykt-pl-filter")?.addEventListener("change", () => updateProblemList());
+    $$2("#ykt-pl-refresh")?.addEventListener("click", () => updateProblemList());
     // 状态（进行中/已过期）随时间变化：每 10s 重算一次；展开编辑区时不刷新，避免打断输入
         setInterval(() => {
       try {
-        if (root$5 && root$5.offsetParent !== null && expandedEditors.size === 0) updateProblemList();
+        if (root$6 && root$6.offsetParent !== null && expandedEditors.size === 0) updateProblemList();
       } catch {/* ignore */}
     }, 1e4);
-    mounted$5 = true;
+    mounted$6 = true;
     hydrateProblemsFromPresentations();
     // shell 切到本 tab 时重灌数据（课件可能晚于面板挂载到达）
-        root$5.__yksOnShow = () => updateProblemList();
-    return root$5;
+        root$6.__yksOnShow = () => updateProblemList();
+    return root$6;
   }
   function updateProblemList() {
-    if (!mounted$5) return;
+    if (!mounted$6) return;
     hydrateProblemsFromPresentations();
-    const container = $$1("#ykt-problem-list");
+    const container = $$2("#ykt-problem-list");
     if (!container) return;
-    const filter = $$1("#ykt-pl-filter")?.value || "all";
+    const filter = $$2("#ykt-pl-filter")?.value || "all";
     container.innerHTML = "";
     const list = repo.encounteredProblems || [];
     if (!list.length) {
@@ -8109,12 +8791,12 @@
       container.appendChild(empty);
     }
   }
-  var tpl$3 = '<div id="ykt-shell-panel" class="ykt-panel ykt-shell">\n  <style>\n    #ykt-shell-panel { display: none; flex-direction: column;\n      width: min(760px, calc(100vw - 48px));       /* 窄窗口不溢出 */\n      height: min(78vh, calc(100vh - 140px));      /* 留出工具栏与边距 */\n      max-height: calc(100vh - 120px);\n      padding: 0; }\n    #ykt-shell-panel.visible { display: flex; }\n    .ykt-shell-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--ykt-border, #ddd); }\n    .ykt-shell-header .shell-title { font-weight: 600; font-size: 14px; color: var(--ykt-accent, #1d63df); flex: 1; }\n    .ykt-shell-header .shell-close { cursor: pointer; color: #607190; padding: 2px 6px; }\n    .ykt-shell-header .shell-close:hover { color: #222; }\n    .ykt-shell-body { flex: 1; display: flex; min-height: 0; }\n    .ykt-shell-tabs { width: 118px; border-right: 1px solid var(--ykt-border, #ddd); padding: 8px 6px; display: flex; flex-direction: column; gap: 2px; background: #f7f9fc; }\n    .ykt-shell-tab { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: #44506b; font-size: 13px; user-select: none; }\n    .ykt-shell-tab:hover { background: #eaeffa; }\n    .ykt-shell-tab.active { background: var(--ykt-accent, #1d63df); color: #fff; }\n    .ykt-shell-tab i { width: 16px; text-align: center; }\n    /* 窄屏（手机/Mac 分屏）：侧栏转顶部图标条，内容区占满宽度 */\n    @media (max-width: 560px) {\n      .ykt-shell-body { flex-direction: column; }\n      .ykt-shell-tabs { width: 100%; flex-direction: row; border-right: none; border-bottom: 1px solid var(--ykt-border, #ddd); padding: 4px; gap: 3px; overflow-x: auto; }\n      .ykt-shell-tab { flex: 1 0 auto; flex-direction: column; gap: 2px; padding: 4px 6px; font-size: 10px; justify-content: center; }\n      .ykt-shell-tab i { width: auto; font-size: 15px; }\n      .ykt-shell-tab span { white-space: nowrap; }\n      #ykt-shell-panel { width: calc(100vw - 16px); height: calc(100vh - 88px); max-height: calc(100vh - 88px); }\n      .ykt-shell-header { padding: 4px 10px; }\n      .ykt-shell-header .shell-title { font-size: 13px; }\n      #ykt-shell-content .panel-header { padding: 2px 10px; min-height: 30px; }\n      #ykt-shell-content .panel-header h3 { font-size: 13px; }\n      #ykt-shell-content .panel-header button { padding: 2px 8px; font-size: 12px; }\n      /* 小屏：ctx 行与输入区压缩，保证输入框不被顶出可视区 */\n      #ykt-chat-ctx, #ykt-ai-ctx { padding: 2px 8px; font-size: 11px; gap: 6px; }\n      #ykt-chat-ctx label, #ykt-ai-ctx label { display: inline-flex; align-items: center; white-space: nowrap; line-height: 1.2; font-size: 11px; }\n      #ykt-chat-inputbar, .ykt-ai-inputbar { padding: 5px 8px; gap: 5px; }\n      #ykt-chat-input, #ykt-ai-input { height: 36px; min-height: 36px; max-height: 60px; font-size: 12px; }\n      #ykt-ai-custom { padding: 2px 8px; }\n      #ykt-ai-custom input { font-size: 11px; padding: 3px 6px; }\n      #ykt-chat-plus { width: 26px; height: 26px; }\n      .ykt-shell-header { padding: 8px 10px; }\n    }\n    .ykt-shell-content { flex: 1; overflow: hidden; position: relative; display: flex; }\n    /* 迁移进来的原面板：从 fixed 弹窗变为 tab 内容。\n       display 交给面板自身规则（chat 需 flex，其余 block），shell 只负责： */\n    #ykt-shell-content > .ykt-panel {\n      position: static !important;\n      width: 100% !important; max-height: none !important; height: 100% !important;\n      border: none !important; box-shadow: none !important; border-radius: 0 !important;\n      overflow: hidden;               /* 滚动交给内部区域，避免双层滚动条 */\n    }\n    /* 对话类面板：log 区在 shell 内撑满可用高度，消除底部空白 */\n    #ykt-shell-content #ykt-chat-log,\n    #ykt-shell-content #ykt-ai-log { flex: 1 1 auto; max-height: none; min-height: 0; }\n    #ykt-shell-content #ykt-chat-panel .panel-body,\n    #ykt-shell-content #ykt-ai-answer-panel .panel-body { flex: 1; min-height: 0; }\n    /* 课件面板在 shell 内填满：两列各自滚动，不再受独立弹窗的 72vh 限制 */\n    #ykt-shell-content #ykt-presentation-panel .panel-body { height: 100%; min-height: 0; grid-template-columns: minmax(220px, 300px) 1fr; }\n    #ykt-shell-content #ykt-presentation-panel .panel-left,\n    #ykt-shell-content #ykt-presentation-panel .panel-right { max-height: none; height: 100%; overflow: auto; position: static; }\n    #ykt-shell-content #ykt-presentation-panel .slide-view { max-height: none; height: auto; min-height: 240px; }\n    /* 设置面板在 shell 内整体滚动 */\n    #ykt-shell-content #ykt-settings-panel,\n    #ykt-shell-content #ykt-about-panel,\n    #ykt-shell-content #ykt-problem-list-panel { overflow: auto; }\n    /* 窄屏（手机）：课件面板单列堆叠、工具栏按钮换行、输入区自适应 */\n    @media (max-width: 560px) {\n      #ykt-shell-content #ykt-presentation-panel .panel-body { grid-template-columns: 1fr; height: 100%; min-height: 0; overflow: auto; }\n      #ykt-shell-content #ykt-presentation-panel .panel-left,\n      #ykt-shell-content #ykt-presentation-panel .panel-right { height: auto; max-height: none; }\n      #ykt-presentation-panel .panel-controls { flex-wrap: wrap; gap: 6px; }\n      #ykt-presentation-panel .panel-header { flex-wrap: wrap; }\n      .ykt-chat-inputbar, .ykt-ai-inputbar { flex-wrap: nowrap; }\n      #ykt-chat-input, #ykt-ai-input { min-width: 0; }\n      #ykt-chat-send, #ykt-ai-send { padding: 7px 10px; }\n      /* 触控目标放大到 ≥40px（移动端可点性） */\n      .close-btn { min-width: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; }\n      #ykt-chat-plus { min-width: 32px; min-height: 32px; display: inline-flex; align-items: center; justify-content: center; }\n      #ykt-chat-clear, #ykt-ai-clear { min-height: 36px; }\n      .ykt-shell-tab { min-height: 40px; }\n    }\n    /* 非当前 tab 的面板无条件隐藏（压过面板自身 ID 样式） */\n    #ykt-shell-content > .ykt-panel:not(.active-tab) { display: none !important; }\n  </style>\n  <div class="ykt-shell-header">\n    <span class="shell-title"><i class="fas fa-briefcase"></i> YuketangStudio</span>\n    <span class="shell-close" id="ykt-shell-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="ykt-shell-body">\n    <div class="ykt-shell-tabs" id="ykt-shell-tabs"></div>\n    <div class="ykt-shell-content" id="ykt-shell-content"></div>\n  </div>\n</div>\n';
-  var tpl$2 = '<div id="ykt-chat-panel" class="ykt-panel">\n  <style>\n    #ykt-chat-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-chat-panel { display: none; flex-direction: column; }\n    #ykt-chat-panel.visible { display: flex; }\n    #ykt-chat-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-chat-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 240px; max-height: 52vh; }\n    .ykt-chat-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-chat-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-chat-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-chat-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-chat-msg.ai p { margin: 0 0 6px; }\n    .ykt-chat-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-chat-msg.ai details { margin-bottom: 6px; }\n    .ykt-chat-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-chat-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    #ykt-chat-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    .ykt-chat-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-chat-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-chat-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-chat-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; }\n    #ykt-chat-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-chat-clear { padding: 3px 8px; font-size: 12px; }\n    #ykt-chat-plus { width: 30px; height: 30px; border: 1px dashed var(--ykt-border-strong, #ccc); border-radius: 6px; background: #f7f8fa; cursor: pointer; font-size: 16px; color: #607190; flex: 0 0 auto; }\n    #ykt-chat-plus:hover { border-color: var(--ykt-accent, #1d63df); color: var(--ykt-accent, #1d63df); }\n    /* 附件预览条 */\n    #ykt-chat-atts { display: none; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-chat-atts .att { position: relative; width: 56px; height: 42px; border-radius: 4px; overflow: hidden; border: 1px solid #ddd; }\n    #ykt-chat-atts .att img { width: 100%; height: 100%; object-fit: cover; display: block; }\n    #ykt-chat-atts .att .rm { position: absolute; top: 0; right: 0; width: 16px; height: 16px; line-height: 14px; text-align: center; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 11px; border-radius: 0 0 0 4px; }\n    /* 加号菜单 */\n    #ykt-chat-plus-menu { position: fixed; z-index: 10000001; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 6px; display: none; flex-direction: column; min-width: 160px; }\n    #ykt-chat-plus-menu button { border: none; background: transparent; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }\n    #ykt-chat-plus-menu button:hover { background: #eef3ff; }\n    .ykt-chat-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-chat-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n  </style>\n  <div class="panel-header">\n    <h3>💬 PPT 对话</h3>\n    <button id="ykt-chat-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-chat-log"></div>\n    <div id="ykt-chat-atts"></div>\n    <div id="ykt-chat-ctx"><label><input type="checkbox" id="ykt-chat-attach" checked> 每条消息附带当前 PPT 页</label><span id="ykt-chat-ctx-thumb"></span></div>\n    <div class="ykt-chat-inputbar">\n      <button id="ykt-chat-plus" title="添加 PPT 页面或图片">＋</button>\n      <textarea id="ykt-chat-input" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>\n      <button id="ykt-chat-send">发送</button>\n    </div>\n    <input type="file" id="ykt-chat-file" accept="image/*" multiple style="display:none">\n    <div id="ykt-chat-plus-menu">\n      <button id="ykt-chat-plus-slides">📑 选择 PPT 页面</button>\n      <button id="ykt-chat-plus-upload">🖼 上传图片</button>\n    </div>\n  </div>\n</div>\n';
+  var tpl$4 = '<div id="ykt-shell-panel" class="ykt-panel ykt-shell">\n  <style>\n    #ykt-shell-panel { display: none; flex-direction: column;\n      width: min(760px, calc(100vw - 48px));       /* 窄窗口不溢出 */\n      height: min(78vh, calc(100vh - 140px));      /* 留出工具栏与边距 */\n      max-height: calc(100vh - 120px);\n      padding: 0; }\n    #ykt-shell-panel.visible { display: flex; }\n    .ykt-shell-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--ykt-border, #ddd); }\n    .ykt-shell-header .shell-title { font-weight: 600; font-size: 14px; color: var(--ykt-accent, #1d63df); flex: 1; }\n    .ykt-shell-header .shell-close { cursor: pointer; color: #607190; padding: 2px 6px; }\n    .ykt-shell-header .shell-close:hover { color: #222; }\n    .ykt-shell-body { flex: 1; display: flex; min-height: 0; }\n    .ykt-shell-tabs { width: 118px; border-right: 1px solid var(--ykt-border, #ddd); padding: 8px 6px; display: flex; flex-direction: column; gap: 2px; background: #f7f9fc; }\n    .ykt-shell-tab { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: #44506b; font-size: 13px; user-select: none; }\n    .ykt-shell-tab:hover { background: #eaeffa; }\n    .ykt-shell-tab.active { background: var(--ykt-accent, #1d63df); color: #fff; }\n    .ykt-shell-tab i { width: 16px; text-align: center; }\n    /* 窄屏（手机/Mac 分屏）：侧栏转顶部图标条，内容区占满宽度 */\n    @media (max-width: 560px) {\n      .ykt-shell-body { flex-direction: column; }\n      .ykt-shell-tabs { width: 100%; flex-direction: row; border-right: none; border-bottom: 1px solid var(--ykt-border, #ddd); padding: 4px; gap: 3px; overflow-x: auto; }\n      .ykt-shell-tab { flex: 1 0 auto; flex-direction: column; gap: 2px; padding: 4px 6px; font-size: 10px; justify-content: center; }\n      .ykt-shell-tab i { width: auto; font-size: 15px; }\n      .ykt-shell-tab span { white-space: nowrap; }\n      #ykt-shell-panel { width: calc(100vw - 16px); height: calc(100vh - 88px); max-height: calc(100vh - 88px); }\n      .ykt-shell-header { padding: 4px 10px; }\n      .ykt-shell-header .shell-title { font-size: 13px; }\n      #ykt-shell-content .panel-header { padding: 2px 10px; min-height: 30px; }\n      #ykt-shell-content .panel-header h3 { font-size: 13px; }\n      #ykt-shell-content .panel-header button { padding: 2px 8px; font-size: 12px; }\n      /* 小屏：ctx 行与输入区压缩，保证输入框不被顶出可视区 */\n      #ykt-chat-ctx, #ykt-ai-ctx { padding: 2px 8px; font-size: 11px; gap: 6px; }\n      #ykt-chat-ctx label, #ykt-ai-ctx label { display: inline-flex; align-items: center; white-space: nowrap; line-height: 1.2; font-size: 11px; }\n      #ykt-chat-inputbar, .ykt-ai-inputbar { padding: 5px 8px; gap: 5px; }\n      #ykt-chat-input, #ykt-ai-input { height: 36px; min-height: 36px; max-height: 60px; font-size: 12px; }\n      #ykt-ai-custom { padding: 2px 8px; }\n      #ykt-ai-custom input { font-size: 11px; padding: 3px 6px; }\n      #ykt-chat-plus { width: 26px; height: 26px; }\n      .ykt-shell-header { padding: 8px 10px; }\n    }\n    .ykt-shell-content { flex: 1; overflow: hidden; position: relative; display: flex; }\n    /* 迁移进来的原面板：从 fixed 弹窗变为 tab 内容。\n       display 交给面板自身规则（chat 需 flex，其余 block），shell 只负责： */\n    #ykt-shell-content > .ykt-panel {\n      position: static !important;\n      width: 100% !important; max-height: none !important; height: 100% !important;\n      border: none !important; box-shadow: none !important; border-radius: 0 !important;\n      overflow: hidden;               /* 滚动交给内部区域，避免双层滚动条 */\n    }\n    /* 对话类面板：log 区在 shell 内撑满可用高度，消除底部空白 */\n    #ykt-shell-content #ykt-chat-log,\n    #ykt-shell-content #ykt-ai-log { flex: 1 1 auto; max-height: none; min-height: 0; }\n    #ykt-shell-content #ykt-chat-panel .panel-body,\n    #ykt-shell-content #ykt-ai-answer-panel .panel-body { flex: 1; min-height: 0; }\n    /* 课件面板在 shell 内填满：两列各自滚动，不再受独立弹窗的 72vh 限制 */\n    #ykt-shell-content #ykt-presentation-panel .panel-body { height: 100%; min-height: 0; grid-template-columns: minmax(220px, 300px) 1fr; }\n    #ykt-shell-content #ykt-presentation-panel .panel-left,\n    #ykt-shell-content #ykt-presentation-panel .panel-right { max-height: none; height: 100%; overflow: auto; position: static; }\n    #ykt-shell-content #ykt-presentation-panel .slide-view { max-height: none; height: auto; min-height: 240px; }\n    /* 设置面板在 shell 内整体滚动 */\n    #ykt-shell-content #ykt-settings-panel,\n    #ykt-shell-content #ykt-about-panel,\n    #ykt-shell-content #ykt-problem-list-panel { overflow: auto; }\n    /* 窄屏（手机）：课件面板单列堆叠、工具栏按钮换行、输入区自适应 */\n    @media (max-width: 560px) {\n      #ykt-shell-content #ykt-presentation-panel .panel-body { grid-template-columns: 1fr; height: 100%; min-height: 0; overflow: auto; }\n      #ykt-shell-content #ykt-presentation-panel .panel-left,\n      #ykt-shell-content #ykt-presentation-panel .panel-right { height: auto; max-height: none; }\n      #ykt-presentation-panel .panel-controls { flex-wrap: wrap; gap: 6px; }\n      #ykt-presentation-panel .panel-header { flex-wrap: wrap; }\n      .ykt-chat-inputbar, .ykt-ai-inputbar { flex-wrap: nowrap; }\n      #ykt-chat-input, #ykt-ai-input { min-width: 0; }\n      #ykt-chat-send, #ykt-ai-send { padding: 7px 10px; }\n      /* 触控目标放大到 ≥40px（移动端可点性） */\n      .close-btn { min-width: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; }\n      #ykt-chat-plus { min-width: 32px; min-height: 32px; display: inline-flex; align-items: center; justify-content: center; }\n      #ykt-chat-clear, #ykt-ai-clear { min-height: 36px; }\n      .ykt-shell-tab { min-height: 40px; }\n    }\n    /* 非当前 tab 的面板无条件隐藏（压过面板自身 ID 样式） */\n    #ykt-shell-content > .ykt-panel:not(.active-tab) { display: none !important; }\n  </style>\n  <div class="ykt-shell-header">\n    <span class="shell-title"><i class="fas fa-briefcase"></i> YuketangStudio</span>\n    <span class="shell-close" id="ykt-shell-close"><i class="fas fa-times"></i></span>\n  </div>\n  <div class="ykt-shell-body">\n    <div class="ykt-shell-tabs" id="ykt-shell-tabs"></div>\n    <div class="ykt-shell-content" id="ykt-shell-content"></div>\n  </div>\n</div>\n';
+  var tpl$3 = '<div id="ykt-chat-panel" class="ykt-panel">\n  <style>\n    #ykt-chat-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-chat-panel { display: none; flex-direction: column; }\n    #ykt-chat-panel.visible { display: flex; }\n    #ykt-chat-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-chat-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 240px; max-height: 52vh; }\n    .ykt-chat-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-chat-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-chat-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-chat-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-chat-msg.ai p { margin: 0 0 6px; }\n    .ykt-chat-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-chat-msg.ai details { margin-bottom: 6px; }\n    .ykt-chat-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-chat-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    #ykt-chat-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; }\n    #ykt-chat-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    .ykt-chat-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-chat-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-chat-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-chat-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; }\n    #ykt-chat-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-chat-clear { padding: 3px 8px; font-size: 12px; }\n    #ykt-chat-plus { width: 30px; height: 30px; border: 1px dashed var(--ykt-border-strong, #ccc); border-radius: 6px; background: #f7f8fa; cursor: pointer; font-size: 16px; color: #607190; flex: 0 0 auto; }\n    #ykt-chat-plus:hover { border-color: var(--ykt-accent, #1d63df); color: var(--ykt-accent, #1d63df); }\n    /* 附件预览条 */\n    #ykt-chat-atts { display: none; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-chat-atts .att { position: relative; width: 56px; height: 42px; border-radius: 4px; overflow: hidden; border: 1px solid #ddd; }\n    #ykt-chat-atts .att img { width: 100%; height: 100%; object-fit: cover; display: block; }\n    #ykt-chat-atts .att .rm { position: absolute; top: 0; right: 0; width: 16px; height: 16px; line-height: 14px; text-align: center; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 11px; border-radius: 0 0 0 4px; }\n    /* 加号菜单 */\n    #ykt-chat-plus-menu { position: fixed; z-index: 10000001; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 6px; display: none; flex-direction: column; min-width: 160px; }\n    #ykt-chat-plus-menu button { border: none; background: transparent; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }\n    #ykt-chat-plus-menu button:hover { background: #eef3ff; }\n    .ykt-chat-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-chat-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n  </style>\n  <div class="panel-header">\n    <h3>💬 PPT 对话</h3>\n    <button id="ykt-chat-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-chat-log"></div>\n    <div id="ykt-chat-atts"></div>\n    <div id="ykt-chat-ctx"><label><input type="checkbox" id="ykt-chat-attach" checked> 每条消息附带当前 PPT 页</label><span id="ykt-chat-ctx-thumb"></span></div>\n    <div class="ykt-chat-inputbar">\n      <button id="ykt-chat-plus" title="添加 PPT 页面或图片">＋</button>\n      <textarea id="ykt-chat-input" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>\n      <button id="ykt-chat-send">发送</button>\n    </div>\n    <input type="file" id="ykt-chat-file" accept="image/*" multiple style="display:none">\n    <div id="ykt-chat-plus-menu">\n      <button id="ykt-chat-plus-slides">📑 选择 PPT 页面</button>\n      <button id="ykt-chat-plus-upload">🖼 上传图片</button>\n    </div>\n  </div>\n</div>\n';
   // src/ui/panels/chat.js
   // PPT 多轮对话面板：截取/读取当前 PPT 页 + 连续追问，思考链折叠显示，流式输出
-    let mounted$4 = false;
-  let root$4;
+    let mounted$5 = false;
+  let root$5;
   let history = [];
  // OpenAI 格式消息
     let streaming = false;
@@ -8124,14 +8806,14 @@
  // 上一次发送的用户文本（重试用）
     const systemPrompt = () => String(ui?.config?.systemPromptChat || "").trim() || DEFAULT_SYSTEM_PROMPT_CHAT;
   function $sel(sel) {
-    return root$4.querySelector(sel);
+    return root$5.querySelector(sel);
   }
   function mountChatPanel() {
-    if (mounted$4) return root$4;
+    if (mounted$5) return root$5;
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = tpl$2;
+    wrapper.innerHTML = tpl$3;
     document.body.appendChild(wrapper.firstElementChild);
-    root$4 = document.getElementById("ykt-chat-panel");
+    root$5 = document.getElementById("ykt-chat-panel");
     // 面板嵌在 shell 里——关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
         $sel("#ykt-chat-clear").addEventListener("click", () => {
       abortStreaming("清空会话");
@@ -8191,13 +8873,13 @@
     // shell 生命周期钩子：切到本 tab 刷新上下文缩略图；
     // 不中断流式：tab 切换/收起壳都继续后台生成，切回来直接看结果；
     // 只有页面刷新（JS 上下文没了）、清空会话、用户主动取消才断
-        root$4.__yksOnShow = () => {
+        root$5.__yksOnShow = () => {
       refreshCtxThumb();
     };
-    root$4.__yksOnHide = () => {};
+    root$5.__yksOnHide = () => {};
     warmupRichAssets();
-    mounted$4 = true;
-    return root$4;
+    mounted$5 = true;
+    return root$5;
   }
   // ---------------- 当前 PPT 页获取（共享模块 slide-image.js） ----------------
     async function refreshCtxThumb() {
@@ -8534,10 +9216,10 @@
       $sel("#ykt-chat-log").scrollTop = $sel("#ykt-chat-log").scrollHeight;
     }
   }
-  var tpl$1 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    \n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">\n          <small>兼容 OpenAI 协议的服务端，例如 api.deepseek.com / api.openai.com / 火山方舟 api/v3 或 api/plan/v3；填到 /v1、/api/v3、/api/plan/v3 即可，脚本会自动补 /chat/completions。火山方舟不提供模型列表，请手动填写模型 ID。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <div class="apikey-row">\n            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">\n            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>\n            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>\n          </div>\n          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-chat / gpt-4o-mini">\n          <button id="ykt-ai-model-fetch" type="button" style="padding:3px 10px">获取模型列表</button>\n        </div>\n        <div id="ykt-ai-model-options" class="ykt-model-options" style="display:none"></div>\n        <small id="ykt-ai-model-hint" style="display:none;opacity:.6">云端模型由服务端按渠道自动分配，无需填写</small>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-thinking">\n            <span class="checkmark"></span>\n            启用思考（推理模型深度思考）\n          </label>\n          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-effort">思考强度:</label>\n          <select id="ykt-ai-effort">\n            <option value="low">低</option>\n            <option value="medium" selected>中</option>\n            <option value="high">高</option>\n            <option value="max">超高（max）</option>\n          </select>\n          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>\n        </div>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-regex-tool">\n            <span class="checkmark"></span>\n            正则化工具调用（兼容不支持 tools 的端点）\n          </label>\n          <small>开启后不再发送 tools 参数；模型在回答结尾用 &lt;answer&gt;...&lt;/answer&gt; 交答案（按题型自动解析）。适合只支持纯文本、或 tools 调用不稳定的端点。</small>\n        </div>\n\n        <details class="setting-advanced">\n          <summary>高级选项</summary>\n          <div class="setting-item">\n            <label for="ykt-ai-vision-model">图像模型 ID:</label>\n            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">\n            <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-fallback-answer">\n            <span class="checkmark"></span>\n            无 API Key 时提交兜底答案\n          </label>\n          <small>未配置 AI 时提交占位答案（选择题为 A）；开启自动作答且模型两次都未调用「提交答案」工具时，也会解析正文并提交。默认关闭，宁缺答不误答。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <details class="setting-advanced">\n          <summary>自定义提示音</summary>\n          <div class="setting-item">\n            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n              <button id="ykt-btn-apply-audio-url">应用URL</button>\n              <button id="ykt-btn-preview-audio">预览</button>\n              <button id="ykt-btn-clear-audio">清除自定义音频</button>\n            </div>\n            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n        <small style="display:block;margin-top:6px;opacity:.55">\n          没有解锁码？加讨论群 <strong>901466023</strong> 获取\n          <button id="ykt-devmode-qq" type="button" style="margin-left:4px;padding:1px 6px;font-size:11px;cursor:pointer">复制群号</button>\n        </small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry">\n            <span class="checkmark"></span>\n            匿名统计使用情况\n          </label>\n        </div>\n        <div class="setting-item" style="margin-top:8px">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry-enhanced">\n            <span class="checkmark"></span>\n            强化遥测（上传答题/工具/提交/错误数据）\n          </label>\n          <small>答题链路（含工具调用、提交/暂存、解析错误）全量记录，失败立即上传；会上传发送给模型的消息、模型回复、题目/答案/工具参数和错误详情；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭，需先开启「匿名统计使用情况」。</small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$2 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>YuketangStudio 设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    \n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">\n          <small>兼容 OpenAI 协议的服务端，例如 api.deepseek.com / api.openai.com / 火山方舟 api/v3 或 api/plan/v3；填到 /v1、/api/v3、/api/plan/v3 即可，脚本会自动补 /chat/completions。火山方舟不提供模型列表，请手动填写模型 ID。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <div class="apikey-row">\n            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">\n            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>\n            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>\n          </div>\n          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-chat / gpt-4o-mini">\n          <button id="ykt-ai-model-fetch" type="button" style="padding:3px 10px">获取模型列表</button>\n        </div>\n        <div id="ykt-ai-model-options" class="ykt-model-options" style="display:none"></div>\n        <small id="ykt-ai-model-hint" style="display:none;opacity:.6">云端模型由服务端按渠道自动分配，无需填写</small>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-thinking">\n            <span class="checkmark"></span>\n            启用思考（推理模型深度思考）\n          </label>\n          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-effort">思考强度:</label>\n          <select id="ykt-ai-effort">\n            <option value="low">低</option>\n            <option value="medium" selected>中</option>\n            <option value="high">高</option>\n            <option value="max">超高（max）</option>\n          </select>\n          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>\n        </div>\n\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-regex-tool">\n            <span class="checkmark"></span>\n            正则化工具调用（兼容不支持 tools 的端点）\n          </label>\n          <small>开启后不再发送 tools 参数；模型在回答结尾用 &lt;answer&gt;...&lt;/answer&gt; 交答案（按题型自动解析）。适合只支持纯文本、或 tools 调用不稳定的端点。</small>\n        </div>\n\n        <details class="setting-advanced">\n          <summary>高级选项</summary>\n          <div class="setting-item">\n            <label for="ykt-ai-vision-model">图像模型 ID:</label>\n            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">\n            <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-fallback-answer">\n            <span class="checkmark"></span>\n            无 API Key 时提交兜底答案\n          </label>\n          <small>未配置 AI 时提交占位答案（选择题为 A）；开启自动作答且模型两次都未调用「提交答案」工具时，也会解析正文并提交。默认关闭，宁缺答不误答。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <details class="setting-advanced">\n          <summary>自定义提示音</summary>\n          <div class="setting-item">\n            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n              <button id="ykt-btn-apply-audio-url">应用URL</button>\n              <button id="ykt-btn-preview-audio">预览</button>\n              <button id="ykt-btn-clear-audio">清除自定义音频</button>\n            </div>\n            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n          </div>\n        </details>\n      </div>\n\n      <div class="setting-group">\n        <h4>提示词设置</h4>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>\n          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <div class="setting-item" style="flex-direction:column;align-items:stretch">\n          <label>AI解答提示词（优先快速、准确给答案）：</label>\n          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>\n          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>\n        </div>\n        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item" style="display:flex;align-items:center;gap:8px">\n          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">\n          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>\n          <small id="ykt-devmode-hint" style="opacity:.55"></small>\n        </div>\n        <small style="display:block;margin-top:6px;opacity:.55">\n          没有解锁码？加讨论群 <strong>901466023</strong> 获取\n          <button id="ykt-devmode-qq" type="button" style="margin-left:4px;padding:1px 6px;font-size:11px;cursor:pointer">复制群号</button>\n        </small>\n      </div>\n\n      <div class="setting-group">\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry">\n            <span class="checkmark"></span>\n            匿名统计使用情况\n          </label>\n        </div>\n        <div class="setting-item" style="margin-top:8px">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-telemetry-enhanced">\n            <span class="checkmark"></span>\n            强化遥测（上传答题/工具/提交/错误数据）\n          </label>\n          <small>答题链路（含工具调用、提交/暂存、解析错误）全量记录，失败立即上传；会上传发送给模型的消息、模型回复、题目/答案/工具参数和错误详情；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭，需先开启「匿名统计使用情况」。</small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // settings.js (new version)
-    let mounted$3 = false;
-  let root$3;
+    let mounted$4 = false;
+  let root$4;
   // ---- AI Profile helpers ----
     function ensureAIProfiles(configAI) {
     if (!configAI) return;
@@ -8564,26 +9246,26 @@
   }
   // ------------------------------
     function mountSettingsPanel() {
-    if (mounted$3) return root$3;
+    if (mounted$4) return root$4;
     // 注入 HTML
-        root$3 = document.createElement("div");
-    root$3.innerHTML = tpl$1;
-    document.body.appendChild(root$3.firstElementChild);
-    root$3 = document.getElementById("ykt-settings-panel");
+        root$4 = document.createElement("div");
+    root$4.innerHTML = tpl$2;
+    document.body.appendChild(root$4.firstElementChild);
+    root$4 = document.getElementById("ykt-settings-panel");
     const aiCfg = ui.config.ai || (ui.config.ai = {});
     ensureAIProfiles(aiCfg);
     // === 获取所有 AI Profile 相关的 DOM ===
-        const $profileSelect = root$3.querySelector("#ykt-ai-profile-select");
-    const $profileAdd = root$3.querySelector("#ykt-ai-profile-add");
-    const $profileDel = root$3.querySelector("#ykt-ai-profile-del");
-    const $profileName = root$3.querySelector("#ykt-ai-profile-name");
-    const $baseUrl = root$3.querySelector("#ykt-ai-base-url");
-    const $api = root$3.querySelector("#kimi-api-key");
-    const $model = root$3.querySelector("#ykt-ai-model");
-    const $visionModel = root$3.querySelector("#ykt-ai-vision-model");
-    const $modelFetch = root$3.querySelector("#ykt-ai-model-fetch");
-    const $modelOptions = root$3.querySelector("#ykt-ai-model-options");
-    const $modelHint = root$3.querySelector("#ykt-ai-model-hint");
+        const $profileSelect = root$4.querySelector("#ykt-ai-profile-select");
+    const $profileAdd = root$4.querySelector("#ykt-ai-profile-add");
+    const $profileDel = root$4.querySelector("#ykt-ai-profile-del");
+    const $profileName = root$4.querySelector("#ykt-ai-profile-name");
+    const $baseUrl = root$4.querySelector("#ykt-ai-base-url");
+    const $api = root$4.querySelector("#kimi-api-key");
+    const $model = root$4.querySelector("#ykt-ai-model");
+    const $visionModel = root$4.querySelector("#ykt-ai-vision-model");
+    const $modelFetch = root$4.querySelector("#ykt-ai-model-fetch");
+    const $modelOptions = root$4.querySelector("#ykt-ai-model-options");
+    const $modelHint = root$4.querySelector("#ykt-ai-model-hint");
     // 云端配置：模型由服务端按渠道分配，禁用模型输入与获取按钮
         function applyCloudModelState() {
       const cloud = /api\.raymor\.top\/yuketangstudio/i.test($baseUrl?.value || "");
@@ -8596,30 +9278,30 @@
       if ($modelHint) $modelHint.style.display = cloud ? "" : "none";
       if (cloud && $modelOptions) $modelOptions.style.display = "none";
     }
-    const $thinking = root$3.querySelector("#ykt-ai-thinking");
-    const $effort = root$3.querySelector("#ykt-ai-effort");
-    const $regex = root$3.querySelector("#ykt-ai-regex-tool");
-    const $apiEye = root$3.querySelector("#ykt-apikey-eye");
-    const $apiTest = root$3.querySelector("#ykt-apikey-test");
-    const $apiTestResult = root$3.querySelector("#ykt-apikey-test-result");
+    const $thinking = root$4.querySelector("#ykt-ai-thinking");
+    const $effort = root$4.querySelector("#ykt-ai-effort");
+    const $regex = root$4.querySelector("#ykt-ai-regex-tool");
+    const $apiEye = root$4.querySelector("#ykt-apikey-eye");
+    const $apiTest = root$4.querySelector("#ykt-apikey-test");
+    const $apiTestResult = root$4.querySelector("#ykt-apikey-test-result");
     // === 其他 UI 原有字段 ===
-        const $auto = root$3.querySelector("#ykt-input-auto-answer");
-    const $fallbackAns = root$3.querySelector("#ykt-input-fallback-answer");
-    const $autoJoin = root$3.querySelector("#ykt-input-auto-join");
-    const $autoJoinAutoAnswer = root$3.querySelector("#ykt-input-auto-join-auto-answer");
-    const $autoAnalyze = root$3.querySelector("#ykt-input-ai-auto-analyze");
-    const $delay = root$3.querySelector("#ykt-input-answer-delay");
-    const $rand = root$3.querySelector("#ykt-input-random-delay");
-    const $priority = root$3.querySelector("#ykt-ai-pick-main-first");
-    const $notifyDur = root$3.querySelector("#ykt-input-notify-duration");
-    const $notifyVol = root$3.querySelector("#ykt-input-notify-volume");
-    const $iftex = root$3.querySelector("#ykt-ui-tex");
-    const $audioFile = root$3.querySelector("#ykt-input-notify-audio-file");
-    const $audioUrl = root$3.querySelector("#ykt-input-notify-audio-url");
-    const $applyUrl = root$3.querySelector("#ykt-btn-apply-audio-url");
-    const $preview = root$3.querySelector("#ykt-btn-preview-audio");
-    const $clear = root$3.querySelector("#ykt-btn-clear-audio");
-    const $audioName = root$3.querySelector("#ykt-tip-audio-name");
+        const $auto = root$4.querySelector("#ykt-input-auto-answer");
+    const $fallbackAns = root$4.querySelector("#ykt-input-fallback-answer");
+    const $autoJoin = root$4.querySelector("#ykt-input-auto-join");
+    const $autoJoinAutoAnswer = root$4.querySelector("#ykt-input-auto-join-auto-answer");
+    const $autoAnalyze = root$4.querySelector("#ykt-input-ai-auto-analyze");
+    const $delay = root$4.querySelector("#ykt-input-answer-delay");
+    const $rand = root$4.querySelector("#ykt-input-random-delay");
+    const $priority = root$4.querySelector("#ykt-ai-pick-main-first");
+    const $notifyDur = root$4.querySelector("#ykt-input-notify-duration");
+    const $notifyVol = root$4.querySelector("#ykt-input-notify-volume");
+    const $iftex = root$4.querySelector("#ykt-ui-tex");
+    const $audioFile = root$4.querySelector("#ykt-input-notify-audio-file");
+    const $audioUrl = root$4.querySelector("#ykt-input-notify-audio-url");
+    const $applyUrl = root$4.querySelector("#ykt-btn-apply-audio-url");
+    const $preview = root$4.querySelector("#ykt-btn-preview-audio");
+    const $clear = root$4.querySelector("#ykt-btn-clear-audio");
+    const $audioName = root$4.querySelector("#ykt-tip-audio-name");
     // Profile UI
         function refreshProfileSelect() {
       const ai = ui.config.ai;
@@ -8650,8 +9332,8 @@
         refreshProfileSelect();
     loadProfileToForm(ui.config.ai.activeProfileId);
     // === 提示词设置（空 = 内置默认；可编辑可恢复） ===
-        const $promptChat = root$3.querySelector("#ykt-prompt-chat");
-    const $promptAI = root$3.querySelector("#ykt-prompt-ai");
+        const $promptChat = root$4.querySelector("#ykt-prompt-chat");
+    const $promptAI = root$4.querySelector("#ykt-prompt-ai");
     const fillPrompts = () => {
       if ($promptChat) $promptChat.value = String(ui.config.systemPromptChat ?? "").trim() || DEFAULT_SYSTEM_PROMPT_CHAT;
       if ($promptAI) $promptAI.value = String(ui.config.systemPromptAI ?? "").trim() || DEFAULT_SYSTEM_PROMPT_AI;
@@ -8665,13 +9347,13 @@
         $promptChat?.addEventListener("change", savePrompts);
     $promptAI?.addEventListener("change", savePrompts);
     // 恢复默认 = 直接填入默认值并落盘（空串 → 运行时走内置常量）
-        root$3.querySelector("#ykt-prompt-chat-reset")?.addEventListener("click", () => {
+        root$4.querySelector("#ykt-prompt-chat-reset")?.addEventListener("click", () => {
       ui.config.systemPromptChat = "";
       ui.saveConfig();
       if ($promptChat) $promptChat.value = DEFAULT_SYSTEM_PROMPT_CHAT;
       ui.toast("PPT对话提示词已恢复默认", 2e3);
     });
-    root$3.querySelector("#ykt-prompt-ai-reset")?.addEventListener("click", () => {
+    root$4.querySelector("#ykt-prompt-ai-reset")?.addEventListener("click", () => {
       ui.config.systemPromptAI = "";
       ui.saveConfig();
       if ($promptAI) $promptAI.value = DEFAULT_SYSTEM_PROMPT_AI;
@@ -8680,9 +9362,9 @@
     // 初始填充（后续切 tab 由 syncFormFromConfig 统一刷新）
         fillPrompts();
     // === 解锁入口（低调：仅一行，位于设置最底部；支持多解锁码，各自注入独立 profile） ===
-        const $devPass = root$3.querySelector("#ykt-devmode-pass");
-    const $devBtn = root$3.querySelector("#ykt-devmode-btn");
-    const $devHint = root$3.querySelector("#ykt-devmode-hint");
+        const $devPass = root$4.querySelector("#ykt-devmode-pass");
+    const $devBtn = root$4.querySelector("#ykt-devmode-btn");
+    const $devHint = root$4.querySelector("#ykt-devmode-hint");
     function refreshDevHint() {
       const cfgs = getDevConfigs();
       if (cfgs.length) {
@@ -8724,8 +9406,8 @@
  // 解锁后表单立即显示新配置
         }
     // === 匿名统计开关（最底部）与强化遥测（依赖基础遥测） ===
-        const $telemetry = root$3.querySelector("#ykt-telemetry");
-    const $telemetryEnhanced = root$3.querySelector("#ykt-telemetry-enhanced");
+        const $telemetry = root$4.querySelector("#ykt-telemetry");
+    const $telemetryEnhanced = root$4.querySelector("#ykt-telemetry-enhanced");
     const syncEnhancedTelemetryState = () => {
       if (!$telemetryEnhanced) return;
       const base = enabled();
@@ -8786,7 +9468,7 @@
       if (e.key === "Enter") $devBtn?.click();
     });
     // 群号一键复制
-        root$3.querySelector("#ykt-devmode-qq")?.addEventListener("click", async () => {
+        root$4.querySelector("#ykt-devmode-qq")?.addEventListener("click", async () => {
       const ok = await copyText("901466023");
       ui.toast?.(ok ? "已复制群号 901466023" : "复制失败，请手动输入 901466023", 2200);
     });
@@ -9010,7 +9692,7 @@
     // 初始化表单（后续所有刷新统一走 syncFormFromConfig）
         syncFormFromConfig();
     // 保存按钮
-        root$3.querySelector("#ykt-btn-settings-save").addEventListener("click", () => commitForm());
+        root$4.querySelector("#ykt-btn-settings-save").addEventListener("click", () => commitForm());
     // ===== 表单 → config 的唯一写入路径（保存按钮与自动保存共用，避免两套逻辑漂移） =====
         function commitForm({silent: silent = false} = {}) {
       const ai = ui.config.ai;
@@ -9065,10 +9747,10 @@
       }, 300);
     };
     const AUTO_SAVE_SELECTOR = 'input[type="text"], input[type="password"], input[type="number"], textarea, select, input[type="checkbox"]';
-    root$3.addEventListener("change", e => {
+    root$4.addEventListener("change", e => {
       if (e.target?.matches?.(AUTO_SAVE_SELECTOR) && e.target.closest(".settings-content")) scheduleAutoSave();
     });
-    root$3.addEventListener("focusout", e => {
+    root$4.addEventListener("focusout", e => {
       if (e.target?.matches?.('input[type="text"], input[type="password"], input[type="number"], textarea') && e.target.closest(".settings-content")) scheduleAutoSave();
     });
     /** 从 config 反向刷新所有表单（解锁开发者模式、切 tab、重置后调用） */    function syncFormFromConfig() {
@@ -9093,12 +9775,12 @@
       fillPrompts();
     }
     // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
-        root$3.__yksOnShow = syncFormFromConfig;
+        root$4.__yksOnShow = syncFormFromConfig;
  // shell 切 tab 时刷新表单
     //--------------------------------------
     //            重置为默认
     //--------------------------------------
-        root$3.querySelector("#ykt-btn-settings-reset").addEventListener("click", () => {
+        root$4.querySelector("#ykt-btn-settings-reset").addEventListener("click", () => {
       if (!confirm("确定要重置为默认设置吗？")) return;
       // 彻底重置：先删掉 DEFAULT_CONFIG 里没有的残留键（旧版本遗留/实验字段/
       // 解锁写入的 profiles），再整体覆盖——只 Object.assign 会漏项，用户会看到
@@ -9167,7 +9849,7 @@
       ui.toast("已清除自定义音频");
     });
     // 测试提醒
-        const $btnTest = root$3.querySelector("#ykt-btn-test-notify");
+        const $btnTest = root$4.querySelector("#ykt-btn-test-notify");
     if ($btnTest) $btnTest.addEventListener("click", () => {
       const mockProblem = {
         problemId: "TEST-001",
@@ -9179,10 +9861,10 @@
       });
     });
     // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
-        mounted$3 = true;
-    return root$3;
+        mounted$4 = true;
+    return root$4;
   }
-  var tpl = '<div id="ykt-about-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>关于 YuketangStudio</h3>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>版本与更新</h4>\n      <div class="ykt-about-version">\n        <div class="ykt-about-ver-row">\n          <span class="ykt-about-cur">…</span>\n          <button id="ykt-about-check" type="button">检查更新</button>\n        </div>\n        <div id="ykt-about-status" class="ykt-about-status"></div>\n        <div id="ykt-about-actions" class="ykt-about-actions" style="display:none">\n          <button id="ykt-about-download" type="button">下载新版本</button>\n        </div>\n      </div>\n\n      <h4>更新渠道</h4>\n      <p>当前：<strong id="ykt-about-channel-label">稳定版</strong>\n        <button id="ykt-about-channel-toggle" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">切换到测试版</button>\n      </p>\n      <p style="opacity:.6;font-size:12px">测试版可能不稳定；只影响检查更新，不影响已安装版本。</p>\n\n      <h4>项目介绍</h4>\n      <p>YuketangStudio 是一个为雨课堂提供辅助功能的工具：PPT 提取导出、答题提醒、AI 解答、PPT 多轮对话。</p>\n\n      <h4>相关链接</h4>\n      <p>项目仓库：<a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">github.com/RayMorTwinkle/YuketangStudio</a></p>\n      <p>官方网站：<a href="https://app.raymor.top/yuketangstudio/" target="_blank" rel="noopener">app.raymor.top/yuketangstudio</a><button id="ykt-about-site-copy" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">复制官网发给朋友</button></p>\n      <p>讨论反馈 / 内测群：QQ 群 <strong>901466023</strong><button id="ykt-about-qq-copy" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">复制群号</button></p>\n      <p>安装：本脚本通过源码构建分发，未上架任何脚本市场，安装方式见仓库 README。</p>\n\n      <h4>致谢与反馈</h4>\n      <p>本项目基于 <a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">ZaytsevZY/yuketang-helper-auto</a> 重构而来。</p>\n      <p>问题反馈：<a href="https://github.com/RayMorTwinkle/YuketangStudio/issues" target="_blank" rel="noopener">GitHub Issues</a> · QQ 群 <strong>901466023</strong></p>\n      <p>⭐ 如果这个工具帮到了你，欢迎到 <a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">GitHub 点个 Star</a>，这是对作者最大的支持。</p>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) AI 解答需要调用 LLM API，注意费用；</p>\n      <p>3) AI 答案不保证正确；</p>\n      <p>4) 自动作答有风险，谨慎开启。</p>\n    </div>\n  </div>\n</div>\n';
+  var tpl$1 = '<div id="ykt-about-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>关于 YuketangStudio</h3>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>版本与更新</h4>\n      <div class="ykt-about-version">\n        <div class="ykt-about-ver-row">\n          <span class="ykt-about-cur">…</span>\n          <button id="ykt-about-check" type="button">检查更新</button>\n        </div>\n        <div id="ykt-about-status" class="ykt-about-status"></div>\n        <div id="ykt-about-actions" class="ykt-about-actions" style="display:none">\n          <button id="ykt-about-download" type="button">下载新版本</button>\n        </div>\n      </div>\n\n      <h4>更新渠道</h4>\n      <p>当前：<strong id="ykt-about-channel-label">稳定版</strong>\n        <button id="ykt-about-channel-toggle" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">切换到测试版</button>\n      </p>\n      <p style="opacity:.6;font-size:12px">测试版可能不稳定；只影响检查更新，不影响已安装版本。</p>\n\n      <h4>项目介绍</h4>\n      <p>YuketangStudio 是一个为雨课堂提供辅助功能的工具：PPT 提取导出、答题提醒、AI 解答、PPT 多轮对话。</p>\n\n      <h4>相关链接</h4>\n      <p>项目仓库：<a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">github.com/RayMorTwinkle/YuketangStudio</a></p>\n      <p>官方网站：<a href="https://app.raymor.top/yuketangstudio/" target="_blank" rel="noopener">app.raymor.top/yuketangstudio</a><button id="ykt-about-site-copy" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">复制官网发给朋友</button></p>\n      <p>讨论反馈 / 内测群：QQ 群 <strong>901466023</strong><button id="ykt-about-qq-copy" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">复制群号</button></p>\n      <p>安装：本脚本通过源码构建分发，未上架任何脚本市场，安装方式见仓库 README。</p>\n\n      <h4>致谢与反馈</h4>\n      <p>本项目基于 <a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">ZaytsevZY/yuketang-helper-auto</a> 重构而来。</p>\n      <p>问题反馈：<a href="https://github.com/RayMorTwinkle/YuketangStudio/issues" target="_blank" rel="noopener">GitHub Issues</a> · QQ 群 <strong>901466023</strong></p>\n      <p>⭐ 如果这个工具帮到了你，欢迎到 <a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">GitHub 点个 Star</a>，这是对作者最大的支持。</p>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) AI 解答需要调用 LLM API，注意费用；</p>\n      <p>3) AI 答案不保证正确；</p>\n      <p>4) 自动作答有风险，谨慎开启。</p>\n    </div>\n  </div>\n</div>\n';
   /* global GM_info */
   // src/core/update-check.js
   // 更新检测：GET api.raymor.top/yuketangstudio/latest（svc 国内渠道元数据）
@@ -9223,7 +9905,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.8.0";
+      return "0.9.0";
     } catch {}
     return "0.0.0";
   }
@@ -9393,19 +10075,19 @@
   }
   // src/ui/panels/about.js
   // 关于页：版本信息 + 手动检查更新（对比 svc /latest 元数据）
-    let mounted$2 = false;
-  let root$2;
+    let mounted$3 = false;
+  let root$3;
   function mountAboutPanel() {
-    if (mounted$2) return root$2;
+    if (mounted$3) return root$3;
     const host = document.createElement("div");
-    // "0.8.0" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.8.0"}<`);
+    // "0.9.0" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.0"}<`);
     document.body.appendChild(host.firstElementChild);
-    root$2 = document.getElementById("ykt-about-panel");
-    const $btn = root$2.querySelector("#ykt-about-check");
-    const $status = root$2.querySelector("#ykt-about-status");
-    const $actions = root$2.querySelector("#ykt-about-actions");
-    const $dl = root$2.querySelector("#ykt-about-download");
+    root$3 = document.getElementById("ykt-about-panel");
+    const $btn = root$3.querySelector("#ykt-about-check");
+    const $status = root$3.querySelector("#ykt-about-status");
+    const $actions = root$3.querySelector("#ykt-about-actions");
+    const $dl = root$3.querySelector("#ykt-about-download");
     let checking = false;
     let lastResult = null;
     const setStatus = (text, kind = "muted") => {
@@ -9438,17 +10120,17 @@
       }
     };
     // 讨论群号 / 官网地址一键复制（WebView 里 clipboard 可能不可用，copyText 已做回退）
-        root$2.querySelector("#ykt-about-qq-copy")?.addEventListener("click", async () => {
+        root$3.querySelector("#ykt-about-qq-copy")?.addEventListener("click", async () => {
       const ok = await copyText("901466023");
       ui.toast?.(ok ? "已复制群号 901466023" : "复制失败，请手动输入 901466023", 2200);
     });
-    root$2.querySelector("#ykt-about-site-copy")?.addEventListener("click", async () => {
+    root$3.querySelector("#ykt-about-site-copy")?.addEventListener("click", async () => {
       const ok = await copyText("https://app.raymor.top/yuketangstudio/");
       ui.toast?.(ok ? "已复制官网地址，发给朋友吧" : "复制失败，请手动输入官网地址", 2200);
     });
     // 更新渠道（稳定 / 测试）
-        const $chLabel = root$2.querySelector("#ykt-about-channel-label");
-    const $chBtn = root$2.querySelector("#ykt-about-channel-toggle");
+        const $chLabel = root$3.querySelector("#ykt-about-channel-label");
+    const $chBtn = root$3.querySelector("#ykt-about-channel-toggle");
     const refreshChannel = () => {
       const ch = getChannel();
       if ($chLabel) $chLabel.textContent = ch === "beta" ? "测试版" : "稳定版";
@@ -9469,432 +10151,8 @@
         gm.uw.open(url, "_blank");
       } catch {/* 打不开就静默：页面上已有 GitHub 链接 */}
     });
-    mounted$2 = true;
-    return root$2;
-  }
-  // src/quiz/active-core.js
-  // 新版作业（type 19）/考试（type 20）纯函数核心：数据解包、状态解析、题目解析、试卷拼装、保留窗口。
-  // 协议参考：smartThise/OneTHU PR #28（b9b82ef）/ PR #32（5225a05），适配本项目数据形态。
-  // 本文件只含纯函数（无 fetch/DOM），供 active-http/exercise/exam/assignments 复用与单测覆盖。
-  /** 登录态失效：发现/详情队列遇到后应整体中止并提示用户刷新。 */  class AuthError extends Error {
-    constructor() {
-      super("雨课堂登录已失效，请刷新页面或重新登录后再试。");
-    }
-  }
-  /** 对象则原样返回，否则 null（数组也算非对象）。 */  function record(value) {
-    return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
-  }
-  /** 字符串则原样返回，否则 ''。 */  function text(value) {
-    return typeof value === "string" ? value : "";
-  }
-  /** string/number → trim 后字符串，否则 ''。 */  function id(value) {
-    return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
-  }
-  /** 非负有限数（字符串数字也接受，如 '0.00'→0）；负数/NaN/Infinity/空串 → null。 */  function number(value) {
-    const n = typeof value === "string" && value.trim() ? Number(value) : value;
-    return typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
-  }
-  /** 严格非负安全整数（不接受字符串）。 */  function nonnegativeInteger(value) {
-    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
-  }
-  /** 严格非负有限数（不接受字符串）。 */  function nonnegativeNumber(value) {
-    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
-  }
-  /** 分数字段归一：'5.00'→5，-1/缺失 → null。 */  function numericScore(value) {
-    return nonnegativeNumber(typeof value === "string" && value.trim() ? Number(value) : value);
-  }
-  /** 我的作答是否有实质内容（trim 后非空字符串 / 递归数组 / 有限数字）。 */  function hasAnswer(value) {
-    if (typeof value === "string") return value.trim().length > 0;
-    if (Array.isArray(value)) return value.some(hasAnswer);
-    return typeof value === "number" && Number.isFinite(value);
-  }
-  /** https 绝对/协议相对 URL 规范化；非 https/非法 → null。 */  function httpsUrl(value) {
-    const raw = text(value);
-    if (!raw.trim()) return null;
-    try {
-      const u = new URL(raw, "https://pro.yuketang.cn/");
-      return u.protocol === "https:" && !u.username && !u.password ? u.href : null;
-    } catch {
-      return null;
-    }
-  }
-  /** 5 实体 HTML 转义。 */  function escapeText(value) {
-    return value.replace(/[&<>"']/g, c => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    }[c]));
-  }
-  /** 正确答案渲染：数组逐项转义后 <br> 连接，字符串原样（服务端 HTML 交由 sanitizeHtml）。 */  function reviewAnswer(value) {
-    if (typeof value === "string") return value;
-    if (Array.isArray(value)) return value.filter(v => typeof v === "string" || typeof v === "number").map(v => escapeText(String(v))).join("<br>");
-    return typeof value === "number" ? String(value) : "";
-  }
-  /** uv_id → university_id → '2598' 兜底（与官网前端行为一致）。 */  function uvIdFromCookie(cookieString) {
-    const raw = typeof cookieString === "string" ? cookieString : "";
-    const jar = new Map;
-    for (const part of raw.split(";")) {
-      const eq = part.indexOf("=");
-      if (eq <= 0) continue;
-      const name = part.slice(0, eq).trim();
-      if (!jar.has(name)) jar.set(name, part.slice(eq + 1).trim());
-    }
-    return jar.get("uv_id") || jar.get("university_id") || "2598";
-  }
-  /**
-   * 解包 {success, data} / {errcode|error_code|code, ...} 信封。
-   * 401000/401/403（任意字段）→ AuthError；其余错误码/未成功/缺数据 → Error。
-   */  function dataOf(value) {
-    const body = record(value);
-    if (!body) throw new Error("雨课堂返回非 JSON，请重新登录后重试。");
-    for (const field of [ "errcode", "error_code", "code" ]) {
-      const code = body[field];
-      if (code === void 0 || code === null || code === 0 || code === "0") continue;
-      if ([ "401000", "401", "403" ].includes(String(code))) throw new AuthError;
-      throw new Error(`雨课堂作业接口失败（${field}=${String(code)}）。`);
-    }
-    if (body.success === false) throw new Error("雨课堂作业接口未成功。");
-    const data = record(body.data);
-    if (!data) throw new Error("雨课堂作业接口未返回数据。");
-    return data;
-  }
-  /** 三个日历月（UTC，月末钳制），与宿主时区无关。 */  function assignmentRetentionCutoff(now = Date.now()) {
-    const date = new Date(now);
-    const day = date.getUTCDate();
-    date.setUTCDate(1);
-    date.setUTCMonth(date.getUTCMonth() - 3);
-    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
-    date.setUTCDate(Math.min(day, lastDay));
-    return date.getTime();
-  }
-  /** 缺失/非法 deadline 不能证明过期，一律保留；否则按三个月窗口过滤。 */  function isAssignmentRetained(assignment, now = Date.now()) {
-    const d = assignment !== null && typeof assignment === "object" ? assignment.deadline : null;
-    return d === null || d === void 0 || !Number.isFinite(d) || d >= assignmentRetentionCutoff(now);
-  }
-  /**
-   * 考试 cover 状态（/v/exam/cover 与 /exam_room/cover 同构）。
-   * 已验证官网判定：result.status 4/5=已交卷，6=缺考；monitor_status=2 覆盖为作废；
-   * 仅已交卷且 score_finish!==false 且 score/total_score 均为非负有限数才算已出分（零分有效）。
-   */  function parseExamProgress(data) {
-    const cover = record(data) ?? {};
-    const result = record(cover.result) ?? {};
-    const code = result.status;
-    const submitted = code === 4 || code === 5;
-    const invalid = (record(cover.face_auth_status) ?? {}).monitor_status === 2;
-    const examStatus = invalid ? "invalid" : submitted ? "submitted" : code === 6 ? "absent" : "unknown";
-    const total = nonnegativeInteger(cover.problem_count);
-    const unfinished = nonnegativeInteger(result.unfinished_count);
-    const totalCount = total !== null && total > 0 ? total : null;
-    // 缺失/越界的未答数不是 0；仅交卷不等于全部作答。
-        const answeredCount = submitted && !invalid && totalCount !== null && unfinished !== null && unfinished <= totalCount ? totalCount - unfinished : null;
-    const score = nonnegativeNumber(result.score);
-    const totalScore = nonnegativeNumber(cover.total_score);
-    const graded = submitted && !invalid && result.score_finish !== false && score !== null && totalScore !== null;
-    return {
-      examStatus: examStatus,
-      graded: graded,
-      score: graded ? score : null,
-      totalScore: graded ? totalScore : null,
-      status: answeredCount === null ? "unknown" : answeredCount === totalCount ? "answered" : answeredCount > 0 ? "partial" : "unanswered",
-      answeredCount: answeredCount,
-      totalCount: totalCount,
-      // cover 只有总题数与未答数，无逐题明细。
-      questions: [],
-      statusMessage: examStatus === "unknown" ? "暂无法获取考试状态，请在官网查看。" : null
-    };
-  }
-  /** 考试回顾门禁：已交卷 + 已出分 + 允许查看 + 成绩公布时间已到，才允许读取题目。 */  function canReviewExam(data, now) {
-    const cover = record(data) ?? {};
-    const progress = parseExamProgress(cover);
-    const release = number(cover.show_score_time);
-    return progress.examStatus === "submitted" && progress.graded === true && cover.show_perm === true && cover.show_score === true && (release === null || release <= (number(cover.server_time) ?? now));
-  }
-  /** 作业批改汇总（graded 仅在证据充分时给出 true/false，否则 null）。 */  function homeworkGraded(problems, aggregate, answered) {
-    if (answered === 0 && (aggregate ?? 0) === 0) return false;
-    const relevant = problems.filter(value => {
-      const user = record(record(value)?.user) ?? {};
-      const answer = record(user.my_answer) ?? {};
-      return (aggregate ?? 0) > 0 || [ 3, 4 ].includes(user.status) || hasAnswer(answer.content) || Array.isArray(answer.attachment) && answer.attachment.length > 0;
-    });
-    if (!relevant.length) return null;
-    let allGraded = true;
-    for (const value of relevant) {
-      const user = record(record(value)?.user) ?? {};
-      const rawScore = user.my_score;
-      const score = typeof rawScore === "string" && rawScore.trim() ? Number(rawScore) : rawScore;
-      // status=3 或 my_score=-1（含 '-1.00'）优先表示待批改。
-            if (user.status === 3 || score === -1) return false;
-      // 缺少批改字段不能被误判为已批改。
-            if (user.status !== 4 && nonnegativeNumber(score) === null) allGraded = false;
-    }
-    return allGraded ? true : null;
-  }
-  /**
-   * 作业（exercise）状态汇总：逐题 user 数据缺失时 answered=null（未知≠未答）。
-   * problems 为空且 answer_count 缺失时抛错（调用方降级为 statusMessage）。
-   */  function parseProgress(data) {
-    const body = record(data) ?? {};
-    const raw = Array.isArray(body.problems) ? body.problems : [];
-    const aggregate = nonnegativeInteger(numericScore(body.answer_count));
-    if (!raw.length && aggregate === null) throw new Error("作业状态数据为空");
-    const questions = raw.map((value, index) => {
-      const problem = record(value) ?? {};
-      const user = record(problem.user);
-      const answer = user ? record(user.my_answer) : null;
-      return {
-        id: id(problem.problem_id) || id(problem.id) || String(index + 1),
-        index: index + 1,
-        // 缺失的 user 数据不能证明该题未作答。
-        answered: !user ? null : user.status === 3 || user.status === 4 || hasAnswer(record(user.my_answer)?.content) || answer !== null && Array.isArray(answer.attachment) && answer.attachment.length > 0
-      };
-    });
-    const answered = questions.filter(q => q.answered === true).length;
-    const allKnown = questions.length > 0 && questions.every(q => q.answered !== null);
-    // 聚合数只能证明有活动，不能定位到具体题目。
-        const count = answered > 0 ? answered : aggregate ?? (allKnown ? 0 : null);
-    const status = allKnown && answered === questions.length ? "answered" : count !== null && count > 0 ? "partial" : allKnown || aggregate === 0 ? "unanswered" : "unknown";
-    const scored = raw.length > 0 && raw.every(value => {
-      const user = record(record(value)?.user) ?? {};
-      const content = record(record(value)?.content) ?? {};
-      return user.status !== 3 && numericScore(user.my_score) !== null && numericScore(content.score) !== null;
-    });
-    const graded = homeworkGraded(raw, aggregate, answered);
-    return {
-      status: status,
-      score: graded === true && scored ? raw.reduce((sum, value) => sum + numericScore((record(record(value)?.user) ?? {}).my_score), 0) : null,
-      totalScore: graded === true && scored ? raw.reduce((sum, value) => sum + numericScore((record(record(value)?.content) ?? {}).score), 0) : null,
-      graded: graded,
-      answeredCount: count,
-      totalCount: questions.length || null,
-      questions: questions,
-      statusMessage: null
-    };
-  }
-  /**
-   * 单题解析（exercise 详情 / 考试试卷共用）。
-   * status：3=已交待批改；4 或非负 my_score=已批改；有作答内容=已作答；
-   * my_answer 显式含 content=未作答；其余=未知。
-   */  function parseProblem(raw, position = 0) {
-    const problem = record(raw) ?? {};
-    const content = record(problem.content) ?? {};
-    const user = record(problem.user) ?? {};
-    const answer = record(user.my_answer) ?? {};
-    const answerHtml = typeof answer.content === "string" ? answer.content : Array.isArray(answer.content) ? answer.content.filter(v => typeof v === "string" || typeof v === "number").map(v => escapeText(String(v))).join("<br>") : typeof answer.content === "number" ? String(answer.content) : "";
-    const attachments = (Array.isArray(answer.attachment) ? answer.attachment : []).flatMap(item => {
-      const entry = record(item) ?? {};
-      const name = text(entry.name);
-      const href = httpsUrl(entry.url);
-      return name || href ? [ {
-        name: name || "附件",
-        url: href
-      } ] : [];
-    });
-    const userStatus = number(user.status);
-    const score = number(user.my_score);
-    const pendingScore = String(user.my_score ?? "").trim() !== "" && Number(user.my_score) === -1;
-    const status = userStatus === 3 ? "submitted" : !pendingScore && (userStatus === 4 || score !== null) ? "graded" : answerHtml.trim() || attachments.length ? "answered" : Object.hasOwn(answer, "content") ? "unanswered" : "unknown";
-    const count = number(user.count);
-    const used = number(user.my_count) ?? 0;
-    const type = number(content.ProblemType ?? content.Type) ?? 0;
-    const typeNames = {
-      1: "单选题",
-      2: "多选题",
-      3: "判断题",
-      4: "填空题",
-      5: "主观题",
-      6: "试卷",
-      9: "外链题"
-    };
-    return {
-      id: id(problem.problem_id) || String(position + 1),
-      index: number(problem.index) ?? position + 1,
-      type: type,
-      typeText: text(content.TypeText) || typeNames[type] || "题目",
-      score: number(content.score),
-      bodyHtml: text(content.Body),
-      options: (Array.isArray(content.Options) ? content.Options : []).map((rawOption, i) => {
-        const option = record(rawOption) ?? {};
-        return {
-          label: text(option.name) || String.fromCharCode(65 + i),
-          html: typeof rawOption === "string" ? rawOption : text(option.content ?? option.Body ?? option.text)
-        };
-      }),
-      answerHtml: answerHtml,
-      attachments: attachments,
-      status: status,
-      myScore: status === "graded" ? score : null,
-      remarkHtml: text(user.remark),
-      comments: (Array.isArray(user.comment) ? user.comment : []).flatMap(rawComment => {
-        const item = record(rawComment) ?? {};
-        const html = text(item.content);
-        return html.trim() ? [ {
-          html: html,
-          name: text(item.name),
-          index: number(item.index)
-        } ] : [];
-      }),
-      externalUrl: type === 9 ? httpsUrl((record(content.data) ?? {}).answer_problem_url) : null,
-      maxRetry: number(content.max_retry ?? problem.max_retry) ?? 0,
-      remainingRetries: count !== null && count > 0 ? Math.max(0, count - used) : null,
-      allowResults: (Array.isArray(content.AllowResults) ? content.AllowResults : []).filter(v => typeof v === "string")
-    };
-  }
-  /**
-   * 拼装考试回顾试卷（show_paper × problem_results × exam 域 cover）。
-   * 已验证试卷 index 恒为 0、results 与试卷顺序相反：一律按 problem_id 关联并重排 index=i+1。
-   * show_answer!==true 时隐去参考答案与解析（answer/Remark）。
-   */  function joinExamPaper(paper, results, reviewCover) {
-    const paperBody = record(paper) ?? {};
-    const cover = record(reviewCover) ?? {};
-    const byId = new Map((Array.isArray(record(results)?.problem_results) ? record(results).problem_results : []).map(raw => [ id(record(raw)?.problem_id), record(raw) ?? {} ]).filter(([key]) => key));
-    const problems = (Array.isArray(paperBody.problems) ? paperBody.problems : []).map((raw, i) => {
-      const p = record(raw) ?? {};
-      const pid = id(p.problem_id ?? p.ProblemID);
-      const result = pid ? byId.get(pid) ?? {} : {};
-      const grade = number(result.grade);
-      const parsed = parseProblem({
-        problem_id: pid,
-        index: i + 1,
-        content: {
-          ...p,
-          score: p.score ?? p.Score,
-          Options: (Array.isArray(p.Options) ? p.Options : []).map(rawOption => {
-            const option = record(rawOption) ?? {};
-            return {
-              name: option.key,
-              content: option.value
-            };
-          })
-        },
-        user: {
-          my_answer: {
-            content: result.result
-          }
-        }
-      }, i);
-      return {
-        ...parsed,
-        status: grade !== null ? "graded" : result.finished === false ? "unanswered" : result.finished === true ? "submitted" : "unknown",
-        myScore: grade,
-        correct: grade !== null && typeof result.correct === "boolean" ? result.correct : null,
-        correctAnswerHtml: cover.show_answer === true ? reviewAnswer(result.answer ?? p.Answer) : "",
-        explanationHtml: cover.show_answer === true ? text(p.Remark) : ""
-      };
-    });
-    return {
-      problems: problems,
-      questions: problems.map(p => {
-        const entry = byId.get(p.id);
-        return {
-          id: p.id,
-          index: p.index,
-          answered: typeof entry?.finished === "boolean" ? entry.finished : null
-        };
-      }),
-      fontUrl: httpsUrl(paperBody.font),
-      descriptionHtml: text(cover.description)
-    };
-  }
-  const EXAM_HOSTS = [ "tsinghua-exam.yuketang.cn", "examination.xuetangx.com" ];
-  /**
-   * gen_token 返回的 exam_host 白名单校验：仅 https、无凭据/端口、域名在白名单内。
-   * 非法/不支持 → Error（提示去官网），默认缺省为 examination.xuetangx.com。
-   */  function parseExamHost(value) {
-    let host;
-    try {
-      host = new URL(typeof value === "string" && value ? value : "https://examination.xuetangx.com");
-    } catch {
-      throw new Error("考试结果服务地址暂不支持，请在官网查看。");
-    }
-    if (host.protocol !== "https:" || host.username || host.password || host.port || !EXAM_HOSTS.includes(host.hostname)) throw new Error("考试结果服务地址暂不支持，请在官网查看。");
-    return host.origin;
-  }
-  // src/quiz/active-http.js
-  // 新版作业/考试 HTTP 层。
-  // EP1-EP5（pro 站点）：同源相对路径 fetch（credentials include，登录 Cookie 自动携带）；
-  // EP6-EP9（考试域 tsinghua-exam.yuketang.cn / examination.xuetangx.com）：跨源走
-  //   GM_xmlhttpRequest（userscript.meta 已 @connect *；Android 壳内 gm-shim 的 fetch
-  //   遇跨域 CORS 预检失败会自动回退原生 fetchRequest，无需平台分支）。
-  // 跨源请求绝不携带 pro 平台凭据：GM 按目标域独立 Cookie jar，headers 只发 x-client/xtbz/referer。
-  /** document.cookie 中的 csrftoken（非 HttpOnly；与 quiz-paper.js 暂存、官网前端一致）。 */  function csrfToken() {
-    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : "";
-  }
-  /** 同源 GET（相对路径）。401/403 → AuthError；其余非 2xx → Error。 */  async function proGet(path) {
-    let r;
-    try {
-      r = await fetch(path, {
-        credentials: "include"
-      });
-    } catch {
-      throw new Error(`网络请求失败：${path}`);
-    }
-    if (r.status === 401 || r.status === 403) throw new AuthError;
-    if (!r.ok) throw new Error(`HTTP ${r.status}：${path}`);
-    return r.json();
-  }
-  /** 同源 POST JSON（相对路径），自动携带 X-CSRFToken；extraHeaders 覆盖默认头。 */  async function proPost(path, payload, extraHeaders = {}) {
-    const token = csrfToken();
-    const headers = {
-      "Content-Type": "application/json",
-      ...token ? {
-        "X-CSRFToken": token
-      } : {},
-      ...extraHeaders
-    };
-    let r;
-    try {
-      r = await fetch(path, {
-        method: "POST",
-        credentials: "include",
-        headers: headers,
-        body: JSON.stringify(payload ?? {})
-      });
-    } catch {
-      throw new Error(`网络请求失败：${path}`);
-    }
-    if (r.status === 401 || r.status === 403) throw new AuthError;
-    if (!r.ok) throw new Error(`HTTP ${r.status}：${path}`);
-    return r.json();
-  }
-  /**
-   * 跨源 GET（GM_xmlhttpRequest）。返回 GM 响应对象（status/responseText/...）。
-   * watchdog 兜底：部分 GM 实现 timeout 字段不生效，不能让 Promise 永远 pending。
-   */  function gmGet(url, headers = {}, timeoutMs = 15e3) {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const done = (fn, v) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(watchdog);
-          fn(v);
-        }
-      };
-      const watchdog = setTimeout(() => done(reject, new Error(`考试结果请求超时：${hostOf(url)}`)), timeoutMs + 5e3);
-      try {
-        gm.xhr({
-          method: "GET",
-          url: url,
-          headers: headers,
-          timeout: timeoutMs,
-          onload: res => done(resolve, res),
-          onerror: () => done(reject, new Error(`考试结果请求失败：${hostOf(url)}`)),
-          ontimeout: () => done(reject, new Error(`考试结果请求超时：${hostOf(url)}`)),
-          onabort: () => done(reject, new Error(`考试结果请求中止：${hostOf(url)}`))
-        });
-      } catch (e) {
-        done(reject, e);
-      }
-    });
-  }
-  function hostOf(url) {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return String(url).slice(0, 60);
-    }
+    mounted$3 = true;
+    return root$3;
   }
   // src/quiz/exercise.js
   // EP3：新版作业（type 19）题目与状态读取。
@@ -10069,11 +10327,7 @@
   async function fetchCourses() {
     const j = await proGet("/v2/api/web/courses/list?identity=2");
     const list = j?.data?.list || j?.list || [];
-    return list.map(c => ({
-      id: String(c.classroom_id || ""),
-      name: c.name || c.course?.name || "课程",
-      role: c.role
-    })).filter(c => c.id);
+    return list.map(normalizeCourse).filter(c => c.id);
   }
   const PAGE_SIZE = 200;
   const MAX_PAGES = 50;
@@ -10360,19 +10614,19 @@
   }
   // src/ui/panels/assignments-panel.js
   // 工具箱「作业」tab：本课作业列表 + 当前试卷题目 + 批量下载/批量 AI + 单题 AI（复用 AI 解答面板）
-    let mounted$1 = false;
-  let root$1 = null;
-  let courses = [];
+    let mounted$2 = false;
+  let root$2 = null;
+  let courses$1 = [];
   let cid = "";
   let list = [];
   let selected = new Set;
-  let busy = false;
+  let busy$1 = false;
   let loaded = false;
   let viewData = null;
   let viewTitle = "";
   let viewAssignment = null;
-  function $(sel) {
-    return root$1?.querySelector(sel);
+  function $$1(sel) {
+    return root$2?.querySelector(sel);
   }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({
@@ -10403,13 +10657,13 @@
     }));
   }
   function setStatus(text) {
-    const el = $("#ykt-ap-status");
+    const el = $$1("#ykt-ap-status");
     if (el) el.textContent = text || "";
   }
   function setBusy(on) {
-    busy = on;
+    busy$1 = on;
     [ "#ykt-ap-zip", "#ykt-ap-ai", "#ykt-ap-refresh" ].forEach(s => {
-      const b = $(s);
+      const b = $$1(s);
       if (b) b.disabled = on;
     });
   }
@@ -10419,26 +10673,26 @@
   function showListView() {
     viewData = null;
     viewAssignment = null;
-    $("#ykt-ap-questions").style.display = "none";
-    $("#ykt-ap-list").style.display = "";
-    $(".ap-toolbar").style.display = "";
-    $(".ap-actions").style.display = "";
-    $("#ykt-ap-status").style.display = "";
+    $$1("#ykt-ap-questions").style.display = "none";
+    $$1("#ykt-ap-list").style.display = "";
+    $$1(".ap-toolbar").style.display = "";
+    $$1(".ap-actions").style.display = "";
+    $$1("#ykt-ap-status").style.display = "";
     renderList();
   }
   function showQuestionsView(data, title, assignment) {
     viewData = data;
     viewTitle = title;
     viewAssignment = assignment;
-    $("#ykt-ap-list").style.display = "none";
-    $(".ap-toolbar").style.display = "none";
-    $(".ap-actions").style.display = "none";
-    $("#ykt-ap-status").style.display = "none";
-    $("#ykt-ap-questions").style.display = "";
+    $$1("#ykt-ap-list").style.display = "none";
+    $$1(".ap-toolbar").style.display = "none";
+    $$1(".ap-actions").style.display = "none";
+    $$1("#ykt-ap-status").style.display = "none";
+    $$1("#ykt-ap-questions").style.display = "";
     renderQuestions();
   }
   function renderQuestions() {
-    const box = $("#ykt-ap-questions");
+    const box = $$1("#ykt-ap-questions");
     if (!box) return;
     if (viewData?.mode === "exercise" || viewData?.mode === "exam-review") {
       renderActiveQuestions();
@@ -10451,8 +10705,8 @@
       return `<div class="quiz-item">\n      <div class="quiz-idx">${i + 1}</div>\n      <div class="quiz-info"><b>${typeText(p.Type)}</b> · ${p.Score ?? 0} 分</div>\n      <button type="button" data-qact="dl" data-i="${i}">下载</button>\n      <button type="button" data-qact="ai" data-i="${i}">AI 解答</button>\n    </div>`;
     }).filter(Boolean).join("");
     box.innerHTML = `\n    <div class="ap-qhead">\n      <button type="button" id="ykt-ap-back">← 返回作业列表</button>\n      <b>${escapeHtml(viewTitle || "当前试卷")}</b>\n      ${viewAssignment?.oldId ? '<button type="button" id="ykt-ap-goto-submit">去交卷</button>' : ""}\n    </div>\n    <div class="quiz-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
-    $("#ykt-ap-back")?.addEventListener("click", showListView);
-    $("#ykt-ap-goto-submit")?.addEventListener("click", () => {
+    $$1("#ykt-ap-back")?.addEventListener("click", showListView);
+    $$1("#ykt-ap-goto-submit")?.addEventListener("click", () => {
       if (viewAssignment?.oldId) location.href = oldUrl(viewAssignment);
     });
   }
@@ -10498,7 +10752,7 @@
     return `<div class="ap-active-item">\n    <div class="ap-active-head">\n      <span class="ap-active-idx">${q.index ?? i + 1}</span>\n      <b>${escapeHtml(q.typeText || "题目")}</b>\n      ${q.score != null ? `<span class="ap-active-score">${q.score} 分</span>` : ""}\n      ${activeProblemBadge(q, isExam)}\n      ${q.myScore != null ? `<span class="ap-badge">得分 ${q.myScore}</span>` : ""}\n      <span class="ap-active-links">\n        ${q.externalUrl ? `<a href="${escapeHtml(q.externalUrl)}" target="_blank" rel="noopener noreferrer">打开外链题</a>` : ""}\n        <button type="button" data-qact="aai" data-i="${i}">AI 解答</button>\n      </span>\n    </div>\n    <div class="ap-problem-body">${sanitizeHtml(q.bodyHtml)}</div>\n    ${options}\n    ${activeAnswerBlock("我的作答", q.answerHtml)}\n    ${isExam ? activeAnswerBlock("参考答案", q.correctAnswerHtml) : ""}\n    ${activeAnswerBlock("解析", q.explanationHtml)}\n    ${activeAnswerBlock("评语", q.remarkHtml)}\n    ${comments}\n    ${files}\n  </div>`;
   }
   /** type 19 详情 / type 20 回顾共用的题目视图（viewData.mode = exercise|exam-review）。 */  function renderActiveQuestions() {
-    const box = $("#ykt-ap-questions");
+    const box = $$1("#ykt-ap-questions");
     if (!box) return;
     const d = viewData || {};
     const isExam = d.mode === "exam-review";
@@ -10513,7 +10767,7 @@
     const rows = (d.problems || []).map((q, i) => activeProblemCard(q, i, isExam)).join("");
     const desc = sanitizeHtml(d.descriptionHtml || "");
     box.innerHTML = `\n    <div class="ap-qhead">\n      <button type="button" id="ykt-ap-back">← 返回作业列表</button>\n      <b>${escapeHtml(viewTitle || "详情")}</b>\n      <span class="ap-head-meta">${head.map(s => escapeHtml(String(s))).join(" · ")}</span>\n    </div>\n    ${desc ? `<div class="ap-desc">${desc}</div>` : ""}\n    <div class="ap-active-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
-    $("#ykt-ap-back")?.addEventListener("click", showListView);
+    $$1("#ykt-ap-back")?.addEventListener("click", showListView);
     injectActiveFont(d.fontUrl);
   }
   /** 加密字体：GM_xhr 拉 dataURL 注入 @font-face；失败保持原字符（降级）。 */  let activeFontUrl = "";
@@ -10533,7 +10787,7 @@
     }
   }
   /** type 19「详情」/ type 20「回顾」入口。 */  async function openActiveDetail(a) {
-    if (busy) return;
+    if (busy$1) return;
     if (!a.leafTypeId) {
       ui.toast?.("缺少作业标识，请先在官网打开一次该作业", 2500);
       return;
@@ -10593,7 +10847,7 @@
     setStatus(list.length ? `共 ${list.length} 项` : "没有找到作业");
   }
   function renderCurrentCard() {
-    const box = $("#ykt-ap-current");
+    const box = $$1("#ykt-ap-current");
     if (!box) return;
     if (!isQuizPage()) {
       box.style.display = "none";
@@ -10607,10 +10861,10 @@
     const m = quizMeta(data);
     box.style.display = "";
     box.innerHTML = `<div class="ap-current-card">\n    <div class="ap-current-title">当前试卷：${escapeHtml(m.title)}</div>\n    <div class="ap-current-sub">${m.count} 题 · ${m.width}×${m.height}</div>\n    <button type="button" id="ykt-ap-current-open">查看题目</button>\n  </div>`;
-    $("#ykt-ap-current-open")?.addEventListener("click", () => showQuestionsView(data, m.title, null));
+    $$1("#ykt-ap-current-open")?.addEventListener("click", () => showQuestionsView(data, m.title, null));
   }
   function renderList() {
-    const box = $("#ykt-ap-list");
+    const box = $$1("#ykt-ap-list");
     if (!box) return;
     if (!list.length) {
       box.innerHTML = '<div class="ap-empty">这个课程没有作业/考试（或日志接口未返回）</div>';
@@ -10644,17 +10898,17 @@
   async function loadCourses() {
     setStatus("正在读取课程列表…");
     try {
-      courses = await fetchCourses();
-      const sel = $("#ykt-ap-course");
-      if (sel) sel.innerHTML = courses.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
-      if (!courses.length) {
+      courses$1 = await fetchCourses();
+      const sel = $$1("#ykt-ap-course");
+      if (sel) sel.innerHTML = courses$1.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+      if (!courses$1.length) {
         setStatus("没有读取到课程");
         return;
       }
       const quizId = String(window.quizID || "");
       if (quizId) {
         setStatus("正在定位当前作业所属课程…");
-        const found = await findCourseByQuiz(courses, quizId);
+        const found = await findCourseByQuiz(courses$1, quizId);
         if (found) {
           if (sel) sel.value = found.cid;
           list = found.list;
@@ -10667,7 +10921,7 @@
         }
       }
       const urlCid = new URLSearchParams(location.search).get("classroom_id");
-      const prefer = courses.find(c => c.id === urlCid) || courses[0];
+      const prefer = courses$1.find(c => c.id === urlCid) || courses$1[0];
       if (sel) sel.value = prefer.id;
       await loadList(prefer.id);
     } catch (e) {
@@ -10689,7 +10943,7 @@
     }
   }
   async function downloadQuestion(index) {
-    if (busy) return;
+    if (busy$1) return;
     setBusy(true);
     try {
       const canvas = await composeSlide(viewData.Slides[index], viewData, 2);
@@ -10723,7 +10977,7 @@
     }
   }
   async function batchZip() {
-    if (busy) return;
+    if (busy$1) return;
     const items = selectedItems().filter(a => a.oldId);
     if (!items.length) {
       ui.toast?.("请先勾选带老版界面的作业", 2500);
@@ -10757,7 +11011,7 @@
     }
   }
   async function batchAI() {
-    if (busy) return;
+    if (busy$1) return;
     const items = selectedItems().filter(a => a.oldId);
     if (!items.length) {
       ui.toast?.("请先勾选带老版界面的作业", 2500);
@@ -10831,24 +11085,24 @@
     }
   }
   function mountAssignmentsPanel() {
-    if (mounted$1) return root$1;
-    mounted$1 = true;
-    root$1 = document.createElement("div");
-    root$1.id = "ykt-assign-tab";
-    root$1.className = "ykt-panel";
-    root$1.innerHTML = `\n    <div class="panel-header"><h3>作业</h3></div>\n    <div class="panel-body">\n      <div id="ykt-ap-current" style="display:none"></div>\n      <div class="ap-toolbar">\n        <select id="ykt-ap-course"></select>\n        <button type="button" id="ykt-ap-refresh">刷新</button>\n      </div>\n      <div class="ap-actions">\n        <label class="ap-all"><input type="checkbox" id="ykt-ap-all"> 全选</label>\n        <button type="button" id="ykt-ap-zip">批量下载（ZIP）</button>\n        <button type="button" id="ykt-ap-ai">批量 AI 解答</button>\n      </div>\n      <div id="ykt-ap-status" class="ap-status"></div>\n      <div id="ykt-ap-list" class="ap-list"></div>\n      <div id="ykt-ap-questions" class="ap-questions" style="display:none"></div>\n    </div>`;
-    $("#ykt-ap-course")?.addEventListener("change", e => {
+    if (mounted$2) return root$2;
+    mounted$2 = true;
+    root$2 = document.createElement("div");
+    root$2.id = "ykt-assign-tab";
+    root$2.className = "ykt-panel";
+    root$2.innerHTML = `\n    <div class="panel-header"><h3>作业</h3></div>\n    <div class="panel-body">\n      <div id="ykt-ap-current" style="display:none"></div>\n      <div class="ap-toolbar">\n        <select id="ykt-ap-course"></select>\n        <button type="button" id="ykt-ap-refresh">刷新</button>\n      </div>\n      <div class="ap-actions">\n        <label class="ap-all"><input type="checkbox" id="ykt-ap-all"> 全选</label>\n        <button type="button" id="ykt-ap-zip">批量下载（ZIP）</button>\n        <button type="button" id="ykt-ap-ai">批量 AI 解答</button>\n      </div>\n      <div id="ykt-ap-status" class="ap-status"></div>\n      <div id="ykt-ap-list" class="ap-list"></div>\n      <div id="ykt-ap-questions" class="ap-questions" style="display:none"></div>\n    </div>`;
+    $$1("#ykt-ap-course")?.addEventListener("change", e => {
       showListView();
       loadList(e.target.value);
     });
-    $("#ykt-ap-refresh")?.addEventListener("click", () => loadList(cid));
-    $("#ykt-ap-all")?.addEventListener("change", e => {
+    $$1("#ykt-ap-refresh")?.addEventListener("click", () => loadList(cid));
+    $$1("#ykt-ap-all")?.addEventListener("change", e => {
       if (e.target.checked) list.forEach(a => selected.add(a.id)); else selected.clear();
       renderList();
     });
-    $("#ykt-ap-zip")?.addEventListener("click", batchZip);
-    $("#ykt-ap-ai")?.addEventListener("click", batchAI);
-    $("#ykt-ap-list")?.addEventListener("click", e => {
+    $$1("#ykt-ap-zip")?.addEventListener("click", batchZip);
+    $$1("#ykt-ap-ai")?.addEventListener("click", batchAI);
+    $$1("#ykt-ap-list")?.addEventListener("click", e => {
       const link = e.target.closest("button[data-link]");
       if (link) {
         location.href = link.dataset.link;
@@ -10868,19 +11122,19 @@
         if (a) openAssignmentQuestions(a);
       }
     });
-    $("#ykt-ap-list")?.addEventListener("change", e => {
+    $$1("#ykt-ap-list")?.addEventListener("change", e => {
       const cb = e.target.closest(".ap-check");
       if (!cb) return;
       if (cb.checked) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id);
     });
-    $("#ykt-ap-questions")?.addEventListener("click", e => {
+    $$1("#ykt-ap-questions")?.addEventListener("click", e => {
       const btn = e.target.closest("button[data-qact]");
       if (!btn) return;
       const i = Number(btn.dataset.i);
       if (btn.dataset.qact === "dl") downloadQuestion(i); else if (btn.dataset.qact === "ai") aiForQuestion(i); else if (btn.dataset.qact === "aai") aiForActiveProblem(i);
     });
-    document.body.appendChild(root$1);
-    root$1.__yksOnShow = () => {
+    document.body.appendChild(root$2);
+    root$2.__yksOnShow = () => {
       renderCurrentCard();
       if (!loaded) {
         loaded = true;
@@ -10888,7 +11142,586 @@
       }
     };
     renderCurrentCard();
+    return root$2;
+  }
+  var tpl = '<div id="ykt-brush-panel" class="ykt-panel">\n  <style>\n    #ykt-brush-panel .brush-head { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:12px 14px; border-bottom:1px solid #e5e7eb; }\n    #ykt-brush-panel .brush-head h3 { margin:0 10px 0 0; font-size:16px; }\n    #ykt-brush-panel select,#ykt-brush-panel button { font-size:12px; padding:5px 9px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#111; cursor:pointer; }\n    #ykt-brush-panel button.primary { background:#1d63df; border-color:#1d63df; color:#fff; }\n    #ykt-brush-panel button:disabled { opacity:.45; cursor:not-allowed; }\n    #ykt-brush-panel .brush-score { display:flex; gap:14px; flex-wrap:wrap; padding:8px 14px; background:#f8fafc; border-bottom:1px solid #e5e7eb; font-size:12px; color:#475569; }\n    #ykt-brush-panel .brush-score b { color:#0f172a; font-size:14px; }\n    #ykt-brush-panel .brush-controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 14px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#475569; }\n    #ykt-brush-panel .brush-controls label { display:flex; gap:4px; align-items:center; cursor:pointer; }\n    #ykt-brush-panel .brush-body { display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:280px; }\n    #ykt-brush-panel .brush-queue { overflow:auto; max-height:52vh; padding:8px 12px; }\n    #ykt-brush-panel .brush-log { border-left:1px solid #e5e7eb; padding:8px 10px; overflow:auto; max-height:52vh; font:11px/1.45 ui-monospace,Menlo,monospace; color:#475569; white-space:pre-wrap; background:#fcfcfd; }\n    #ykt-brush-panel .brush-item { display:flex; gap:8px; align-items:flex-start; padding:7px 6px; border-bottom:1px solid #f1f5f9; font-size:12px; }\n    #ykt-brush-panel .brush-item .bi-title { flex:1; min-width:0; }\n    #ykt-brush-panel .brush-item .bi-title b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }\n    #ykt-brush-panel .bi-meta { color:#64748b; margin-top:2px; font-size:11px; }\n    #ykt-brush-panel .bi-state { flex:0 0 auto; font-size:11px; color:#64748b; }\n    #ykt-brush-panel .bi-state.ok { color:#059669; }\n    #ykt-brush-panel .bi-state.bad { color:#dc2626; }\n    #ykt-brush-panel .bi-state.run { color:#1d63df; }\n    #ykt-brush-panel .brush-empty { color:#94a3b8; padding:20px 6px; font-size:12px; }\n    #ykt-brush-panel .brush-viewer { display:none; width:100%; height:240px; border:0; border-top:1px solid #e5e7eb; background:#fff; }\n    @media (max-width:700px) { #ykt-brush-panel .brush-body { grid-template-columns:1fr; } #ykt-brush-panel .brush-log { border-left:0; border-top:1px solid #e5e7eb; max-height:180px; } }\n  </style>\n  <div class="brush-head">\n    <h3>🎓 刷课</h3>\n    <select id="ykt-brush-course" title="课程"></select>\n    <button id="ykt-brush-scan">扫描内容</button>\n    <button id="ykt-brush-start" class="primary" disabled>开始</button>\n    <button id="ykt-brush-pause" disabled>暂停</button>\n    <button id="ykt-brush-stop" disabled>停止</button>\n  </div>\n  <div class="brush-score" id="ykt-brush-score">\n    <span>我的总评 <b>—</b></span><span>班级平均 <b>—</b></span><span>班级最高 <b>—</b></span><span>班级最低 <b>—</b></span>\n  </div>\n  <div class="brush-controls">\n    <label><input type="checkbox" id="ykt-brush-only-score"> 只刷算分内容</label>\n    <label><input type="checkbox" id="ykt-brush-mute" checked> 静音</label>\n    <label>倍速 <select id="ykt-brush-rate"><option value="1">1x</option><option value="1.5">1.5x</option><option value="2" selected>2x</option></select></label>\n    <label><input type="checkbox" id="ykt-brush-from-start"> 从头开始</label>\n    <span id="ykt-brush-hint">先扫描当前课程；班级上传课件会逐页阅读，测试/作业不自动提交。</span>\n  </div>\n  <div class="brush-body">\n    <div class="brush-queue" id="ykt-brush-queue"><div class="brush-empty">还没有扫描内容。</div></div>\n    <div class="brush-log" id="ykt-brush-log"></div>\n  </div>\n  <iframe class="brush-viewer" id="ykt-brush-viewer" title="班级课件预览"></iframe>\n</div>\n';
+  // src/ui/panels/brush.js
+  // 刷课页：当前课程内容扫描、成绩概览、班级上传课件逐页阅读。
+  // 视频/图文后续复用同一队列；当前版本先把最缺的班级课件链路做通。
+    let mounted$1 = false;
+  let root$1;
+  let courses = [];
+  let current = null;
+  let items = [];
+  let running = false;
+  let paused = false;
+  let stopped = false;
+  let busy = false;
+  const TYPE_LABEL = {
+    0: "视频",
+    1: "音频",
+    2: "直播",
+    3: "图文",
+    4: "讨论",
+    5: "考试",
+    6: "作业",
+    7: "班级课件",
+    8: "课堂",
+    9: "试卷"
+  };
+  const BRUSHABLE = new Set([ 0, 1, 3, 7 ]);
+  function $(sel) {
+    return root$1?.querySelector(sel);
+  }
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+  function fmt(v) {
+    return Number.isFinite(v) ? (Math.round(v * 100) / 100).toString() : "—";
+  }
+  function logLine(text, level = "info") {
+    const box = $("#ykt-brush-log");
+    if (!box) return;
+    const line = document.createElement("div");
+    line.dataset.level = level;
+    line.textContent = `[${(new Date).toLocaleTimeString()}] ${text}`;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+    while (box.childElementCount > 200) box.firstElementChild?.remove();
+  }
+  function mountBrushPanel() {
+    if (mounted$1) return root$1;
+    const wrap = document.createElement("div");
+    wrap.innerHTML = tpl;
+    document.body.appendChild(wrap.firstElementChild);
+    root$1 = document.getElementById("ykt-brush-panel");
+    $("#ykt-brush-scan")?.addEventListener("click", () => scanCourse());
+    $("#ykt-brush-start")?.addEventListener("click", () => start());
+    $("#ykt-brush-pause")?.addEventListener("click", () => togglePause());
+    $("#ykt-brush-stop")?.addEventListener("click", () => stop());
+    $("#ykt-brush-only-score")?.addEventListener("change", renderQueue);
+    $("#ykt-brush-course")?.addEventListener("change", e => {
+      current = courses.find(c => c.id === e.target.value) || null;
+      updateScoreView(null);
+      items = [];
+      renderQueue();
+    });
+    mounted$1 = true;
+    root$1.__yksOnShow = () => {
+      void refreshCourses();
+    };
+    void refreshCourses();
     return root$1;
+  }
+  async function refreshCourses() {
+    try {
+      courses = await fetchCourses();
+      const sel = $("#ykt-brush-course");
+      if (!sel) return;
+      const cid = currentClassId();
+      const preferred = courses.find(c => c.id === cid) || current && courses.find(c => c.id === current.id) || courses[0];
+      sel.innerHTML = courses.map(c => `<option value="${c.id}">${escapeText(c.name)}</option>`).join("");
+      if (preferred) {
+        sel.value = preferred.id;
+        current = preferred;
+      }
+      if (!courses.length) logLine("没有读取到课程列表，请确认已登录雨课堂。", "warn");
+    } catch (e) {
+      logLine("读取课程失败：" + (e?.message || e), "bad");
+      log$1.warn("[brush] refreshCourses failed", e);
+    }
+  }
+  function escapeText(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+  function findOutlineComponent(v, seen = new Set) {
+    if (!v || seen.has(v)) return null;
+    seen.add(v);
+    try {
+      if (v.$data && Array.isArray(v.$data.origin_chapter_list)) return v;
+    } catch {/* ignore */}
+    for (const child of v.$children || []) {
+      const hit = findOutlineComponent(child, seen);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function outlineFromDocument(doc) {
+    if (!doc) return null;
+    const roots = [ doc.querySelector?.(".lesson_student__container"), doc.querySelector?.(".study-content__container"), doc.querySelector?.(".study-content") ].filter(Boolean);
+    for (const el of roots) {
+      const hit = findOutlineComponent(el.__vue__);
+      if (hit) return hit;
+    }
+    // 兜底：从任意带 __vue__ 的节点向上找
+        for (const el of doc.querySelectorAll?.('[class*="lesson"],[class*="study"],[class*="content"]') || []) {
+      const hit = findOutlineComponent(el.__vue__);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function readOutline() {
+    const docs = [ document ];
+    for (const f of document.querySelectorAll("iframe")) try {
+      if (f.contentDocument) docs.push(f.contentDocument);
+    } catch {/* cross-origin */}
+    for (const doc of docs) {
+      const vm = outlineFromDocument(doc);
+      if (vm) {
+        const data = vm.$data || {};
+        const cls = vm.$props?.yktIframe?.classroomData || {};
+        return {
+          leaves: (data.origin_chapter_list || []).flatMap(ch => ch.section_leaf_list || []),
+          schedules: data.leaf_schedules || {},
+          skuId: String(vm.$props?.skuId || cls.free_sku_id || cls.sku_id || ""),
+          courseName: cls.course_name || vm.$props?.classInfo?.course_name || ""
+        };
+      }
+    }
+    return null;
+  }
+  async function waitOutline(timeout = 9e3) {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) {
+      const out = readOutline();
+      if (out?.leaves?.length) return out;
+      await sleep(500);
+    }
+    return null;
+  }
+  function scheduleOf(schedule) {
+    if (typeof schedule === "number") return {
+      done: schedule ? 1 : 0,
+      total: 1
+    };
+    if (schedule && typeof schedule === "object") return {
+      done: Number(schedule.done) || 0,
+      total: Number(schedule.total) || 0,
+      status: Number(schedule.status) || 0,
+      score: Number.isFinite(Number(schedule.score)) ? Number(schedule.score) : null
+    };
+    return {
+      done: 0,
+      total: 0
+    };
+  }
+  function makeItems(outline, classCards, score) {
+    const evalById = new Map((score?.summary?.evaluation || []).map(e => [ String(e.id), e ]));
+    const scoreById = new Map((score?.items || []).map(x => [ String(x.id), x ]));
+    const cardByTitle = new Map;
+    for (const c of classCards) if (!cardByTitle.has(c.title)) cardByTitle.set(c.title, c);
+    const rows = [];
+    const leaves = outline?.leaves || [];
+    for (const leaf of leaves) {
+      const type = Number(leaf.leaf_type) || 0;
+      const schedule = scheduleOf(outline?.schedules?.[String(leaf.id)]);
+      const scoreRow = scoreById.get(String(leaf.id));
+      const card = type === 7 ? cardByTitle.get(String(leaf.name || "")) || null : null;
+      const evalId = scoreRow?.evaluationId;
+      const weight = evalId && evalById.has(String(evalId)) ? evalById.get(String(evalId)).proportion : leaf.is_score ? 1 : 0;
+      rows.push({
+        id: String(leaf.id),
+        title: String(leaf.name || "未命名内容"),
+        type: type,
+        typeLabel: TYPE_LABEL[type] || `类型${type}`,
+        schedule: schedule,
+        completed: schedule.total > 0 ? schedule.done >= schedule.total : false,
+        brushable: BRUSHABLE.has(type),
+        scored: !!leaf.is_score && Number(weight) > 0,
+        weight: Number(weight) || 0,
+        isScore: !!leaf.is_score,
+        cardsId: card?.cardsId || "",
+        activityId: card?.activityId || "",
+        total: card?.count || schedule.total || 0,
+        state: "idle"
+      });
+    }
+    // 没有 outline 时，至少让班级课件可刷
+        if (!rows.length && Array.isArray(classCards)) for (const c of classCards) rows.push({
+      id: `classcard:${c.cardsId}`,
+      title: c.title,
+      type: 7,
+      typeLabel: "班级课件",
+      schedule: {
+        done: 0,
+        total: Number(c.count) || 0
+      },
+      completed: false,
+      brushable: true,
+      scored: true,
+      weight: 1,
+      isScore: true,
+      cardsId: c.cardsId,
+      activityId: c.activityId,
+      total: Number(c.count) || 0,
+      state: "idle"
+    });
+    return rows;
+  }
+  async function scanCourse() {
+    if (busy || running) return;
+    busy = true;
+    const btn = $("#ykt-brush-scan");
+    if (btn) btn.disabled = true;
+    try {
+      const cid = current?.id || currentClassId();
+      if (!cid) {
+        ui.toast("请先打开一个课程页面", 2500);
+        return;
+      }
+      logLine(`扫描课程 ${cid}…`);
+      if (!courses.length) await refreshCourses();
+      current = current || courses.find(c => c.id === cid) || null;
+      let classCards = [];
+      try {
+        classCards = await fetchClassCards(cid);
+      } catch (e) {
+        logLine("班级课件列表读取失败：" + (e?.message || e), "warn");
+      }
+      let score = null;
+      if (current?.skuId) try {
+        score = await fetchCourseScores(cid, current.skuId);
+        updateScoreView(score);
+      } catch (e) {
+        logLine("成绩读取失败：" + (e?.message || e), "warn");
+      } else updateScoreView(null);
+      const outline = await waitOutline();
+      if (outline?.skuId && current && !current.skuId) current.skuId = outline.skuId;
+      if (current?.skuId && !score) try {
+        score = await fetchCourseScores(cid, current.skuId);
+        updateScoreView(score);
+      } catch (e) {
+        logLine("成绩读取失败：" + (e?.message || e), "warn");
+      }
+      items = makeItems(outline, classCards, score);
+      if (!outline) logLine("没有读到课程目录数据；先只加载班级上传课件。", "warn");
+      renderQueue();
+      const unfinished = items.filter(x => x.brushable && !x.completed).length;
+      ui.toast(`扫描完成：${items.length} 个内容，${unfinished} 个可刷`, 2800);
+      logLine(`扫描完成：总 ${items.length}，可刷未完成 ${unfinished}，班级课件 ${classCards.length}`);
+    } finally {
+      busy = false;
+      if (btn) btn.disabled = false;
+    }
+  }
+  function updateScoreView(score) {
+    const box = $("#ykt-brush-score");
+    if (!box) return;
+    const s = score?.summary;
+    const st = score?.statistic;
+    const vals = [ [ "我的总评", s?.finalScore ], [ "班级平均", st?.average ], [ "班级最高", st?.max ], [ "班级最低", st?.min ] ];
+    box.innerHTML = vals.map(([k, v]) => `<span>${k} <b>${fmt(v)}</b></span>`).join("");
+  }
+  function visibleItems() {
+    const only = !!$("#ykt-brush-only-score")?.checked;
+    return items.filter(x => only ? x.scored : true);
+  }
+  function renderQueue() {
+    const box = $("#ykt-brush-queue");
+    if (!box) return;
+    const list = visibleItems();
+    if (!list.length) {
+      box.innerHTML = '<div class="brush-empty">没有可显示内容。先打开课程页并点击「扫描内容」。</div>';
+      updateButtons();
+      return;
+    }
+    box.innerHTML = "";
+    for (const it of list) {
+      const row = document.createElement("div");
+      row.className = "brush-item";
+      row.dataset.id = it.id;
+      const title = document.createElement("div");
+      title.className = "bi-title";
+      const b = document.createElement("b");
+      b.textContent = it.title;
+      const meta = document.createElement("div");
+      meta.className = "bi-meta";
+      meta.textContent = `${it.typeLabel} · ${it.weight ? `占比 ${Math.round(it.weight * 100)}%` : "不计入总评"} · ${it.total ? `${it.schedule.done}/${it.total}` : it.completed ? "已完成" : "未开始"}`;
+      title.appendChild(b);
+      title.appendChild(meta);
+      const state = document.createElement("span");
+      state.className = "bi-state";
+      state.textContent = stateText(it);
+      if (it.completed) state.classList.add("ok");
+      if (it.state === "run") state.classList.add("run");
+      if (it.state === "fail") state.classList.add("bad");
+      row.appendChild(title);
+      row.appendChild(state);
+      box.appendChild(row);
+    }
+    updateButtons();
+  }
+  function stateText(it) {
+    if (it.state === "run") return "进行中…";
+    if (it.state === "ok") return "已完成";
+    if (it.state === "skip") return "跳过";
+    if (it.state === "pending") return "已执行待确认";
+    if (it.state === "fail") return "未确认";
+    if (it.completed) return "已完成";
+    if (!it.brushable) return "非刷课项";
+    return "待处理";
+  }
+  function updateItemState(it, state) {
+    it.state = state;
+    const row = [ ...root$1.querySelectorAll(".brush-item") ].find(r => r.dataset.id === it.id);
+    const el = row?.querySelector(".bi-state");
+    if (el) {
+      el.textContent = stateText(it);
+      el.className = "bi-state" + (state === "ok" ? " ok" : state === "fail" ? " bad" : state === "run" ? " run" : "");
+    }
+  }
+  function updateButtons() {
+    const start = $("#ykt-brush-start");
+    const pause = $("#ykt-brush-pause");
+    const stop = $("#ykt-brush-stop");
+    if (start) start.disabled = running || !items.some(x => x.brushable && !x.completed);
+    if (pause) pause.disabled = !running;
+    if (stop) stop.disabled = !running;
+  }
+  async function start() {
+    if (running) return;
+    if (!items.length) await scanCourse();
+    if (!items.some(x => x.brushable && !x.completed)) {
+      ui.toast("没有可刷的未完成内容", 2e3);
+      return;
+    }
+    running = true;
+    paused = false;
+    stopped = false;
+    updateButtons();
+    logLine("开始刷课");
+    try {
+      for (const it of visibleItems()) {
+        if (stopped) break;
+        while (paused && !stopped) await sleep(500);
+        if (stopped) break;
+        if (!it.brushable || it.completed) continue;
+        if (it.type === 7) await processClassCard(it); else if (it.type === 3 || it.type === 0 || it.type === 1) await processContentLeaf(it); else {
+          updateItemState(it, "skip");
+          logLine(`跳过非刷课项 ${it.typeLabel}：「${it.title}」`, "warn");
+          continue;
+        }
+        await sleep(900);
+      }
+    } finally {
+      running = false;
+      paused = false;
+      updateButtons();
+      logLine(stopped ? "已停止" : "本轮结束");
+    }
+  }
+  function togglePause() {
+    if (!running) return;
+    paused = !paused;
+    const b = $("#ykt-brush-pause");
+    if (b) b.textContent = paused ? "继续" : "暂停";
+    logLine(paused ? "已暂停" : "已继续");
+  }
+  function stop() {
+    stopped = true;
+    paused = false;
+    logLine("停止请求已发出");
+  }
+  function cardUrl(it) {
+    const cid = current?.id || currentClassId();
+    if (!cid || !it.cardsId || !it.activityId) return "";
+    const qs = new URLSearchParams({
+      university_id: new URLSearchParams(location.search).get("university_id") || "3195",
+      platform_id: "3",
+      classroom_id: cid
+    });
+    return `${location.origin}/v2/web/studentCards/${encodeURIComponent(cid)}/${encodeURIComponent(it.cardsId)}/${encodeURIComponent(it.activityId)}/ppt?${qs}`;
+  }
+  async function waitViewerReady(viewer, timeout = 12e3, selector = ".swiper-slide .page") {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) {
+      try {
+        const d = viewer.contentDocument;
+        if (d && d.querySelector(selector)) return d;
+      } catch {/* cross-origin during load */}
+      await sleep(400);
+    }
+    return null;
+  }
+  function contentUrl(it) {
+    const cid = current?.id || currentClassId();
+    if (!cid || !it.id) return "";
+    return `${location.origin}/ai-workspace/lms-graph/${encodeURIComponent(cid)}/graph/${encodeURIComponent(it.id)}?is_chapter=1`;
+  }
+  /** 图文/视频/音频：在隐藏 iframe 打开 ai-workspace 内容页，做真实阅读/播放。 */  async function processContentLeaf(it) {
+    updateItemState(it, "run");
+    const viewer = $("#ykt-brush-viewer");
+    const url = contentUrl(it);
+    if (!viewer || !url) {
+      updateItemState(it, "pending");
+      return false;
+    }
+    logLine(`打开${it.typeLabel}：${it.title}`);
+    viewer.style.display = "block";
+    viewer.src = url;
+    const d = await waitViewerReady(viewer, 18e3, ".leaf-item,.content-main,.article-content,.rich-text,video,audio");
+    if (!d) {
+      updateItemState(it, "pending");
+      logLine(`内容页加载未确认：${it.title}`, "warn");
+      viewer.src = "about:blank";
+      viewer.style.display = "none";
+      return false;
+    }
+    let ended = false;
+    try {
+      if (it.type === 3) {
+        const area = d.querySelector(".content-main,.article-content,.rich-text,.markdown-body") || d.scrollingElement || d.body;
+        for (let i = 0; i < 18 && !stopped; i++) {
+          try {
+            area.scrollBy ? area.scrollBy(0, 260) : area.scrollTop += 260;
+          } catch {/* ignore */}
+          await sleep(450);
+        }
+        // 有些图文需要点“完成/已读”；只点明确的完成按钮，不碰题目提交
+                const btn = d.querySelector('.btn-complete,.finish-btn,.mark-read,button[class*="complete"],button[class*="finish"]');
+        if (btn) try {
+          btn.click();
+        } catch {/* ignore */}
+        await sleep(1800);
+      } else {
+        const media = d.querySelector("video,audio");
+        if (!media) {
+          updateItemState(it, "pending");
+          logLine(`未找到${it.typeLabel}播放器：${it.title}`, "warn");
+          return false;
+        }
+        const mute = !!$("#ykt-brush-mute")?.checked;
+        const rate = Number($("#ykt-brush-rate")?.value) || 2;
+        if (mute) {
+          media.muted = true;
+          media.volume = 0;
+        }
+        try {
+          media.playbackRate = rate;
+        } catch {/* ignore */}
+        if ($("#ykt-brush-from-start")?.checked) try {
+          media.currentTime = 0;
+        } catch {/* ignore */}
+        media.addEventListener("ended", () => {
+          ended = true;
+        }, {
+          once: true
+        });
+        try {
+          await media.play();
+        } catch {/* autoplay may be blocked */}
+        const maxWait = 30 * 60 * 1e3;
+        const start = Date.now();
+        while (!stopped && !ended && Date.now() - start < maxWait) {
+          while (paused && !stopped) await sleep(500);
+          if (stopped) break;
+          if (media.ended) {
+            ended = true;
+            break;
+          }
+          await sleep(1e3);
+        }
+        try {
+          media.pause();
+        } catch {/* ignore */}
+        logLine(`${it.typeLabel}播放${ended ? "完成" : "已停止"}：${it.title}`);
+      }
+    } finally {
+      viewer.src = "about:blank";
+      viewer.style.display = "none";
+    }
+    // 图文/视频没有和 cards/view_depth 等价的单接口进度，先标记“已执行待确认”，
+    // 不伪造完成；用户可重新扫描看官方目录状态。
+        updateItemState(it, "pending");
+    renderQueue();
+    return ended || it.type === 3;
+  }
+  async function processClassCard(it) {
+    updateItemState(it, "run");
+    const url = cardUrl(it);
+    if (!url) {
+      updateItemState(it, "fail");
+      logLine(`缺少 cardsId/activityId：「${it.title}」`, "bad");
+      return false;
+    }
+    const cid = current?.id || currentClassId();
+    const viewer = $("#ykt-brush-viewer");
+    if (!viewer) return false;
+    logLine(`打开班级课件：${it.title}`);
+    viewer.style.display = "block";
+    viewer.src = url;
+    const d = await waitViewerReady(viewer);
+    if (!d) {
+      updateItemState(it, "fail");
+      logLine(`课件加载失败：${it.title}`, "bad");
+      viewer.src = "about:blank";
+      viewer.style.display = "none";
+      return false;
+    }
+    let before = null;
+    try {
+      before = await fetchClassCardProgress(cid, it.cardsId);
+    } catch {/* ignore */}
+    const read = new Set((before?.depthDetail || []).map(x => Number(x)));
+    const thumbs = [ ...d.querySelectorAll(".swiper-slide") ].map(el => {
+      const page = Number(el.querySelector(".page")?.textContent?.trim());
+      return Number.isFinite(page) && page > 0 ? {
+        el: el,
+        page: page
+      } : null;
+    }).filter(Boolean).sort((a, b) => a.page - b.page);
+    const total = Math.max(it.total || 0, thumbs.length, before?.depth || 0);
+    let processed = 0;
+    for (const t of thumbs) {
+      if (stopped) break;
+      while (paused && !stopped) await sleep(500);
+      if (stopped) break;
+      if (read.has(t.page - 1)) continue;
+      try {
+        (t.el.querySelector(".page") || t.el).click();
+        processed++;
+        await sleep(2200);
+      } catch {/* continue */}
+      if (processed % 4 === 0) logLine(`「${it.title}」已翻 ${processed} 页`);
+    }
+    // 没有缩略图时按下一页/键盘兜底
+        if (!thumbs.length) {
+      const next = d.querySelector('.swiper-button-next,.ppt-next,.next-page,[class*="next"][class*="page"]');
+      for (let i = 0; i < Math.min(200, total || 100); i++) {
+        if (stopped) break;
+        while (paused && !stopped) await sleep(500);
+        if (next) next.click(); else d.dispatchEvent(new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          code: "ArrowRight",
+          bubbles: true
+        }));
+        await sleep(1800);
+      }
+    }
+    await sleep(1800);
+    let after = null;
+    try {
+      after = await fetchClassCardProgress(cid, it.cardsId);
+    } catch {/* ignore */}
+    viewer.src = "about:blank";
+    viewer.style.display = "none";
+    const ok = (after?.depth || 0) > (before?.depth || 0);
+    it.schedule = {
+      done: after?.depth || 0,
+      total: total || after?.depth || 0
+    };
+    it.total = it.schedule.total;
+    it.completed = it.total > 0 && it.schedule.done >= it.total;
+    updateItemState(it, ok || it.completed ? "ok" : "fail");
+    logLine(`${it.completed ? "已完成" : "未确认"}：${it.title}（${it.schedule.done}/${it.total}）`, ok || it.completed ? "info" : "warn");
+    renderQueue();
+    return ok || it.completed;
   }
   // src/ui/panels/shell.js
   // 主面板壳：把原先各自独立的功能面板统一迁入 tab 化布局
@@ -10927,6 +11760,12 @@
     panelId: "ykt-assign-tab",
     mount: () => mountAssignmentsPanel()
   }, {
+    id: "brush",
+    icon: "fa-forward",
+    label: "刷课",
+    panelId: "ykt-brush-panel",
+    mount: () => mountBrushPanel()
+  }, {
     id: "settings",
     icon: "fa-gear",
     label: "设置",
@@ -10942,7 +11781,7 @@
   function mountShell() {
     if (mounted) return root;
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = tpl$3;
+    wrapper.innerHTML = tpl$4;
     document.body.appendChild(wrapper.firstElementChild);
     root = document.getElementById("ykt-shell-panel");
     // 挂载并迁移各功能面板

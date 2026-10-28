@@ -359,6 +359,7 @@ export function currentClassId() {
   const m = path.match(/\/studentLog\/(\d+)/)
     || path.match(/\/student-lesson-report\/(\d+)/)
     || path.match(/\/student-v3\/(\d+)/)
+    || path.match(/\/studentCards\/(\d+)/)   // 班级上传课件查看页
     || path.match(/\/m\/v\d\/course\/[^/]+\/logs\/(\d+)\/(\d+)/);   // 移动版：/logs/{courseId}/{classId}
   return m ? (m[2] || m[1]) : null;
 }

@@ -14,7 +14,7 @@ export const meta = `
 // @version      ${version}
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
-// @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
+// @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档、班级课件下载、刷课
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/RayMorTwinkle/YuketangStudio/main/static/icon.svg
 // @match        https://pro.yuketang.cn/web/*
@@ -66,6 +66,7 @@ export const meta = `
 // @connect      *.yuketang.cn
 // @connect      changjiang-private-qn.yuketang.cn
 // @connect      thu-private-qn.yuketang.cn
+// @connect      yangtse-oplat.xuetangx.com
 // 不设域名白名单：AI 供应商是用户自定义端点，逐一枚举永远追不上（GM_xhr 要求 @connect）
 // @connect      *
 // @run-at       document-start

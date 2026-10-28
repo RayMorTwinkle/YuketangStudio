@@ -20,8 +20,8 @@ android {
         applicationId = "com.yuketangstudio.shell"
         minSdk = 26
         targetSdk = 34
-        versionCode = 45
-        versionName = "0.8.0"
+        versionCode = 46
+        versionName = "0.9.0"
         // 只留 ARM 真机：x86/x86_64/armeabi-v7a 的 barhopper_v3.so 各占 3-6MB，
         // 砍掉后 APK 减 ~12MB（模拟器不在目标场景内）
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }

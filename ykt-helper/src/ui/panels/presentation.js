@@ -4,6 +4,7 @@ import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 import { exportImagesToPdf } from '../../core/pdf-export.js';
 import { importHistoryLesson, fetchClassActivities, currentClassId } from '../../core/history-capture.js';
+import { fetchClassCards, fetchClassCardDetail, buildClassCardPresentation } from '../../quiz/course-cards.js';
 import { log } from '../../core/log.js';
 import { waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 
@@ -11,6 +12,8 @@ let mounted = false;
 let host;
 let staticReportReady = false; //已结束课程
 let followCurrent = true;      // 跟随课堂翻页：true=选中项自动跟随当前页；用户手动点缩略图后脱离
+let classCardLoading = false;
+let classCardLoadedKey = '';
 
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
@@ -251,6 +254,7 @@ export function mountPresentationPanel() {
 
   $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
   $('#ykt-import-history')?.addEventListener('click', openHistoryImporter);
+  $('#ykt-load-class-cards')?.addEventListener('click', () => loadClassCards());
 
   mounted = true;
   L('mountPresentationPanel 完成');
@@ -371,6 +375,10 @@ export function updatePresentationList() {
     // 课件标题来自服务端——不用 innerHTML 注入
     const titleSpan = document.createElement('span');
     titleSpan.textContent = presentation.title || `课件 ${id}`;
+    const sourceSpan = document.createElement('span');
+    sourceSpan.className = 'presentation-source';
+    sourceSpan.textContent = presentation.source === 'class-card' ? '班级上传' : '课堂';
+    titleEl.appendChild(sourceSpan);
     const dlIcon = document.createElement('i');
     dlIcon.className = 'fas fa-download download-btn';
     dlIcon.title = '下载课件';
@@ -437,7 +445,10 @@ export function updatePresentationList() {
         const detail = { slideId: slideIdStr, presentationId: presIdStr };
         window.dispatchEvent(new CustomEvent('ykt:presentation:slide-selected', { detail }));
 
-        actions.navigateTo(presIdStr, slideIdStr);
+        // 班级上传课件不是课堂 route，只做预览/下载，不调用课堂导航
+        if (presentation.source !== 'class-card') {
+          actions.navigateTo(presIdStr, slideIdStr);
+        }
       });
 
       const img = document.createElement('img');
@@ -462,6 +473,60 @@ export function updatePresentationList() {
 
     cont.appendChild(slidesWrap);
     listEl.appendChild(cont);
+  }
+}
+
+/** 读取当前班级的 type=2 班级上传课件，并加入课件列表。 */
+async function loadClassCards() {
+  const cid = currentClassId();
+  if (!cid) return ui.toast('请先进入课程的「学习内容」或「学习日志」页', 2500);
+  if (classCardLoading) return ui.toast('正在读取班级课件…', 1500);
+  if (classCardLoadedKey === String(cid)) return ui.toast('本课程的班级课件已加载', 1500);
+  classCardLoading = true;
+  const btn = $('#ykt-load-class-cards');
+  if (btn) btn.disabled = true;
+  try {
+    const cards = await fetchClassCards(cid);
+    if (!cards.length) {
+      classCardLoadedKey = String(cid);
+      return ui.toast('没有找到老师直接上传到班级的课件', 2500);
+    }
+    let added = 0;
+    let failed = 0;
+    // 少量并发，避免一次打开几十个请求
+    const queue = [...cards];
+    const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+      while (queue.length) {
+        const item = queue.shift();
+        try {
+          const detail = await fetchClassCardDetail(cid, item.cardsId);
+          const pres = buildClassCardPresentation({
+            cid,
+            cardsId: item.cardsId,
+            activityId: item.activityId,
+            title: item.title,
+            detail,
+          });
+          if (!pres) { failed++; continue; }
+          repo.setPresentation(pres.id, pres);
+          added++;
+        } catch (e) {
+          failed++;
+          log.warn('[presentation] 班级课件读取失败', item, e?.message || e);
+        }
+      }
+    });
+    await Promise.all(workers);
+    classCardLoadedKey = String(cid);
+    updatePresentationList();
+    const suffix = failed ? `，失败 ${failed} 个` : '';
+    ui.toast(`班级课件：已加载 ${added} 个${suffix}`, 3000);
+  } catch (e) {
+    ui.toast('读取班级课件失败：' + (e?.message || e), 4000);
+    log.warn('[presentation] loadClassCards failed', e);
+  } finally {
+    classCardLoading = false;
+    if (btn) btn.disabled = false;
   }
 }
 
