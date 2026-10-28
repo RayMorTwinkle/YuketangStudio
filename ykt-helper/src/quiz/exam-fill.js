@@ -61,7 +61,20 @@ function controlsOf(root) {
  */
 export function collectExamQuestions(doc = document) {
   if (!doc) return [];
-  let nodes = [...doc.querySelectorAll(QUESTION_SELECTOR)].filter(visible);
+  const docs = [doc];
+  // 考试页可能嵌在同源 iframe 里；递归一层，跨域 iframe 会抛错并跳过。
+  for (const f of (doc.querySelectorAll?.('iframe') || [])) {
+    try {
+      if (f.contentDocument) docs.push(f.contentDocument);
+    } catch { /* cross-origin */ }
+  }
+  const allNodes = [];
+  for (const d of docs) {
+    let nodes = [...(d.querySelectorAll?.(QUESTION_SELECTOR) || [])].filter(visible);
+    nodes = nodes.filter((n) => !nodes.some((o) => o !== n && n.contains(o)));
+    allNodes.push(...nodes);
+  }
+  let nodes = allNodes;
   nodes = nodes.filter((n) => !nodes.some((o) => o !== n && n.contains(o)));
   return nodes.map((el, i) => {
     const controls = controlsOf(el);

@@ -723,7 +723,7 @@ async function fillCurrentExam({ fromBatch = false } = {}) {
     courseId: ctx.courseId,
     source: 'exam-fill',
   });
-  if (!ok) { ui.toast?.('已取消自动填入；AI 答案仍会显示，不会提交', 3000); return null; }
+  if (!ok) { ui.toast?.('已取消自动填入；不会生成或提交答案', 3000); return null; }
 
   if (!fromBatch) setBusy(true);
   const answers = [];
