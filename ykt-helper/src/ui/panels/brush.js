@@ -419,7 +419,7 @@ function includeCompleted() {
 }
 
 function eligibleForStart() {
-  return items.some((x) => x.brushable && (includeCompleted() || !x.completed));
+  return visibleItems().some((x) => x.brushable && (includeCompleted() || !x.completed));
 }
 
 function updateButtons() {
