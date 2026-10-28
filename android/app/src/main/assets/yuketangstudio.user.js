@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.9.2
+// @version      0.9.3
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档、班级课件下载、刷课
@@ -684,7 +684,7 @@
   // 匿名使用统计：installId（首启生成 UUID）+ 平台 + 版本 + 是否用码 +
   // 当日调用次数 + 首字时间/总时长聚合 → POST /yuketangstudio/telemetry
   // 开关存 storage['telemetry.enabled']（0.6.2 起默认开，可在设置里关闭）；启动时上报一次
-    const ENDPOINT = "https://api.raymor.top/yuketangstudio/telemetry";
+    const ENDPOINT$1 = "https://api.raymor.top/yuketangstudio/telemetry";
   const K_ENABLED = "telemetry.enabled";
   const K_ID = "telemetry.installId";
   const K_DAY = "telemetry.day";
@@ -738,6 +738,9 @@
     if (v) scheduleTraceFlush(1e3);
     return true;
   }
+  function getInstallId() {
+    return installId();
+  }
   function installId() {
     let id = storage.get(K_ID);
     if (!id) {
@@ -753,7 +756,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.9.2" !== "undefined" && "0.9.2") return String("0.9.2");
+      if (typeof "0.9.3" !== "undefined" && "0.9.3") return String("0.9.3");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -856,7 +859,7 @@
     await new Promise((resolve, reject) => {
       gm.xhr({
         method: "POST",
-        url: ENDPOINT,
+        url: ENDPOINT$1,
         headers: {
           "Content-Type": "application/json"
         },
@@ -881,7 +884,7 @@
     const str = String(s ?? "");
     return str.length > n ? str.slice(0, n) + `…[${str.length}]` : str;
   }
-  function hash32(s) {
+  function hash32$1(s) {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) {
       h ^= s.charCodeAt(i);
@@ -913,7 +916,7 @@
                     return {
             type: "image",
             bytes: url.length,
-            hash: hash32(url.slice(0, 65536))
+            hash: hash32$1(url.slice(0, 65536))
           };
         }
         return {
@@ -5050,7 +5053,7 @@
     const L$2 = (...a) => log$1.dbg("[ai]", ...a);
   let mounted$9 = false;
   let root$8;
-  let history$1 = [];
+  let history$2 = [];
  // 手动问答历史（作业/自动作答绝不写入）
     let streaming$1 = false;
   let abortCtrl$1 = null;
@@ -5098,7 +5101,7 @@
     $$5("#ykt-ai-report")?.addEventListener("click", () => uploadDiagnosticReport());
     $$5("#ykt-ai-clear").addEventListener("click", () => {
       abortStreaming$1("清空会话");
-      history$1 = [];
+      history$2 = [];
       lastTask = null;
       lastRequest = null;
       renderHistory$1();
@@ -5147,8 +5150,8 @@
       // 手动打开 AI tab：清掉上一次的显式任务，回到当前页
       lastTask = null;
       renderCtxStatus();
-      if (history$1.length === 0 && !$$5("#ykt-ai-log").children.length) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
-      if (ui.config.aiAutoAnalyze && history$1.length === 0 && !streaming$1 && !lastTask) queueMicrotask(() => sendCurrent$1());
+      if (history$2.length === 0 && !$$5("#ykt-ai-log").children.length) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
+      if (ui.config.aiAutoAnalyze && history$2.length === 0 && !streaming$1 && !lastTask) queueMicrotask(() => sendCurrent$1());
     };
     root$8.__yksOnHide = () => {};
     return root$8;
@@ -5159,8 +5162,8 @@
     if (v) {
       lastTask = null;
       renderCtxStatus();
-      if (history$1.length === 0) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
-      if (ui.config.aiAutoAnalyze && history$1.length === 0 && !streaming$1) queueMicrotask(() => sendCurrent$1());
+      if (history$2.length === 0) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
+      if (ui.config.aiAutoAnalyze && history$2.length === 0 && !streaming$1) queueMicrotask(() => sendCurrent$1());
       setTimeout(() => $$5("#ykt-ai-input")?.focus(), 60);
     }
     L$2("showAIPanel", {
@@ -5284,7 +5287,7 @@
   }
   /** 控制历史图片数量：除最近 N 张外替换为占位文本 */  function trimHistoryImages(keep = 1) {
     const imgMsgs = [];
-    for (const m of history$1) {
+    for (const m of history$2) {
       if (m.role !== "user" || !Array.isArray(m.content)) continue;
       const idx = m.content.map((c, i) => c.type === "image_url" ? i : -1).filter(i => i >= 0);
       if (idx.length) imgMsgs.push({
@@ -5300,7 +5303,7 @@
   function renderHistory$1() {
     const $log = $$5("#ykt-ai-log");
     $log.innerHTML = "";
-    for (const m of history$1) {
+    for (const m of history$2) {
       const text = (Array.isArray(m.content) ? m.content : [ {
         type: "text",
         text: m.content
@@ -5879,14 +5882,14 @@
       lastRequest = {
         task: task,
         userText: text,
-        historyMessages: [ ...history$1 ],
+        historyMessages: [ ...history$2 ],
         soft: !!text
       };
       let r;
       try {
         r = await executeTask(task, {
           userText: text,
-          historyMessages: [ ...history$1 ],
+          historyMessages: [ ...history$2 ],
           autoSubmit: false,
           soft: !!text
         });
@@ -5895,7 +5898,7 @@
         throw e;
       }
       if (r?.ok) {
-        history$1.push({
+        history$2.push({
           role: "user",
           content: buildUserContent(task, {
             userText: text,
@@ -5903,7 +5906,7 @@
             attachImage: true
           })
         });
-        history$1.push({
+        history$2.push({
           role: "assistant",
           content: r.displayContent || ""
         });
@@ -5963,7 +5966,7 @@
         });
       } catch {/* ignore */}
       trimHistoryImages(1);
-      history$1.push({
+      history$2.push({
         role: "user",
         content: content
       });
@@ -5971,7 +5974,7 @@
         messages: [ {
           role: "system",
           content: systemPrompt$1()
-        }, ...history$1 ],
+        }, ...history$2 ],
         stream: true,
         thinking: ov?.thinking !== false,
         signal: abortCtrl$1.signal,
@@ -6001,7 +6004,7 @@
       renderer = new StreamRenderer;
       renderer.attach(aiBubble.querySelector(".ykt-sr-content"));
       if (acc.content) await renderer.finish(acc.content); else aiBubble.querySelector(".ykt-sr-content").innerHTML = '<span class="err">（空回复）</span>';
-      history$1.push({
+      history$2.push({
         role: "assistant",
         content: acc.content || "（无内容）"
       });
@@ -6029,7 +6032,7 @@
   }
   /** 测试/调试：清空 AI 面板视图与内存状态（不清题目） */  function resetAIView() {
     abortStreaming$1("测试重置");
-    history$1 = [];
+    history$2 = [];
     lastTask = null;
     lastRequest = null;
     const log = $$5("#ykt-ai-log");
@@ -6037,7 +6040,7 @@
     renderCtxStatus();
   }
   /** 测试/调试：只读历史快照 */  function getAIHistory() {
-    return history$1.map(m => ({
+    return history$2.map(m => ({
       role: m.role,
       text: (Array.isArray(m.content) ? m.content : [ {
         type: "text",
@@ -6492,6 +6495,175 @@
       img.src = url;
     });
   }
+  // src/core/course-context.js
+  // 课程上下文：把桌面版 / 移动版 / 新版作业页的 URL 统一解析成课程坐标。
+  // UI 只依赖这里的结果，不要在面板里各写一套正则。
+  
+  // 设计原则：
+  // - “当前 URL 里的课程”优先；
+  // - 用户手动切课后，在本页/本课程上下文内保留，不被刷新/轮询覆盖；
+  // - 路由真正切到另一门课（classId 变化）时，手动选择自动失效；
+  // - 解析不出来时返回空字段，由调用方决定是否回退“上次选择”。
+    const MANUAL_KEY = "ykt.course.manual";
+  let routeHooked = false;
+  let memoryManual = null;
+  const listeners = new Set;
+  function safeSessionGet(key) {
+    try {
+      return JSON.parse(sessionStorage.getItem(key) || "null");
+    } catch {
+      return null;
+    }
+  }
+  function safeSessionSet(key, value) {
+    try {
+      if (value == null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, JSON.stringify(value));
+    } catch {/* private mode / blocked storage */}
+  }
+  function readManual() {
+    const v = memoryManual || safeSessionGet(MANUAL_KEY);
+    if (!v || typeof v !== "object" || !v.cid) return null;
+    return v;
+  }
+  function writeManual(v) {
+    memoryManual = v || null;
+    safeSessionSet(MANUAL_KEY, v);
+  }
+  function clean(v) {
+    return v == null ? "" : String(v).trim();
+  }
+  /**
+   * 解析当前 URL 的课程坐标。
+   * @param {string} [pathname]
+   * @param {string} [search]
+   * @returns {{classId:string,courseId:string,lessonId:string,newId:string,oldQuizId:string,kind:string,routeKey:string}}
+   */  function parseCourseContext(pathname = location.pathname, search = location.search) {
+    const path = String(pathname || "");
+    const q = new URLSearchParams(String(search || ""));
+    let classId = clean(q.get("classroom_id") || q.get("classroomId"));
+    let courseId = clean(q.get("course_id") || q.get("courseId"));
+    let lessonId = clean(q.get("lesson_id") || q.get("lessonId"));
+    let newId = "";
+    let oldQuizId = "";
+    let kind = "";
+    let m;
+    // 桌面版课程日志 / 报告 / 课堂 / 班级课件
+        if (!classId && (m = path.match(/\/v2\/web\/studentLog\/(\d+)/))) classId = m[1];
+    if (!classId && (m = path.match(/\/v2\/web\/student-lesson-report\/(\d+)/))) classId = m[1];
+    if (!classId && (m = path.match(/\/v2\/web\/student-v3\/(\d+)/))) classId = m[1];
+    if (!classId && (m = path.match(/\/v2\/web\/studentCards\/(\d+)/))) classId = m[1];
+    // 新版作业/考试：/ai-workspace/lms-graph/{classId}/exercise|quiz/{id}
+        if (m = path.match(/\/ai-workspace\/lms-graph\/(\d+)\/(exercise|quiz)\/([^/?#]+)/)) {
+      classId = classId || m[1];
+      kind = m[2] === "quiz" ? "exam" : "homework";
+      newId = decodeURIComponent(m[3]);
+    }
+    // 老版作业/试卷：/v/quiz/quiz_info/{quizId}
+        if (!oldQuizId && (m = path.match(/\/v\/quiz\/quiz_info\/(\d+)/))) {
+      oldQuizId = m[1];
+      kind = "homework";
+    }
+    // 移动版课程日志：/m/v2/course/{courseId}/logs/{courseId}/{classId}
+        if (m = path.match(/\/m\/v\d+\/course\/([^/]+)\/logs\/(\d+)\/(\d+)/)) {
+      courseId = courseId || m[1];
+      classId = classId || m[3];
+    }
+    // 移动版课堂：/m/v2/lesson/{lessonId}
+        if (!lessonId && (m = path.match(/\/m\/v\d+\/lesson\/([^/?#]+)/))) lessonId = m[1];
+    return {
+      classId: classId,
+      courseId: courseId,
+      lessonId: lessonId,
+      newId: newId,
+      oldQuizId: oldQuizId,
+      kind: kind,
+      routeKey: `${path}${search || ""}`
+    };
+  }
+  function getCourseContext() {
+    return parseCourseContext();
+  }
+  /** 当前课程 id（兼容旧调用；只返回 classId）。 */  function currentClassId$1() {
+    return getCourseContext().classId || null;
+  }
+  /** 用户手动切课：记录选择，并绑定到当前 classId，避免影响另一门课。 */  function rememberCourseSelection(cid, context = getCourseContext()) {
+    const id = clean(cid);
+    if (!id) return;
+    writeManual({
+      cid: id,
+      classId: clean(context.classId),
+      at: Date.now()
+    });
+  }
+  /** 当前手动选择是否仍适用于这个课程上下文。 */  function manualCourseId(context = getCourseContext()) {
+    const v = readManual();
+    if (!v?.cid) return "";
+    // 有 classId 时只允许同一 classId 下沿用；没有 classId 的全局页沿用上次选择。
+        if (context.classId && v.classId && String(v.classId) !== String(context.classId)) return "";
+    return String(v.cid);
+  }
+  function findCourse(courses, id) {
+    if (!id) return null;
+    return (courses || []).find(c => String(c?.id) === String(id)) || null;
+  }
+  /**
+   * 从课程列表中选择当前课程。
+   * 优先：当前 URL 的 classId → 手动选择 → URL 的 courseId → 第一门课。
+   */  function preferredCourse(courses, context = getCourseContext()) {
+    const list = Array.isArray(courses) ? courses : [];
+    if (!list.length) return null;
+    // 用户手动切课优先于 URL（但只在同一 classId 上下文内有效）。
+    // 直接打开某个作业/考试时，路线里的课程必须优先，否则会定位到手动选错的课程。
+        const manual = !context.newId && !context.oldQuizId ? findCourse(list, manualCourseId(context)) : null;
+    if (manual) return manual;
+    const byClass = findCourse(list, context.classId);
+    if (byClass) return byClass;
+    if (context.courseId) {
+      const byCourse = list.find(c => String(c?.courseId) === String(context.courseId));
+      if (byCourse) return byCourse;
+    }
+    return list[0] || null;
+  }
+  /** 监听 SPA 路由变化；只在顶层安装一次。 */  function subscribeCourseRoute(fn) {
+    if (typeof fn === "function") listeners.add(fn);
+    if (routeHooked || typeof window === "undefined") return () => listeners.delete(fn);
+    routeHooked = true;
+    const emit = () => {
+      const ctx = getCourseContext();
+      for (const cb of [ ...listeners ]) try {
+        cb(ctx);
+      } catch (e) {
+        log$1.warn("[course-context] route listener failed", e);
+      }
+    };
+    try {
+      const origPush = history.pushState;
+      const origReplace = history.replaceState;
+      history.pushState = function patchedPush(...args) {
+        const r = origPush.apply(this, args);
+        setTimeout(emit, 0);
+        return r;
+      };
+      history.replaceState = function patchedReplace(...args) {
+        const r = origReplace.apply(this, args);
+        setTimeout(emit, 0);
+        return r;
+      };
+    } catch (e) {
+      log$1.warn("[course-context] history patch failed", e);
+    }
+    window.addEventListener("popstate", () => setTimeout(emit, 0));
+    window.addEventListener("hashchange", () => setTimeout(emit, 0));
+    // Vue SPA 有时用 replaceState 但路由值在 microtask 后才可读：补一次低频检查。
+        setInterval(() => {
+      const ctx = getCourseContext();
+      if (ctx.routeKey !== subscribeCourseRoute._lastKey) {
+        subscribeCourseRoute._lastKey = ctx.routeKey;
+        emit();
+      }
+    }, 1500);
+    return () => listeners.delete(fn);
+  }
   // src/core/history-capture.js
   // 历史课件收集器：在 student-v3 报告页自动运行
   // 流程：等课件卡片渲染 → 点击缩略图打开全页预览 → DOM 收集全部 slide 图 URL
@@ -6885,11 +7057,8 @@
     }
     return all;
   }
-  /** 从当前页面路径提取 classId（含桌面版与移动版 /m/v2 课程日志页） */  function currentClassId() {
-    const path = window.location.pathname;
-    const m = path.match(/\/studentLog\/(\d+)/) || path.match(/\/student-lesson-report\/(\d+)/) || path.match(/\/student-v3\/(\d+)/) || path.match(/\/studentCards\/(\d+)/) || path.match(/\/m\/v\d\/course\/[^/]+\/logs\/(\d+)\/(\d+)/);
- // 移动版：/logs/{courseId}/{classId}
-        return m ? m[2] || m[1] : null;
+  /** 从当前页面路径提取 classId（桌面/移动/新版作业页统一走 course-context）。 */  function currentClassId() {
+    return currentClassId$1();
   }
   // src/quiz/active-core.js
   // 新版作业（type 19）/考试（type 20）纯函数核心：数据解包、状态解析、题目解析、试卷拼装、保留窗口。
@@ -7428,6 +7597,21 @@
       teacher: c.teacher_name || c.teacher?.name || ""
     };
   }
+  /** 单个课程班级：成绩接口需要的 skuId 在这里返回（列表接口不一定带）。 */  function normalizeClassroom(c = {}) {
+    return {
+      id: String(c.classroom_id || c.id || ""),
+      name: c.name || c.course_name || c.course_short_name || "课程",
+      skuId: String(c.free_sku_id || c.sku_id || ""),
+      courseId: String(c.course_id || ""),
+      teacher: c.teacher_name || "",
+      universityId: String(c.uv_id || c.university_id || "")
+    };
+  }
+  async function fetchClassroomInfo(cid) {
+    if (!cid) return normalizeClassroom({});
+    const data = dataOf(await proGet(`/v2/api/web/classrooms/${enc$2(cid)}?role=5`));
+    return normalizeClassroom(data);
+  }
   /** 我的成绩 + 班级统计（只读；接口未公开时返回 null 字段）。 */  async function fetchCourseScores(cid, skuId) {
     if (!cid || !skuId) return {
       summary: null,
@@ -7462,11 +7646,14 @@
       },
       items: (Array.isArray(detail?.leaf_level_infos) ? detail.leaf_level_infos : []).map(x => ({
         id: String(x?.id ?? ""),
+        leafTypeId: String(x?.leaf_type_id ?? ""),
+        lessonId: String(x?.lesson_id ?? ""),
         title: String(x?.leaf_level_title || x?.leaf_chapter_title || ""),
         leafType: Number(x?.leaf_type) || 0,
         evaluationId: x?.evaluation_id == null ? null : String(x.evaluation_id),
         userScore: toNumber(x?.user_score),
         leafScore: toNumber(x?.leaf_score),
+        schedule: x?.schedule ?? null,
         isExpired: x?.is_expired === true
       }))
     };
@@ -8871,7 +9058,7 @@
   // PPT 多轮对话面板：截取/读取当前 PPT 页 + 连续追问，思考链折叠显示，流式输出
     let mounted$5 = false;
   let root$5;
-  let history = [];
+  let history$1 = [];
  // OpenAI 格式消息
     let streaming = false;
  // 防并发发送
@@ -8891,7 +9078,7 @@
     // 面板嵌在 shell 里——关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
         $sel("#ykt-chat-clear").addEventListener("click", () => {
       abortStreaming("清空会话");
-      history = [];
+      history$1 = [];
       renderHistory();
       addBubble("ai", mdToHtml("会话已清空。可以重新开始提问（如需新 PPT 上下文，直接发送即可）。"));
     });
@@ -8981,7 +9168,7 @@
   function renderHistory() {
     const $log = $sel("#ykt-chat-log");
     $log.innerHTML = "";
-    for (const m of history) {
+    for (const m of history$1) {
       if (m.role === "system") continue;
       const text = (Array.isArray(m.content) ? m.content : []).filter(c => c.type === "text").map(c => c.text).join("\n");
       const imgs = (Array.isArray(m.content) ? m.content : []).filter(c => c.type === "image_url").map(c => c.image_url.url);
@@ -9001,7 +9188,7 @@
   }
   /** 把历史中除最近 N 张外的图片替换为占位符，控制 token */  function trimOldImages(keep = 1) {
     const imgMsgs = [];
-    for (const m of history) {
+    for (const m of history$1) {
       if (m.role !== "user" || !Array.isArray(m.content)) continue;
       const imgIdx = m.content.map((c, i) => c.type === "image_url" ? i : -1).filter(i => i >= 0);
       if (imgIdx.length) imgMsgs.push({
@@ -9133,7 +9320,7 @@
     const $input = $sel("#ykt-chat-input");
     // retryText 非 null = 重试：用上次的文本，弹出上一条 user 历史避免重复
         const text = retryText !== null ? retryText : $input.value.trim();
-    if (retryText !== null && history.length && history[history.length - 1]?.role === "user") history.pop();
+    if (retryText !== null && history$1.length && history$1[history$1.length - 1]?.role === "user") history$1.pop();
     if (!text) {
       ui.toast?.("先输入问题");
       return;
@@ -9169,7 +9356,7 @@
           url: ensureImageUrl(att)
         }
       });
-      history.push({
+      history$1.push({
         role: "user",
         content: content
       });
@@ -9229,7 +9416,7 @@
         messages: [ {
           role: "system",
           content: systemPrompt()
-        }, ...history ],
+        }, ...history$1 ],
         stream: true,
         thinking: ov?.thinking !== false,
         // 跟设置里的「启用思考」开关走
@@ -9265,7 +9452,7 @@
         warn.textContent = "⚠️ 输出中断：连接被提前关闭（已收到的内容保留）。可点下方「↻ 重试」重发。";
         aiBubble.appendChild(warn);
       }
-      history.push({
+      history$1.push({
         role: "assistant",
         content: acc.content || "（无内容）"
       });
@@ -9981,7 +10168,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.9.2";
+      return "0.9.3";
     } catch {}
     return "0.0.0";
   }
@@ -10156,8 +10343,8 @@
   function mountAboutPanel() {
     if (mounted$3) return root$3;
     const host = document.createElement("div");
-    // "0.9.2" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.2"}<`);
+    // "0.9.3" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.3"}<`);
     document.body.appendChild(host.firstElementChild);
     root$3 = document.getElementById("ykt-about-panel");
     const $btn = root$3.querySelector("#ykt-about-check");
@@ -10441,6 +10628,7 @@
         title: a.title || (type === 20 ? "考试" : "作业"),
         deadline: Number(a.deadline || c.score_d || 0) || 0,
         totalScore: a.total_score ?? null,
+        score: a.score ?? null,
         problemCount: a.problem_count ?? null,
         status: a.status ?? null,
         oldId: oldId,
@@ -10693,6 +10881,351 @@
       }
     };
   }
+  // src/quiz/exam-fill.js
+  // 进行中考试页的“通用 DOM 适配器”：
+  // - 只读收集题目文本和答题控件；
+  // - 只写入答案，不点击提交按钮、不触发交卷；
+  // - 页面结构未知时宁可返回 0，不猜字段。
+  
+  // 说明：考试页是官方前端，不同学校/新旧版 DOM 差异很大；这里用保守选择器 +
+  // 最小侵入的 native setter，失败时由调用方展示答案让用户手动复制。
+    const QUESTION_SELECTOR = [ "[data-question-id]", "[data-problem-id]", "[data-questionid]", ".question-item", ".problem-item", ".subject-item", ".exam-question", ".question-card", ".question_block" ].join(",");
+  function visible(el) {
+    try {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    } catch {
+      return true;
+    }
+  }
+  function textOf(el) {
+    return String(el?.innerText || el?.textContent || "").replace(/\s+/g, " ").trim();
+  }
+  function idOf(el, i) {
+    return String(el?.getAttribute?.("data-question-id") || el?.getAttribute?.("data-problem-id") || el?.getAttribute?.("data-questionid") || el?.id || `q${i + 1}`);
+  }
+  function optionLabel(input) {
+    const label = input.closest?.("label");
+    if (label) return textOf(label);
+    const parent = input.parentElement;
+    const text = textOf(parent);
+    return text || String(input.value || "");
+  }
+  function controlsOf(root) {
+    return [ ...root.querySelectorAll("input, textarea") ].filter(el => {
+      if (el.disabled || el.readOnly) return false;
+      if (el.tagName === "INPUT" && [ "hidden", "button", "submit", "file" ].includes(String(el.type).toLowerCase())) return false;
+      return true;
+    });
+  }
+  /**
+   * 收集当前页面的题目根节点。嵌套候选只保留最内层，避免一道题被填两次。
+   */  function collectExamQuestions(doc = document) {
+    if (!doc) return [];
+    const docs = [ doc ];
+    // 考试页可能嵌在同源 iframe 里；递归一层，跨域 iframe 会抛错并跳过。
+        for (const f of doc.querySelectorAll?.("iframe") || []) try {
+      if (f.contentDocument) docs.push(f.contentDocument);
+    } catch {/* cross-origin */}
+    const allNodes = [];
+    for (const d of docs) {
+      let nodes = [ ...d.querySelectorAll?.(QUESTION_SELECTOR) || [] ].filter(visible);
+      nodes = nodes.filter(n => !nodes.some(o => o !== n && n.contains(o)));
+      allNodes.push(...nodes);
+    }
+    let nodes = allNodes;
+    nodes = nodes.filter(n => !nodes.some(o => o !== n && n.contains(o)));
+    return nodes.map((el, i) => {
+      const controls = controlsOf(el);
+      const choices = controls.filter(c => c.tagName === "INPUT" && [ "radio", "checkbox" ].includes(String(c.type).toLowerCase()));
+      const texts = controls.filter(c => c.tagName === "TEXTAREA" || c.tagName === "INPUT" && [ "text", "number", "search" ].includes(String(c.type).toLowerCase()));
+      return {
+        index: i,
+        id: idOf(el, i),
+        text: textOf(el),
+        element: el,
+        choices: choices,
+        texts: texts,
+        kind: choices.length ? "choice" : texts.length ? "text" : "unknown",
+        options: choices.map(c => ({
+          input: c,
+          label: optionLabel(c),
+          value: String(c.value || "")
+        }))
+      };
+    }).filter(q => q.text);
+  }
+  /** 从 AI 文本里提取选项字母（A/B/C/D，支持多选）。 */  function parseChoiceLetters(text) {
+    const s = String(text || "");
+    const explicit = s.match(/(?:答案|选项|正确选项)\s*[:：]?\s*([A-H](?:\s*[,，、/]\s*[A-H])*)/i);
+    const raw = explicit ? explicit[1] : s;
+    const letters = [ ...raw.toUpperCase().matchAll(/\b([A-H])\b/g) ].map(m => m[1]);
+    return [ ...new Set(letters) ];
+  }
+  function setChecked(input, checked) {
+    try {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked")?.set;
+      if (setter) setter.call(input, !!checked); else input.checked = !!checked;
+      input.dispatchEvent(new Event("input", {
+        bubbles: true
+      }));
+      input.dispatchEvent(new Event("change", {
+        bubbles: true
+      }));
+    } catch {/* ignore */}
+  }
+  function setValue(el, value) {
+    try {
+      const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (setter) setter.call(el, String(value ?? "")); else el.value = String(value ?? "");
+      el.dispatchEvent(new Event("input", {
+        bubbles: true
+      }));
+      el.dispatchEvent(new Event("change", {
+        bubbles: true
+      }));
+    } catch {/* ignore */}
+  }
+  /**
+   * 将答案写入当前考试页面。answers 顺序与 collectExamQuestions 一致。
+   * @param {Array<string|string[]>} answers
+   * @param {{questions?:Array}} [opts]
+   * @returns {{filled:number, skipped:number, details:Array}}
+   */  function fillExamAnswers(answers, {questions: questions = null} = {}) {
+    const list = Array.isArray(questions) ? questions : collectExamQuestions(document);
+    const details = [];
+    let filled = 0;
+    let skipped = 0;
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i];
+      const answer = answers?.[i];
+      if (answer == null || String(answer).trim() === "") {
+        skipped++;
+        details.push({
+          id: q.id,
+          status: "empty"
+        });
+        continue;
+      }
+      try {
+        if (q.kind === "choice" && q.choices.length) {
+          const letters = parseChoiceLetters(answer);
+          if (!letters.length) {
+            skipped++;
+            details.push({
+              id: q.id,
+              status: "no-choice-letter"
+            });
+            continue;
+          }
+          const matched = q.options.filter(o => {
+            const label = String(o.label || "").trim().toUpperCase();
+            return letters.some(l => label.startsWith(l) || label.startsWith(`${l}.`) || label.startsWith(`${l}、`) || label.startsWith(`${l} `));
+          });
+          if (!matched.length) {
+            skipped++;
+            details.push({
+              id: q.id,
+              status: "no-matched-option",
+              letters: letters
+            });
+            continue;
+          }
+          const multi = q.choices.some(c => String(c.type).toLowerCase() === "checkbox");
+          if (!multi) matched.slice(0, 1).forEach(o => setChecked(o.input, true)); else for (const o of q.options) setChecked(o.input, matched.includes(o));
+          filled++;
+          details.push({
+            id: q.id,
+            status: "filled",
+            letters: letters
+          });
+        } else if (q.kind === "text" && q.texts.length) {
+          const parts = Array.isArray(answer) ? answer : String(answer).split(/\n+/);
+          q.texts.forEach((el, idx) => setValue(el, parts[idx] ?? (idx === 0 ? answer : "")));
+          filled++;
+          details.push({
+            id: q.id,
+            status: "filled-text"
+          });
+        } else {
+          skipped++;
+          details.push({
+            id: q.id,
+            status: "unknown-control"
+          });
+        }
+      } catch (e) {
+        skipped++;
+        details.push({
+          id: q.id,
+          status: "error",
+          error: String(e?.message || e)
+        });
+      }
+    }
+    return {
+      filled: filled,
+      skipped: skipped,
+      details: details
+    };
+  }
+  // src/core/exam-consent.js
+  // 进行中考试 AI 自动填充的免责确认。
+  // 用户选择“永久记住”：同意一次后本机不再弹窗；每次同意状态上传到服务端（只传匿名元数据）。
+    const KEY$1 = "examAiConsent";
+  const QUEUE_KEY = "examAiConsentQueue";
+  const CONSENT_VERSION = 1;
+  const ENDPOINT = "https://api.raymor.top/yuketangstudio/exam-ai-consent";
+  function readRecord() {
+    const v = storage.get(KEY$1);
+    if (!v || typeof v !== "object" || v.accepted !== true) return null;
+    if (Number(v.version) !== CONSENT_VERSION) return null;
+    return v;
+  }
+  function saveRecord(record) {
+    storage.set(KEY$1, record);
+  }
+  function hasExamConsent() {
+    return !!readRecord();
+  }
+  function hash32(s) {
+    const str = String(s || "");
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(16).padStart(8, "0");
+  }
+  function queueUpload(payload) {
+    const q = storage.get(QUEUE_KEY);
+    const arr = Array.isArray(q) ? q : [];
+    arr.push(payload);
+    storage.set(QUEUE_KEY, arr.slice(-20));
+  }
+  /** 上传“同意”元数据；失败进队列，不阻塞用户。 */  async function uploadExamConsent({mode: mode = "single", examId: examId = "", courseId: courseId = "", source: source = "exam-fill"} = {}) {
+    const payload = {
+      installId: getInstallId(),
+      platform: typeof window !== "undefined" && window.YktBridge ? "android" : "pc",
+      version: getVersion(),
+      mode: String(mode || "single"),
+      source: String(source || ""),
+      examIdHash: hash32(examId),
+      courseIdHash: hash32(courseId),
+      accepted: true,
+      ts: Date.now()
+    };
+    try {
+      await new Promise((resolve, reject) => {
+        gm.xhr({
+          method: "POST",
+          url: ENDPOINT,
+          headers: {
+            "Content-Type": "application/json"
+          },
+          data: JSON.stringify(payload),
+          timeout: 1e4,
+          onload: r => r.status >= 200 && r.status < 300 ? resolve() : reject(new Error("HTTP " + r.status)),
+          onerror: reject,
+          ontimeout: () => reject(new Error("上传超时"))
+        });
+      });
+      return {
+        ok: true,
+        payload: payload
+      };
+    } catch (e) {
+      log$1.warn("[exam-consent] upload failed, queued", e?.message || e);
+      queueUpload(payload);
+      return {
+        ok: false,
+        error: String(e?.message || e),
+        payload: payload
+      };
+    }
+  }
+  /** 重试队列（不阻塞）。 */  function flushExamConsentQueue() {
+    const q = storage.get(QUEUE_KEY);
+    const arr = Array.isArray(q) ? q : [];
+    if (!arr.length) return;
+    storage.set(QUEUE_KEY, []);
+    for (const payload of arr) try {
+      gm.xhr({
+        method: "POST",
+        url: ENDPOINT,
+        headers: {
+          "Content-Type": "application/json"
+        },
+        data: JSON.stringify(payload),
+        timeout: 1e4,
+        onload: r => {
+          if (!(r.status >= 200 && r.status < 300)) queueUpload(payload);
+        },
+        onerror: () => queueUpload(payload),
+        ontimeout: () => queueUpload(payload)
+      });
+    } catch {
+      queueUpload(payload);
+    }
+  }
+  function makeDialog() {
+    return new Promise(resolve => {
+      const mask = document.createElement("div");
+      mask.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.52);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:520px;max-width:100%;background:#fff;border-radius:12px;padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.3);font:13px/1.65 system-ui,sans-serif;color:#111827;";
+      box.innerHTML = `\n      <div style="font-size:16px;font-weight:700;margin-bottom:8px;">⚠️ 进行中考试 AI 自动填充</div>\n      <div style="color:#374151;margin-bottom:10px;">\n        AI 只会把参考答案写入当前考试页面的答题控件，<b>不会点击提交按钮，也不会自动交卷</b>。\n        考试规则风险由你自行承担；请确认你有权这样做，并在提交前逐题核对。\n      </div>\n      <div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:8px;padding:9px 11px;margin-bottom:12px;">\n        首次同意后会永久记住，并上传“同意状态”到服务器（仅匿名安装 ID、版本、模式、时间、考试/课程 ID 哈希；不上传题目、答案、成绩）。\n      </div>\n      <label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0 14px;cursor:pointer;">\n        <input id="ykt-exam-consent-check" type="checkbox" style="margin-top:3px;width:16px;height:16px;flex:0 0 auto;">\n        <span>我已知晓风险并自行承担后果，同意 AI 自动填入考试答案。</span>\n      </label>\n      <div style="display:flex;gap:8px;justify-content:flex-end;">\n        <button id="ykt-exam-consent-no" style="padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;">仅展示答案</button>\n        <button id="ykt-exam-consent-yes" disabled style="padding:8px 14px;border:0;border-radius:8px;background:#1d63df;color:#fff;cursor:not-allowed;opacity:.5;">同意并继续</button>\n      </div>`;
+      mask.appendChild(box);
+      document.body.appendChild(mask);
+      const check = box.querySelector("#ykt-exam-consent-check");
+      const yes = box.querySelector("#ykt-exam-consent-yes");
+      const no = box.querySelector("#ykt-exam-consent-no");
+      const done = v => {
+        try {
+          mask.remove();
+        } catch {}
+        resolve(v);
+      };
+      check.addEventListener("change", () => {
+        yes.disabled = !check.checked;
+        yes.style.cursor = check.checked ? "pointer" : "not-allowed";
+        yes.style.opacity = check.checked ? "1" : ".5";
+      });
+      yes.addEventListener("click", () => {
+        if (!check.checked) return;
+        done(true);
+      });
+      no.addEventListener("click", () => done(false));
+      mask.addEventListener("click", e => {
+        if (e.target === mask) done(false);
+      });
+    });
+  }
+  /**
+   * 确保已获得考试自动填充同意。
+   * 首次同意后永久记住；上传失败只进队列，不阻塞填充。
+   */  async function ensureExamConsent({mode: mode = "single", examId: examId = "", courseId: courseId = "", source: source = "exam-fill"} = {}) {
+    if (hasExamConsent()) {
+      flushExamConsentQueue();
+      return true;
+    }
+    const ok = await makeDialog();
+    if (!ok) return false;
+    const record = {
+      accepted: true,
+      at: Date.now(),
+      version: CONSENT_VERSION
+    };
+    saveRecord(record);
+    void uploadExamConsent({
+      mode: mode,
+      examId: examId,
+      courseId: courseId,
+      source: source
+    });
+    return true;
+  }
   // src/ui/panels/assignments-panel.js
   // 工具箱「作业」tab：本课作业列表 + 当前试卷题目 + 批量下载/批量 AI + 单题 AI（复用 AI 解答面板）
     let mounted$2 = false;
@@ -10708,7 +11241,9 @@
   let viewAssignment = null;
   let loadSeq = 0;
  // 课程切换请求序号：旧请求/旧 enrich 返回后直接丢弃
-    function $$1(sel) {
+    let lastFocusedRoute = "";
+  let autoOpening = false;
+  function $$1(sel) {
     return root$2?.querySelector(sel);
   }
   function escapeHtml(s) {
@@ -10745,7 +11280,7 @@
   }
   function setBusy(on) {
     busy$1 = on;
-    [ "#ykt-ap-zip", "#ykt-ap-ai", "#ykt-ap-refresh" ].forEach(s => {
+    [ "#ykt-ap-zip", "#ykt-ap-ai", "#ykt-ap-refresh", "#ykt-ap-exam-fill" ].forEach(s => {
       const b = $$1(s);
       if (b) b.disabled = on;
     });
@@ -10909,16 +11444,26 @@
       setBusy(false);
     }
   }
-  /** 加密字体题目：把题干+选项渲染成图，避免 AI 只看到私用区乱码。 */  async function captureActiveProblem(index) {
+  /**
+   * 新版作业/考试题目的整题截图。
+   * 不再只对加密字体截图：普通题目也可能只有图片/公式，文本不足以让 AI 作答。
+   */  async function captureProblemCard(q) {
+    if (!q) return "";
     try {
-      const el = document.querySelectorAll("#ykt-ap-questions .ap-active-item")[index];
-      if (!el || !el.querySelector(".xuetangx-com-encrypted-font")) return "";
-      const body = el.querySelector(".ap-problem-body");
-      if (!body) return "";
       const box = document.createElement("div");
-      box.style.cssText = "position:fixed;left:-99999px;top:0;width:720px;background:#fff;padding:12px;font-size:13px;line-height:1.6;";
-      box.appendChild(body.cloneNode(true));
-      for (const option of el.querySelectorAll(".ap-option")) box.appendChild(option.cloneNode(true));
+      box.style.cssText = "position:fixed;left:-99999px;top:0;width:760px;background:#fff;padding:14px;font:13px/1.65 system-ui,sans-serif;color:#111;";
+      const body = document.createElement("div");
+      body.innerHTML = sanitizeHtml(q.bodyHtml || "");
+      box.appendChild(body);
+      for (const o of q.options || []) {
+        const row = document.createElement("div");
+        row.style.cssText = "margin-top:8px;";
+        row.textContent = `${o.label}. `;
+        const opt = document.createElement("span");
+        opt.innerHTML = sanitizeHtml(o.html || "");
+        row.appendChild(opt);
+        box.appendChild(row);
+      }
       document.body.appendChild(box);
       try {
         try {
@@ -10936,7 +11481,39 @@
         box.remove();
       }
     } catch (e) {
-      log$1.warn("[assign] encrypted font capture failed", e);
+      log$1.warn("[assign] problem capture failed", e);
+      return "";
+    }
+  }
+  async function captureActiveProblem(index) {
+    const q = viewData?.problems?.[index];
+    if (!q) return "";
+    return captureProblemCard(q);
+  }
+  /** 考试页 DOM 题目截图（图片题/公式题/加密字体）。 */  async function captureExamElement(el) {
+    if (!el) return "";
+    try {
+      const box = document.createElement("div");
+      box.style.cssText = "position:fixed;left:-99999px;top:0;width:760px;background:#fff;padding:14px;font:13px/1.65 system-ui,sans-serif;color:#111;";
+      box.appendChild(el.cloneNode(true));
+      document.body.appendChild(box);
+      try {
+        try {
+          await (document.fonts?.ready);
+        } catch {/* ignore */}
+        const html2canvas = await ensureHtml2Canvas();
+        if (!html2canvas) return "";
+        const canvas = await html2canvas(box, {
+          backgroundColor: "#fff",
+          useCORS: true,
+          scale: 2
+        });
+        return canvas.toDataURL("image/jpeg", .9);
+      } finally {
+        box.remove();
+      }
+    } catch (e) {
+      log$1.warn("[assign] exam capture failed", e);
       return "";
     }
   }
@@ -11004,9 +11581,10 @@
     box.innerHTML = list.map(a => {
       const oldU = oldUrl(a);
       const newU = newUrl(a, cid);
-      const detailBtn = a.type === 19 && a.leafTypeId ? `<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}">详情</button>` : "";
-      const reviewBtn = a.type === 20 && a.canReview && a.leafTypeId ? `<button type="button" data-act="review" data-id="${escapeHtml(a.id)}">回顾</button>` : "";
-      return `<div class="ap-row" data-id="${escapeHtml(a.id)}">\n      <input type="checkbox" class="ap-check" data-id="${escapeHtml(a.id)}" ${selected.has(a.id) ? "checked" : ""}>\n      <div class="ap-main">\n        <div class="ap-title">${escapeHtml(a.title)}</div>\n        <div class="ap-meta">${rowMetaParts(a)}</div>\n      </div>\n      <div class="ap-links">\n        ${detailBtn}\n        ${reviewBtn}\n        ${a.oldId ? `<button type="button" data-q="${escapeHtml(a.id)}">题目</button>` : ""}\n        ${oldU ? `<button type="button" data-link="${escapeHtml(oldU)}">老界面</button>` : ""}\n        ${newU ? `<button type="button" data-link="${escapeHtml(newU)}">新界面</button>` : ""}\n      </div>\n    </div>`;
+      // 只保留一个主入口：有新版入口走新版，只有老版时才走老版。
+            let openBtn = "";
+      if (a.type === 20 && a.canReview && a.leafTypeId) openBtn = `<button type="button" data-act="review" data-id="${escapeHtml(a.id)}">回顾</button>`; else if (a.type === 19 && a.leafTypeId) openBtn = `<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}">详情</button>`; else if (a.type === 4 && a.oldId) openBtn = `<button type="button" data-q="${escapeHtml(a.id)}">打开</button>`; else if (newU) openBtn = `<button type="button" data-link="${escapeHtml(newU)}">打开新界面</button>`; else if (oldU) openBtn = `<button type="button" data-link="${escapeHtml(oldU)}">打开老界面</button>`;
+      return `<div class="ap-row" data-id="${escapeHtml(a.id)}">\n      <input type="checkbox" class="ap-check" data-id="${escapeHtml(a.id)}" ${selected.has(a.id) ? "checked" : ""}>\n      <div class="ap-main">\n        <div class="ap-title">${escapeHtml(a.title)}</div>\n        <div class="ap-meta">${rowMetaParts(a)}</div>\n      </div>\n      <div class="ap-links">${openBtn}</div>\n    </div>`;
     }).join("");
   }
   async function loadList(courseId) {
@@ -11031,8 +11609,44 @@
     renderList();
     setStatus(list.length ? `共 ${list.length} 项` : "没有找到作业");
     await enrichIfNeeded(seq);
+    syncExamFillButton();
+  }
+  function routeKey(ctx) {
+    return `${ctx.classId || ""}|${ctx.newId || ""}|${ctx.oldQuizId || ""}`;
+  }
+  /** 找到当前 URL 指向的作业/考试行。 */  function findRouteTarget(ctx = getCourseContext()) {
+    if (!ctx.newId && !ctx.oldQuizId) return null;
+    return list.find(a => ctx.newId && (String(a.newId) === String(ctx.newId) || String(a.leafTypeId) === String(ctx.newId)) || ctx.oldQuizId && String(a.oldId) === String(ctx.oldQuizId)) || null;
+  }
+  /**
+   * 当前页面是作业/考试时：选中对应行，并按需展开详情。
+   * 只对“直接路由”生效；普通课程页只选课程，不自动展开题目。
+   */  async function focusRouteTarget({open: open = true} = {}) {
+    const ctx = getCourseContext();
+    if (!ctx.newId && !ctx.oldQuizId) return false;
+    const key = routeKey(ctx);
+    const target = findRouteTarget(ctx);
+    if (!target) {
+      setStatus("没有在列表中定位到当前作业/考试，请刷新或回到课程页重试。");
+      return false;
+    }
+    selected.clear();
+    selected.add(target.id);
+    renderList();
+    const row = [ ...root$2.querySelectorAll(".ap-row") ].find(r => String(r.dataset.id) === String(target.id));
+    row?.scrollIntoView({
+      block: "center",
+      behavior: "smooth"
+    });
+    if (!open || key === lastFocusedRoute) return true;
+    lastFocusedRoute = key;
+    // 直接路由：自动展开，用户不需要再找一次。
+        if (target.type === 20) if (target.canReview) await openActiveDetail(target); else setStatus(target.statusMessage || "该考试暂不可回顾；进行中考试可打开考试页使用 AI 参考。"); else if (target.type === 19) await openActiveDetail(target); else if (target.oldId) await openAssignmentQuestions(target);
+    return true;
   }
   async function loadCourses() {
+    if (autoOpening) return;
+    autoOpening = true;
     setStatus("正在读取课程列表…");
     try {
       courses$1 = await fetchCourses();
@@ -11042,11 +11656,12 @@
         setStatus("没有读取到课程");
         return;
       }
-      const quizId = String(window.quizID || "");
-      if (quizId) {
+      const ctx = getCourseContext();
+      const oldQuizId = String(ctx.oldQuizId || window.quizID || "");
+      if (oldQuizId) {
         const scanSeq = loadSeq;
         setStatus("正在定位当前作业所属课程…");
-        const found = await findCourseByQuiz(courses$1, quizId);
+        const found = await findCourseByQuiz(courses$1, oldQuizId);
         if (found && scanSeq === loadSeq) {
           // 扫描期间用户没切课程
           const seq = ++loadSeq;
@@ -11057,16 +11672,19 @@
           renderList();
           setStatus(`共 ${list.length} 项`);
           await enrichIfNeeded(seq);
+          await focusRouteTarget();
           return;
         }
       }
-      const urlCid = new URLSearchParams(location.search).get("classroom_id");
-      const prefer = courses$1.find(c => c.id === urlCid) || courses$1[0];
+      const prefer = preferredCourse(courses$1, ctx) || courses$1[0];
       if (sel) sel.value = prefer.id;
       await loadList(prefer.id);
+      await focusRouteTarget();
     } catch (e) {
       log$1.warn("[assign] courses failed", e);
       setStatus("读取课程失败：" + (e?.message || e));
+    } finally {
+      autoOpening = false;
     }
   }
   async function openAssignmentQuestions(a) {
@@ -11150,11 +11768,144 @@
       setBusy(false);
     }
   }
+  function activeProblemPrompt(q) {
+    const opts = (q.options || []).map(o => `${o.label}. ${stripTags(o.html || "")}`).join("\n");
+    return [ `第 ${q.index ?? "?"} 题（${q.typeText || ""}，${q.score ?? ""} 分）`, stripTags(q.bodyHtml || ""), opts, (q.attachments || []).length ? `附件：${q.attachments.map(x => x.name).join("、")}` : "" ].filter(Boolean).join("\n");
+  }
+  async function answerOneProblem({prompt: prompt, imageDataUrl: imageDataUrl, override: override}) {
+    const content = [ {
+      type: "text",
+      text: prompt
+    } ];
+    if (imageDataUrl) content.push({
+      type: "image_url",
+      image_url: {
+        url: imageDataUrl
+      }
+    });
+    const res = await agnesChat({
+      messages: [ {
+        role: "system",
+        content: "你是学习助手。请根据题目文字和图片给出答案和简要步骤。填空题/选择题请明确写出答案。"
+      }, {
+        role: "user",
+        content: content
+      } ],
+      stream: false,
+      thinking: true,
+      override: override,
+      traceKind: "assignment",
+      traceMode: "none"
+    });
+    return res.content || "（空回复）";
+  }
+  function currentExamContext() {
+    const ctx = getCourseContext();
+    const target = list.find(a => Number(a.type) === 20 && (ctx.newId && String(a.newId) === String(ctx.newId) || ctx.oldQuizId && String(a.oldId) === String(ctx.oldQuizId))) || null;
+    const byTitle = /考试|exam/i.test(String(document.title || ""));
+    const isExam = ctx.kind === "exam" || !!target || !!ctx.oldQuizId && byTitle;
+    return {
+      isExam: isExam,
+      examId: ctx.newId || ctx.oldQuizId || target?.newId || target?.oldId || "",
+      courseId: ctx.classId || cid,
+      target: target
+    };
+  }
+  function syncExamFillButton() {
+    const btn = $$1("#ykt-ap-exam-fill");
+    if (!btn) return;
+    btn.style.display = currentExamContext().isExam ? "" : "none";
+  }
+  /**
+   * 进行中考试：AI 逐题生成答案并写入当前页控件，不点击提交。
+   * 第一次使用前弹免责确认；同意后永久记住。
+   */  async function fillCurrentExam({fromBatch: fromBatch = false} = {}) {
+    const ctx = currentExamContext();
+    if (!ctx.isExam) {
+      ui.toast?.("当前页面不是考试页", 2200);
+      return null;
+    }
+    const questions = collectExamQuestions(document);
+    if (!questions.length) {
+      ui.toast?.("未识别到考试题目控件；请确认考试页已加载，或使用「AI 解答」复制答案", 4e3);
+      return null;
+    }
+    const override = getOverride();
+    if (!override) {
+      ui.toast?.("请先在设置里配置 AI", 2500);
+      return null;
+    }
+    const ok = await ensureExamConsent({
+      mode: fromBatch ? "batch" : "single",
+      examId: ctx.examId,
+      courseId: ctx.courseId,
+      source: "exam-fill"
+    });
+    if (!ok) {
+      ui.toast?.("已取消自动填入；不会生成或提交答案", 3e3);
+      return null;
+    }
+    if (!fromBatch) setBusy(true);
+    const answers = [];
+    try {
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        setStatus(`考试 AI 填入：第 ${i + 1}/${questions.length} 题…`);
+        const prompt = [ "这是一道正在进行的考试题。请给出最终答案。", "选择题只返回选项字母（多选用逗号分隔）；填空题只返回填空内容；不要解释，不要重复题目。", q.text ].join("\n");
+        try {
+          const imageDataUrl = await captureExamElement(q.element);
+          const userContent = [ {
+            type: "text",
+            text: prompt
+          } ];
+          if (imageDataUrl) userContent.push({
+            type: "image_url",
+            image_url: {
+              url: imageDataUrl
+            }
+          });
+          const res = await agnesChat({
+            messages: [ {
+              role: "system",
+              content: "你只输出考试题的最终答案，不输出过程或解释。选择题输出 A/B/C/D 字母，多选用逗号分隔。"
+            }, {
+              role: "user",
+              content: userContent
+            } ],
+            stream: false,
+            thinking: true,
+            override: override,
+            traceKind: "exam",
+            traceMode: "none"
+          });
+          answers.push(String(res.content || "").trim());
+        } catch (e) {
+          answers.push("");
+          log$1.warn("[assign] exam fill answer failed", i, e?.message || e);
+        }
+      }
+      const result = fillExamAnswers(answers, {
+        questions: questions
+      });
+      setStatus(`考试填入完成：${result.filled} 题已填，${result.skipped} 题跳过；未提交，请逐题核对。`);
+      ui.toast?.(`已填入 ${result.filled} 题，未提交；请核对后再手动交卷`, 4500);
+      return result;
+    } catch (e) {
+      setStatus("考试填入失败：" + (e?.message || e));
+      return null;
+    } finally {
+      if (!fromBatch) setBusy(false);
+    }
+  }
+  async function examFillCurrent() {
+    if (busy$1) return;
+    await fillCurrentExam();
+  }
   async function batchAI() {
     if (busy$1) return;
-    const items = selectedItems().filter(a => a.oldId);
+    const items = selectedItems().filter(a => [ 4, 19, 20 ].includes(Number(a.type)));
     if (!items.length) {
-      ui.toast?.("请先勾选带老版界面的作业", 2500);
+      ui.toast?.("请先勾选作业或考试", 2500);
       return;
     }
     const override = getOverride();
@@ -11162,7 +11913,10 @@
       ui.toast?.("请先在设置里配置 AI", 2500);
       return;
     }
-    const ok = await confirmDialog$1(`将依次对 ${items.length} 份作业调用 AI 解答，题目较多时耗时和费用都会增加。确定继续吗？`, {
+    const examCount = items.filter(a => Number(a.type) === 20).length;
+    const inProgressCount = items.filter(a => Number(a.type) === 20 && !a.canReview).length;
+    const detail = [ `将依次对 ${items.length} 份作业/考试调用 AI 解答，题目较多时耗时和费用都会增加。`, examCount ? `其中 ${examCount} 份是考试；AI 只生成参考，不自动提交。` : "", inProgressCount ? `有 ${inProgressCount} 份进行中/不可回顾考试：只有当前打开的考试页能自动填入，其余会被跳过。` : "", "考试规则风险请自行承担。确定继续吗？" ].filter(Boolean).join("\n");
+    const ok = await confirmDialog$1(detail, {
       okText: "开始解答",
       danger: true
     });
@@ -11170,48 +11924,97 @@
     setBusy(true);
     const md = [];
     let done = 0;
-    let total = 0;
     try {
-      const datasets = [];
       for (const a of items) {
-        const data = await fetchQuizDataById(a.oldId);
-        total += (data.Slides || []).filter(s => s?.Problem).length;
-        datasets.push({
-          a: a,
-          data: data
-        });
-      }
-      for (const {a: a, data: data} of datasets) {
         md.push(`# ${a.title}\n`);
-        for (let i = 0; i < (data.Slides || []).length; i++) {
-          if (!data.Slides[i]?.Problem) continue;
-          setStatus(`正在解答「${a.title}」第 ${i + 1} 题（${done + 1}/${total}）…`);
-          const dataUrl = await quizQuestionDataUrl(data, i, 2);
-          const p = data.Slides[i].Problem;
-          const res = await agnesChat({
-            messages: [ {
-              role: "system",
-              content: "你是学习助手。请根据题目图片给出答案和简要步骤。填空题/选择题请明确写出答案。"
-            }, {
-              role: "user",
-              content: [ {
-                type: "text",
-                text: `第 ${i + 1} 题（${p.Type || ""}，${p.Score ?? ""} 分）`
-              }, {
-                type: "image_url",
-                image_url: {
-                  url: dataUrl
-                }
-              } ]
-            } ],
-            stream: false,
-            thinking: true,
-            override: override,
-            traceKind: "assignment",
-            traceMode: "none"
-          });
-          md.push(`## 第 ${i + 1} 题\n\n${res.content || "（空回复）"}\n`);
-          done++;
+        setStatus(`正在读取「${a.title}」…`);
+        try {
+          if (Number(a.type) === 4) {
+            if (!a.oldId) {
+              md.push("> 缺少老版作业入口，已跳过。\n");
+              continue;
+            }
+            const data = await fetchQuizDataById(a.oldId);
+            const slides = data.Slides || [];
+            for (let i = 0; i < slides.length; i++) {
+              if (!slides[i]?.Problem) continue;
+              done++;
+              setStatus(`正在解答「${a.title}」第 ${i + 1} 题（已完成 ${done} 题）…`);
+              try {
+                const imageDataUrl = await quizQuestionDataUrl(data, i, 2);
+                const p = slides[i].Problem;
+                const answer = await answerOneProblem({
+                  prompt: `第 ${i + 1} 题（${p.Type || ""}，${p.Score ?? ""} 分）`,
+                  imageDataUrl: imageDataUrl,
+                  override: override
+                });
+                md.push(`## 第 ${i + 1} 题\n\n${answer}\n`);
+              } catch (e) {
+                md.push(`## 第 ${i + 1} 题\n\n> 解答失败：${e?.message || e}\n`);
+              }
+            }
+          } else if (Number(a.type) === 19) {
+            const detail = await fetchExerciseDetail({
+              leafTypeId: a.leafTypeId,
+              classroomId: a.classroomId,
+              uvId: uvIdFromCookie(document.cookie)
+            });
+            await injectActiveFont(detail.fontUrl);
+            for (const q of detail.problems || []) {
+              done++;
+              setStatus(`正在解答「${a.title}」第 ${q.index ?? done} 题（已完成 ${done} 题）…`);
+              try {
+                const imageDataUrl = await captureProblemCard(q);
+                const answer = await answerOneProblem({
+                  prompt: activeProblemPrompt(q),
+                  imageDataUrl: imageDataUrl,
+                  override: override
+                });
+                md.push(`## 第 ${q.index ?? done} 题\n\n${answer}\n`);
+              } catch (e) {
+                md.push(`## 第 ${q.index ?? done} 题\n\n> 解答失败：${e?.message || e}\n`);
+              }
+            }
+          } else if (Number(a.type) === 20) {
+            if (!a.canReview) {
+              const current = currentExamContext();
+              const samePage = current.isExam && current.examId && (a.newId && String(current.examId) === String(a.newId) || a.oldId && String(current.examId) === String(a.oldId));
+              if (samePage) {
+                // 进行中考试只能在当前打开的考试页读取并填入；不后台抓题、不提交。
+                const r = await fillCurrentExam({
+                  fromBatch: true
+                });
+                if (r) {
+                  done += r.filled;
+                  md.push(`> 已在当前考试页自动填入 ${r.filled} 题，跳过 ${r.skipped} 题；未提交，请核对后手动交卷。\n`);
+                } else md.push("> 当前考试页自动填入已取消或失败；未提交。\n");
+              } else md.push("> 进行中或不可回顾的考试需要先打开考试页；本工具不后台抓题、不自动提交。\n");
+              continue;
+            }
+            const detail = await fetchExamReview(a);
+            if (detail.mode !== "exam-review") {
+              md.push(`> 暂不可回顾：${detail.progress?.statusMessage || "未出分或未公布"}\n`);
+              continue;
+            }
+            await injectActiveFont(detail.fontUrl);
+            for (const q of detail.problems || []) {
+              done++;
+              setStatus(`正在解答「${a.title}」第 ${q.index ?? done} 题（已完成 ${done} 题）…`);
+              try {
+                const imageDataUrl = await captureProblemCard(q);
+                const answer = await answerOneProblem({
+                  prompt: activeProblemPrompt(q),
+                  imageDataUrl: imageDataUrl,
+                  override: override
+                });
+                md.push(`## 第 ${q.index ?? done} 题\n\n${answer}\n`);
+              } catch (e) {
+                md.push(`## 第 ${q.index ?? done} 题\n\n> 解答失败：${e?.message || e}\n`);
+              }
+            }
+          }
+        } catch (e) {
+          md.push(`> 读取失败：${e?.message || e}\n`);
         }
       }
       await saveBlob(new Blob([ md.join("\n") ], {
@@ -11230,8 +12033,9 @@
     root$2 = document.createElement("div");
     root$2.id = "ykt-assign-tab";
     root$2.className = "ykt-panel";
-    root$2.innerHTML = `\n    <div class="panel-header"><h3>作业</h3></div>\n    <div class="panel-body">\n      <div id="ykt-ap-current" style="display:none"></div>\n      <div class="ap-toolbar">\n        <select id="ykt-ap-course"></select>\n        <button type="button" id="ykt-ap-refresh">刷新</button>\n      </div>\n      <div class="ap-actions">\n        <label class="ap-all"><input type="checkbox" id="ykt-ap-all"> 全选</label>\n        <button type="button" id="ykt-ap-zip">批量下载（ZIP）</button>\n        <button type="button" id="ykt-ap-ai">批量 AI 解答</button>\n      </div>\n      <div id="ykt-ap-status" class="ap-status"></div>\n      <div id="ykt-ap-list" class="ap-list"></div>\n      <div id="ykt-ap-questions" class="ap-questions" style="display:none"></div>\n    </div>`;
+    root$2.innerHTML = `\n    <div class="panel-header"><h3>作业/考试</h3></div>\n    <div class="panel-body">\n      <div id="ykt-ap-current" style="display:none"></div>\n      <div class="ap-toolbar">\n        <select id="ykt-ap-course"></select>\n        <button type="button" id="ykt-ap-refresh">刷新</button>\n      </div>\n      <div class="ap-actions">\n        <label class="ap-all"><input type="checkbox" id="ykt-ap-all"> 全选</label>\n        <button type="button" id="ykt-ap-zip">批量下载（ZIP）</button>\n        <button type="button" id="ykt-ap-ai">批量 AI 解答</button>\n        <button type="button" id="ykt-ap-exam-fill" style="display:none;border-color:#f59e0b;color:#92400e;">考试 AI 自动填入（不提交）</button>\n      </div>\n      <div id="ykt-ap-status" class="ap-status"></div>\n      <div id="ykt-ap-list" class="ap-list"></div>\n      <div id="ykt-ap-questions" class="ap-questions" style="display:none"></div>\n    </div>`;
     $$1("#ykt-ap-course")?.addEventListener("change", e => {
+      rememberCourseSelection(e.target.value);
       showListView();
       loadList(e.target.value);
     });
@@ -11242,6 +12046,7 @@
     });
     $$1("#ykt-ap-zip")?.addEventListener("click", batchZip);
     $$1("#ykt-ap-ai")?.addEventListener("click", batchAI);
+    $$1("#ykt-ap-exam-fill")?.addEventListener("click", examFillCurrent);
     $$1("#ykt-ap-list")?.addEventListener("click", e => {
       const link = e.target.closest("button[data-link]");
       if (link) {
@@ -11275,28 +12080,46 @@
     });
     document.body.appendChild(root$2);
     root$2.__yksOnShow = () => {
-      renderCurrentCard();
+      const ctx = getCourseContext();
+      syncExamFillButton();
       if (!loaded) {
         loaded = true;
         loadCourses();
+        return;
       }
+      if (ctx.newId || ctx.oldQuizId) void focusRouteTarget(); else renderCurrentCard();
     };
+    subscribeCourseRoute(() => {
+      const ctx = getCourseContext();
+      if (!ctx.newId && !ctx.oldQuizId) return;
+      // 直接进入新版/老版作业或考试页：自动切到「作业/考试」。
+            setTimeout(() => {
+        try {
+          ui.showAssignmentsPanel?.(true);
+        } catch {/* ignore */}
+      }, 350);
+    });
     renderCurrentCard();
+    const initialCtx = getCourseContext();
+    if (initialCtx.newId || initialCtx.oldQuizId) setTimeout(() => {
+      try {
+        ui.showAssignmentsPanel?.(true);
+      } catch {/* ignore */}
+    }, 900);
     return root$2;
   }
-  var tpl = '<div id="ykt-brush-panel" class="ykt-panel">\n  <style>\n    #ykt-brush-panel .brush-head { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:12px 14px; border-bottom:1px solid #e5e7eb; }\n    #ykt-brush-panel .brush-head h3 { margin:0 10px 0 0; font-size:16px; }\n    #ykt-brush-panel select,#ykt-brush-panel button { font-size:12px; padding:5px 9px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#111; cursor:pointer; }\n    #ykt-brush-panel button.primary { background:#1d63df; border-color:#1d63df; color:#fff; }\n    #ykt-brush-panel button:disabled { opacity:.45; cursor:not-allowed; }\n    #ykt-brush-panel .brush-score { display:flex; gap:14px; flex-wrap:wrap; padding:8px 14px; background:#f8fafc; border-bottom:1px solid #e5e7eb; font-size:12px; color:#475569; }\n    #ykt-brush-panel .brush-score b { color:#0f172a; font-size:14px; }\n    #ykt-brush-panel .brush-controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 14px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#475569; }\n    #ykt-brush-panel .brush-controls label { display:flex; gap:4px; align-items:center; cursor:pointer; }\n    #ykt-brush-panel .brush-body { display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:280px; }\n    #ykt-brush-panel .brush-queue { overflow:auto; max-height:52vh; padding:8px 12px; }\n    #ykt-brush-panel .brush-log { border-left:1px solid #e5e7eb; padding:8px 10px; overflow:auto; max-height:52vh; font:11px/1.45 ui-monospace,Menlo,monospace; color:#475569; white-space:pre-wrap; background:#fcfcfd; }\n    #ykt-brush-panel .brush-item { display:flex; gap:8px; align-items:flex-start; padding:7px 6px; border-bottom:1px solid #f1f5f9; font-size:12px; }\n    #ykt-brush-panel .brush-item .bi-title { flex:1; min-width:0; }\n    #ykt-brush-panel .brush-item .bi-title b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }\n    #ykt-brush-panel .bi-meta { color:#64748b; margin-top:2px; font-size:11px; }\n    #ykt-brush-panel .bi-state { flex:0 0 auto; font-size:11px; color:#64748b; }\n    #ykt-brush-panel .bi-state.ok { color:#059669; }\n    #ykt-brush-panel .bi-state.bad { color:#dc2626; }\n    #ykt-brush-panel .bi-state.run { color:#1d63df; }\n    #ykt-brush-panel .brush-empty { color:#94a3b8; padding:20px 6px; font-size:12px; }\n    #ykt-brush-panel .brush-viewer { display:none; width:100%; height:240px; border:0; border-top:1px solid #e5e7eb; background:#fff; }\n    @media (max-width:700px) { #ykt-brush-panel .brush-body { grid-template-columns:1fr; } #ykt-brush-panel .brush-log { border-left:0; border-top:1px solid #e5e7eb; max-height:180px; } }\n  </style>\n  <div class="brush-head">\n    <h3>🎓 刷课</h3>\n    <select id="ykt-brush-course" title="课程"></select>\n    <button id="ykt-brush-scan">扫描内容</button>\n    <button id="ykt-brush-start" class="primary" disabled>开始</button>\n    <button id="ykt-brush-pause" disabled>暂停</button>\n    <button id="ykt-brush-stop" disabled>停止</button>\n  </div>\n  <div class="brush-score" id="ykt-brush-score">\n    <span>我的总评 <b>—</b></span><span>班级平均 <b>—</b></span><span>班级最高 <b>—</b></span><span>班级最低 <b>—</b></span>\n  </div>\n  <div class="brush-controls">\n    <label><input type="checkbox" id="ykt-brush-only-score"> 只刷算分内容</label>\n    <label><input type="checkbox" id="ykt-brush-mute" checked> 静音</label>\n    <label>倍速 <select id="ykt-brush-rate"><option value="1">1x</option><option value="1.5">1.5x</option><option value="2" selected>2x</option></select></label>\n    <label><input type="checkbox" id="ykt-brush-from-start"> 从头开始</label>\n    <span id="ykt-brush-hint">先扫描当前课程；班级上传课件会逐页阅读，测试/作业不自动提交。</span>\n  </div>\n  <div class="brush-body">\n    <div class="brush-queue" id="ykt-brush-queue"><div class="brush-empty">还没有扫描内容。</div></div>\n    <div class="brush-log" id="ykt-brush-log"></div>\n  </div>\n  <iframe class="brush-viewer" id="ykt-brush-viewer" title="班级课件预览"></iframe>\n</div>\n';
-  // src/ui/panels/brush.js
-  // 刷课页：当前课程内容扫描、成绩概览、班级上传课件逐页阅读。
-  // 视频/图文后续复用同一队列；当前版本先把最缺的班级课件链路做通。
-    let mounted$1 = false;
-  let root$1;
-  let courses = [];
-  let current = null;
-  let items = [];
-  let running = false;
-  let paused = false;
-  let stopped = false;
-  let busy = false;
+  var tpl = '<div id="ykt-brush-panel" class="ykt-panel">\n  <style>\n    #ykt-brush-panel .brush-head { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:12px 14px; border-bottom:1px solid #e5e7eb; }\n    #ykt-brush-panel .brush-head h3 { margin:0 10px 0 0; font-size:16px; }\n    #ykt-brush-panel select,#ykt-brush-panel button { font-size:12px; padding:5px 9px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#111; cursor:pointer; }\n    #ykt-brush-panel button.primary { background:#1d63df; border-color:#1d63df; color:#fff; }\n    #ykt-brush-panel button:disabled { opacity:.45; cursor:not-allowed; }\n    #ykt-brush-panel .brush-score { display:flex; gap:14px; flex-wrap:wrap; padding:8px 14px; background:#f8fafc; border-bottom:1px solid #e5e7eb; font-size:12px; color:#475569; }\n    #ykt-brush-panel .brush-score b { color:#0f172a; font-size:14px; }\n    #ykt-brush-panel .brush-controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 14px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#475569; }\n    #ykt-brush-panel .brush-controls label { display:flex; gap:4px; align-items:center; cursor:pointer; }\n    #ykt-brush-panel .brush-body { display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:280px; }\n    #ykt-brush-panel .brush-queue { overflow:auto; max-height:52vh; padding:8px 12px; }\n    #ykt-brush-panel .brush-log { border-left:1px solid #e5e7eb; padding:8px 10px; overflow:auto; max-height:52vh; font:11px/1.45 ui-monospace,Menlo,monospace; color:#475569; white-space:pre-wrap; background:#fcfcfd; }\n    #ykt-brush-panel .brush-item { display:flex; gap:8px; align-items:flex-start; padding:7px 6px; border-bottom:1px solid #f1f5f9; font-size:12px; }\n    #ykt-brush-panel .brush-item .bi-title { flex:1; min-width:0; }\n    #ykt-brush-panel .brush-item .bi-title b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }\n    #ykt-brush-panel .bi-meta { color:#64748b; margin-top:2px; font-size:11px; }\n    #ykt-brush-panel .bi-state { flex:0 0 auto; font-size:11px; color:#64748b; }\n    #ykt-brush-panel .bi-state.ok { color:#059669; }\n    #ykt-brush-panel .bi-state.bad { color:#dc2626; }\n    #ykt-brush-panel .bi-state.run { color:#1d63df; }\n    #ykt-brush-panel .brush-empty { color:#94a3b8; padding:20px 6px; font-size:12px; }\n    #ykt-brush-panel .brush-viewer { display:none; width:100%; height:240px; border:0; border-top:1px solid #e5e7eb; background:#fff; }\n    @media (max-width:700px) { #ykt-brush-panel .brush-body { grid-template-columns:1fr; } #ykt-brush-panel .brush-log { border-left:0; border-top:1px solid #e5e7eb; max-height:180px; } }\n  </style>\n  <div class="brush-head">\n    <h3>🎓 刷课</h3>\n    <select id="ykt-brush-course" title="课程"></select>\n    <button id="ykt-brush-scan">扫描内容</button>\n    <button id="ykt-brush-start" class="primary" disabled>开始</button>\n    <button id="ykt-brush-pause" disabled>暂停</button>\n    <button id="ykt-brush-stop" disabled>停止</button>\n  </div>\n  <div class="brush-score" id="ykt-brush-score">\n    <span>我的总评 <b>—</b></span><span>班级平均 <b>—</b></span><span>班级最高 <b>—</b></span><span>班级最低 <b>—</b></span>\n  </div>\n  <div class="brush-controls">\n    <label><input type="checkbox" id="ykt-brush-only-score"> 只刷算分内容</label>\n    <label><input type="checkbox" id="ykt-brush-include-completed"> 包含已完成（复刷）</label>\n    <label><input type="checkbox" id="ykt-brush-mute" checked> 静音</label>\n    <label>倍速 <select id="ykt-brush-rate"><option value="1">1x</option><option value="1.5">1.5x</option><option value="2" selected>2x</option></select></label>\n    <label><input type="checkbox" id="ykt-brush-from-start"> 从头开始</label>\n    <span id="ykt-brush-hint">先扫描当前课程；班级上传课件会逐页阅读，测试/作业不自动提交。</span>\n  </div>\n  <div class="brush-body">\n    <div class="brush-queue" id="ykt-brush-queue"><div class="brush-empty">还没有扫描内容。</div></div>\n    <div class="brush-log" id="ykt-brush-log"></div>\n  </div>\n  <iframe class="brush-viewer" id="ykt-brush-viewer" title="班级课件预览"></iframe>\n</div>\n';
+  // src/quiz/course-data.js
+  // 刷课/课程内容的数据汇聚层：API 优先，当前页 Vue 目录只做兜底。
+  
+  // 数据源：
+  // - 成绩接口：leaf_level_infos（有成绩的内容，含每项得分/权重）
+  // - 学习日志：全部活动（视频/图文/班级课件/作业/考试）
+  // - 班级课件：type=2 的逐页进度
+  // - 新版作业/考试：type=19/20 的状态
+  
+  // 这里只做纯数据合并；DOM 解析仍留在 brush.js（作为无 API 时的兜底）。
+    const BRUSHABLE$1 = new Set([ 0, 1, 3, 7 ]);
   const TYPE_LABEL = {
     0: "视频",
     1: "音频",
@@ -11309,6 +12132,285 @@
     8: "课堂",
     9: "试卷"
   };
+  function str(v) {
+    return v == null ? "" : String(v);
+  }
+  function num(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function scoreNum$1(v) {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  function evalMap(score) {
+    const m = new Map;
+    for (const e of score?.summary?.evaluation || []) if (e?.id != null) m.set(String(e.id), e);
+    return m;
+  }
+  function weightFor(score, evaluationId, isScore) {
+    const e = evalMap(score).get(String(evaluationId));
+    return e && Number.isFinite(Number(e.proportion)) ? Number(e.proportion) : 0;
+  }
+  /** 成绩接口的 leaf_level_infos → 统一条目。 */  function scoreRows(score) {
+    const rows = [];
+    for (const it of score?.items || []) {
+      const scoreId = str(it?.id);
+      const leafTypeId = str(it?.leafTypeId || "");
+      const lessonId = str(it?.lessonId || "");
+      const id = leafTypeId || lessonId || scoreId;
+      if (!id) continue;
+      const type = num(it?.leafType);
+      // 班级课件单独由 cards/view_depth 提供，避免生成没有 cardsId 的假条目。
+            if (type === 7) continue;
+      const weight = weightFor(score, it?.evaluationId);
+      const userScore = scoreNum$1(it?.userScore);
+      const leafScore = scoreNum$1(it?.leafScore);
+      rows.push({
+        id: id,
+        aliases: [ scoreId, leafTypeId, lessonId ].filter(Boolean),
+        title: str(it?.title || `内容 ${id}`),
+        type: type,
+        typeLabel: TYPE_LABEL[type] || `类型${type}`,
+        schedule: {
+          done: 0,
+          total: 0
+        },
+        // 有 user_score 说明至少有一次成绩记录；不能仅凭 leaf_score 判断完成。
+        completed: userScore != null,
+        completionSource: "score",
+        brushable: BRUSHABLE$1.has(type),
+        scored: weight > 0,
+        weight: weight,
+        weightUnknown: false,
+        isScore: true,
+        score: userScore,
+        maxScore: leafScore,
+        hasScore: true,
+        leafTypeId: leafTypeId,
+        scoreId: scoreId,
+        isExpired: it?.isExpired === true,
+        total: 0,
+        state: "idle"
+      });
+    }
+    return rows;
+  }
+  /** 学习日志活动 → 统一条目（只收刷课类型；作业/考试单独由 assignments 提供）。 */  function activityRows(activities) {
+    const rows = [];
+    const seen = new Set;
+    for (const a of Array.isArray(activities) ? activities : []) {
+      if (!a) continue;
+      const type = num(a.type);
+      if (!BRUSHABLE$1.has(type) || type === 7) continue;
+      const id = str(a.courseware_id || a.leaf_id || a.id);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const total = num(a.total ?? a.count ?? a.problem_count);
+      const done = num(a.done ?? a.finish ?? a.finished_count ?? a.progress);
+      rows.push({
+        id: id,
+        title: str(a.title || `内容 ${id}`),
+        type: type,
+        typeLabel: TYPE_LABEL[type] || `类型${type}`,
+        schedule: {
+          done: done,
+          total: total
+        },
+        completed: total > 0 ? done >= total : false,
+        completionSource: "activity",
+        brushable: true,
+        scored: false,
+        weight: 0,
+        weightUnknown: true,
+        isScore: false,
+        score: null,
+        maxScore: null,
+        hasScore: false,
+        total: total,
+        state: "idle"
+      });
+    }
+    return rows;
+  }
+  /** 新版作业/考试 → 统一条目（只展示，不刷）。 */  function assignmentRows(assignments) {
+    return (Array.isArray(assignments) ? assignments : []).filter(a => a && [ 4, 19, 20 ].includes(Number(a.type))).map(a => {
+      const type = Number(a.type);
+      const exam = type === 20;
+      const completed = exam ? a.examStatus === "submitted" : a.graded === true || a.status === "graded" || a.status === "submitted" || Number(a.status) >= 2 || scoreNum$1(a.score) != null;
+      const scoreKey = String(a.leafTypeId || a.oldId || a.newId || a.id || "");
+      return {
+        id: scoreKey || `assignment:${type}:${str(a.id)}`,
+        aliases: [ scoreKey, `assignment:${type}:${str(a.id)}`, str(a.leafTypeId), str(a.oldId), str(a.newId), str(a.id) ].filter(Boolean),
+        assignmentId: str(a.id),
+        title: str(a.title || (exam ? "考试" : "作业")),
+        type: type,
+        typeLabel: exam ? "考试" : "作业",
+        schedule: {
+          done: 0,
+          total: 0
+        },
+        completed: completed,
+        completionSource: "assignment",
+        brushable: false,
+        scored: false,
+        weight: 0,
+        weightUnknown: true,
+        isScore: false,
+        score: null,
+        maxScore: null,
+        hasScore: false,
+        rawScore: scoreNum$1(a.score),
+        rawMaxScore: scoreNum$1(a.totalScore),
+        statusMessage: str(a.statusMessage),
+        deadline: num(a.deadline),
+        total: num(a.problemCount),
+        state: "idle"
+      };
+    });
+  }
+  /**
+   * 合并“目录行”和“API 补充行”。
+   * 目录行提供准确的 done/total/顺序；API 行提供成绩、班级课件、作业状态。
+   */  function aliasesOf(row) {
+    return [ String(row?.id || ""), ...Array.isArray(row?.aliases) ? row.aliases.map(String) : [] ].filter(Boolean);
+  }
+  function mergeBrushItems(baseItems, extraItems) {
+    const byId = new Map;
+    const byAlias = new Map;
+    for (const it of baseItems || []) {
+      const id = String(it.id);
+      byId.set(id, it);
+      for (const alias of aliasesOf(it)) if (!byAlias.has(alias)) byAlias.set(alias, it);
+    }
+    for (const e of extraItems || []) {
+      const id = String(e?.id || "");
+      if (!id) continue;
+      let it = byId.get(id);
+      if (!it) for (const alias of aliasesOf(e)) if (byAlias.has(alias)) {
+        it = byAlias.get(alias);
+        break;
+      }
+      if (!it) {
+        const copy = {
+          ...e,
+          id: id,
+          aliases: aliasesOf(e)
+        };
+        byId.set(id, copy);
+        for (const alias of copy.aliases) if (!byAlias.has(alias)) byAlias.set(alias, copy);
+        continue;
+      }
+      const existingTotal = Number(it.schedule?.total) || 0;
+      const extraTotal = Number(e.schedule?.total) || 0;
+      const schedule = existingTotal > 0 ? it.schedule : extraTotal > 0 ? e.schedule : it.schedule || e.schedule || {
+        done: 0,
+        total: 0
+      };
+      const completed = existingTotal > 0 ? !!it.completed : !!(it.completed || e.completed);
+      const hasBaseScore = !!it.hasScore;
+      Object.assign(it, {
+        schedule: schedule,
+        completed: completed,
+        completionSource: it.completionSource || e.completionSource || "",
+        score: hasBaseScore ? it.score : e.score != null ? e.score : it.score,
+        maxScore: hasBaseScore ? it.maxScore : e.maxScore != null ? e.maxScore : it.maxScore,
+        rawScore: e.rawScore != null ? e.rawScore : it.rawScore,
+        rawMaxScore: e.rawMaxScore != null ? e.rawMaxScore : it.rawMaxScore,
+        hasScore: !!(it.hasScore || e.hasScore),
+        weight: e.hasScore ? Number(e.weight) || 0 : Number(it.weight) || 0,
+        scored: !!(it.scored || e.scored),
+        weightUnknown: !!(it.weightUnknown && e.weightUnknown),
+        isScore: !!(it.isScore || e.isScore),
+        cardsId: it.cardsId || e.cardsId || "",
+        activityId: it.activityId || e.activityId || "",
+        assignmentId: it.assignmentId || e.assignmentId || "",
+        statusMessage: it.statusMessage || e.statusMessage || "",
+        total: existingTotal > 0 ? it.total : e.total || it.total || 0
+      });
+      it.aliases = [ ...new Set([ ...aliasesOf(it), ...aliasesOf(e) ]) ];
+      for (const alias of it.aliases) if (!byAlias.has(alias)) byAlias.set(alias, it);
+    }
+    return [ ...byId.values() ];
+  }
+  /**
+   * 拉取 API 侧数据。任何单个接口失败都不影响其他来源。
+   * @returns {Promise<{score:object|null, activities:Array, classCards:Array, assignments:Array, items:Array, errors:Array}>}
+   */  async function loadCourseSnapshot(cid, skuId) {
+    const errors = [];
+    if (!skuId) try {
+      const info = await fetchClassroomInfo(cid);
+      skuId = info?.skuId || "";
+    } catch (e) {
+      errors.push("班级信息：" + (e?.message || e));
+    }
+    const [scoreRes, actsRes, assignmentsRes] = await Promise.allSettled([ skuId ? fetchCourseScores(cid, skuId) : Promise.resolve(null), fetchLearnActivities(cid), fetchAssignments(cid) ]);
+    const score = scoreRes.status === "fulfilled" ? scoreRes.value : null;
+    if (scoreRes.status === "rejected") errors.push("成绩：" + (scoreRes.reason?.message || scoreRes.reason));
+    const activities = actsRes.status === "fulfilled" ? actsRes.value : [];
+    if (actsRes.status === "rejected") errors.push("学习日志：" + (actsRes.reason?.message || actsRes.reason));
+    const assignments = assignmentsRes.status === "fulfilled" ? assignmentsRes.value : [];
+    if (assignmentsRes.status === "rejected") errors.push("作业/考试：" + (assignmentsRes.reason?.message || assignmentsRes.reason));
+    const classCards = pickClassCards(activities);
+    const cardItems = [];
+    // 只读 view_depth 的逐页进度；并发限制 3，避免一次打几十个请求。
+        const queue = [ ...classCards ];
+    await Promise.all(Array.from({
+      length: Math.min(3, queue.length)
+    }, async () => {
+      while (queue.length) {
+        const c = queue.shift();
+        try {
+          const p = await fetchClassCardProgress(cid, c.cardsId);
+          cardItems.push({
+            id: `classcard:${c.cardsId}`,
+            title: c.title,
+            type: 7,
+            typeLabel: TYPE_LABEL[7],
+            schedule: {
+              done: num(p.depth),
+              total: Math.max(num(c.count), num(p.depth))
+            },
+            completed: num(p.depth) > 0 && num(p.depth) >= Math.max(num(c.count), num(p.depth)),
+            completionSource: "class-card",
+            brushable: true,
+            scored: false,
+            weight: 0,
+            weightUnknown: true,
+            isScore: false,
+            cardsId: c.cardsId,
+            activityId: c.activityId,
+            total: Math.max(num(c.count), num(p.depth)),
+            state: "idle"
+          });
+        } catch (e) {
+          errors.push(`班级课件 ${c.title}：` + (e?.message || e));
+        }
+      }
+    }));
+    const items = [ ...scoreRows(score), ...activityRows(activities), ...assignmentRows(assignments), ...cardItems ];
+    return {
+      score: score,
+      activities: activities,
+      classCards: classCards,
+      assignments: assignments,
+      items: items,
+      errors: errors
+    };
+  }
+  // src/ui/panels/brush.js
+  // 刷课页：当前课程内容扫描、成绩概览、班级上传课件逐页阅读。
+  // 视频/图文后续复用同一队列；当前版本先把最缺的班级课件链路做通。
+    let mounted$1 = false;
+  let root$1;
+  let courses = [];
+  let current = null;
+  let items = [];
+  let running = false;
+  let paused = false;
+  let stopped = false;
+  let busy = false;
   const BRUSHABLE = new Set([ 0, 1, 3, 7 ]);
   function $(sel) {
     return root$1?.querySelector(sel);
@@ -11340,6 +12442,10 @@
     $("#ykt-brush-pause")?.addEventListener("click", () => togglePause());
     $("#ykt-brush-stop")?.addEventListener("click", () => stop());
     $("#ykt-brush-only-score")?.addEventListener("change", renderQueue);
+    $("#ykt-brush-include-completed")?.addEventListener("change", () => {
+      updateButtons();
+      renderQueue();
+    });
     $("#ykt-brush-course")?.addEventListener("change", e => {
       if (running || busy) {
         e.target.value = current?.id || "";
@@ -11347,6 +12453,7 @@
         return;
       }
       current = courses.find(c => c.id === e.target.value) || null;
+      if (current) rememberCourseSelection(current.id);
       updateScoreView(null);
       items = [];
       renderQueue();
@@ -11355,6 +12462,9 @@
     root$1.__yksOnShow = () => {
       void refreshCourses();
     };
+    subscribeCourseRoute(() => {
+      if (root$1?.classList.contains("visible") && !running && !busy) void refreshCourses();
+    });
     void refreshCourses();
     return root$1;
   }
@@ -11365,8 +12475,7 @@
       courses = await fetchCourses();
       const sel = $("#ykt-brush-course");
       if (!sel) return;
-      const cid = currentClassId();
-      const preferred = courses.find(c => c.id === cid) || current && courses.find(c => c.id === current.id) || courses[0] || null;
+      const preferred = preferredCourse(courses);
       sel.innerHTML = courses.map(c => `<option value="${escapeText(c.id)}">${escapeText(c.name)}</option>`).join("");
       if (preferred) {
         sel.value = preferred.id;
@@ -11468,9 +12577,18 @@
       total: 0
     };
   }
-  function makeItems(outline, classCards, score) {
+  function scoreNum(v) {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  function makeItems(outline, classCards, score, extraItems = []) {
     const evalById = new Map((score?.summary?.evaluation || []).map(e => [ String(e.id), e ]));
-    const scoreById = new Map((score?.items || []).map(x => [ String(x.id), x ]));
+    const scoreById = new Map;
+    for (const x of score?.items || []) for (const k of [ x?.id, x?.leafTypeId, x?.lessonId ]) {
+      const key = k == null ? "" : String(k);
+      if (key && !scoreById.has(key)) scoreById.set(key, x);
+    }
     const cardByTitle = new Map;
     for (const c of classCards) if (!cardByTitle.has(c.title)) cardByTitle.set(c.title, c);
     const rows = [];
@@ -11481,12 +12599,13 @@
         id: `classcard:${c.cardsId}`,
         title: c.title,
         type: 7,
-        typeLabel: "班级课件",
+        typeLabel: TYPE_LABEL[7],
         schedule: {
           done: 0,
           total: Number(c.count) || 0
         },
         completed: false,
+        completionSource: "class-card",
         brushable: true,
         scored: false,
         weight: 0,
@@ -11509,6 +12628,7 @@
       const matchedWeight = evalId && evalById.has(String(evalId)) ? evalById.get(String(evalId)).proportion : leaf.is_score ? 1 : 0;
       const weightUnknown = type === 7 && !hasScore;
       const weight = weightUnknown ? 0 : Number(matchedWeight) || 0;
+      const userScore = scoreNum(scoreRow?.userScore);
       rows.push({
         id: String(leaf.id),
         title: String(leaf.name || "未命名内容"),
@@ -11516,11 +12636,15 @@
         typeLabel: TYPE_LABEL[type] || `类型${type}`,
         schedule: schedule,
         completed: schedule.total > 0 ? schedule.done >= schedule.total : false,
+        completionSource: schedule.total > 0 ? "outline" : "",
         brushable: BRUSHABLE.has(type),
         scored: !weightUnknown && !!leaf.is_score && Number(weight) > 0,
         weight: weight,
         weightUnknown: weightUnknown,
         isScore: !!leaf.is_score,
+        score: userScore,
+        maxScore: scoreNum(scoreRow?.leafScore),
+        hasScore: userScore != null,
         cardsId: card?.cardsId || "",
         activityId: card?.activityId || "",
         total: card?.count || schedule.total || 0,
@@ -11529,7 +12653,7 @@
     }
     // 目录里没有列出的班级课件也要能刷；按 cardsId 去重，避免重复
         for (const c of classCards) if (!usedCards.has(c.cardsId)) appendClassCard(c);
-    return rows;
+    return mergeBrushItems(rows, extraItems);
   }
   async function scanCourse() {
     if (busy || running) return;
@@ -11537,7 +12661,7 @@
     const btn = $("#ykt-brush-scan");
     if (btn) btn.disabled = true;
     try {
-      const cid = current?.id || currentClassId();
+      const cid = current?.id || currentClassId$1();
       if (!cid) {
         ui.toast("请先打开一个课程页面", 2500);
         return;
@@ -11545,33 +12669,40 @@
       logLine(`扫描课程 ${cid}…`);
       if (!courses.length) await refreshCourses(true);
       current = current || courses.find(c => c.id === cid) || null;
-      let classCards = [];
-      try {
+      if (current && cid && current.id !== cid) {
+        const hit = courses.find(c => c.id === cid);
+        if (hit) current = hit;
+      }
+      // API 优先：先拿成绩/日志/班级课件/作业状态；当前页 Vue 目录只做补充。
+            let outline = readOutline();
+      const snapshot = await loadCourseSnapshot(cid, current?.skuId || "");
+      let score = snapshot.score;
+      let classCards = snapshot.classCards;
+      if (snapshot.errors.length) for (const err of snapshot.errors) logLine("数据源降级：" + err, "warn");
+      updateScoreView(score);
+      if (!outline && !snapshot.items.length) outline = await waitOutline();
+      if (outline?.skuId && current && !current.skuId) {
+        current.skuId = outline.skuId;
+        if (!score) try {
+          score = await fetchCourseScores(cid, current.skuId);
+          updateScoreView(score);
+        } catch (e) {
+          logLine("成绩读取失败：" + (e?.message || e), "warn");
+        }
+      }
+      if (!classCards.length) try {
         classCards = await fetchClassCards(cid);
       } catch (e) {
         logLine("班级课件列表读取失败：" + (e?.message || e), "warn");
       }
-      let score = null;
-      if (current?.skuId) try {
-        score = await fetchCourseScores(cid, current.skuId);
-        updateScoreView(score);
-      } catch (e) {
-        logLine("成绩读取失败：" + (e?.message || e), "warn");
-      } else updateScoreView(null);
-      const outline = await waitOutline();
-      if (outline?.skuId && current && !current.skuId) current.skuId = outline.skuId;
-      if (current?.skuId && !score) try {
-        score = await fetchCourseScores(cid, current.skuId);
-        updateScoreView(score);
-      } catch (e) {
-        logLine("成绩读取失败：" + (e?.message || e), "warn");
-      }
-      items = makeItems(outline, classCards, score);
-      if (!outline) logLine("没有读到课程目录数据；先只加载班级上传课件。", "warn");
+      items = makeItems(outline, classCards, score, snapshot.items);
+      if (!outline) logLine("没有读到当前页课程目录；使用 API 数据（可能缺少部分未计分内容）。", "warn");
+      if (!items.length) logLine("没有读取到课程内容，请确认登录状态或切换到课程页后重试。", "bad");
       renderQueue();
       const unfinished = items.filter(x => x.brushable && !x.completed).length;
-      ui.toast(`扫描完成：${items.length} 个内容，${unfinished} 个可刷`, 2800);
-      logLine(`扫描完成：总 ${items.length}，可刷未完成 ${unfinished}，班级课件 ${classCards.length}`);
+      const completed = items.filter(x => x.brushable && x.completed).length;
+      ui.toast(`扫描完成：${items.length} 个内容，未完成 ${unfinished}，已完成 ${completed}`, 2800);
+      logLine(`扫描完成：总 ${items.length}，未完成可刷 ${unfinished}，已完成 ${completed}，班级课件 ${classCards.length}`);
     } finally {
       busy = false;
       if (btn) btn.disabled = false;
@@ -11610,7 +12741,10 @@
       const meta = document.createElement("div");
       meta.className = "bi-meta";
       const weightText = it.weightUnknown ? "权重未知" : it.weight ? `占比 ${Math.round(it.weight * 100)}%` : "不计入总评";
-      meta.textContent = `${it.typeLabel} · ${weightText} · ${it.total ? `${it.schedule.done}/${it.total}` : it.completed ? "已完成" : "未开始"}`;
+      const progressText = it.schedule?.total > 0 ? `${it.schedule.done}/${it.schedule.total}` : it.completed ? "已完成" : "进度未知";
+      const scoreText = it.hasScore ? `成绩 ${fmt(it.score)}${it.maxScore != null ? `/${fmt(it.maxScore)}` : ""}` : "";
+      const rawText = it.rawScore != null ? `原始 ${fmt(it.rawScore)}${it.rawMaxScore != null ? `/${fmt(it.rawMaxScore)}` : ""}` : "";
+      meta.textContent = [ it.typeLabel, weightText, progressText, scoreText, rawText, it.statusMessage ].filter(Boolean).join(" · ");
       title.appendChild(b);
       title.appendChild(meta);
       const state = document.createElement("span");
@@ -11644,11 +12778,17 @@
       el.className = "bi-state" + (state === "ok" ? " ok" : state === "fail" ? " bad" : state === "run" ? " run" : "");
     }
   }
+  function includeCompleted() {
+    return !!$("#ykt-brush-include-completed")?.checked;
+  }
+  function eligibleForStart() {
+    return visibleItems().some(x => x.brushable && (includeCompleted() || !x.completed));
+  }
   function updateButtons() {
     const start = $("#ykt-brush-start");
     const pause = $("#ykt-brush-pause");
     const stop = $("#ykt-brush-stop");
-    if (start) start.disabled = running || !items.some(x => x.brushable && !x.completed);
+    if (start) start.disabled = running || !eligibleForStart();
     if (pause) pause.disabled = !running;
     if (stop) stop.disabled = !running;
   }
@@ -11659,8 +12799,8 @@
       return;
     }
     if (!items.length) await scanCourse();
-    if (!items.some(x => x.brushable && !x.completed)) {
-      ui.toast("没有可刷的未完成内容", 2e3);
+    if (!eligibleForStart()) {
+      ui.toast(includeCompleted() ? "没有可刷内容" : "没有可刷的未完成内容", 2e3);
       return;
     }
     running = true;
@@ -11675,7 +12815,7 @@
         if (stopped) break;
         while (paused && !stopped) await sleep(500);
         if (stopped) break;
-        if (!it.brushable || it.completed) continue;
+        if (!it.brushable || it.completed && !includeCompleted()) continue;
         if (it.type === 7) await processClassCard(it); else if (it.type === 3 || it.type === 0 || it.type === 1) await processContentLeaf(it); else {
           updateItemState(it, "skip");
           logLine(`跳过非刷课项 ${it.typeLabel}：「${it.title}」`, "warn");
@@ -11703,7 +12843,7 @@
     logLine("停止请求已发出");
   }
   function cardUrl(it) {
-    const cid = current?.id || currentClassId();
+    const cid = current?.id || currentClassId$1();
     if (!cid || !it.cardsId || !it.activityId) return "";
     const universityId = new URLSearchParams(location.search).get("university_id") || current?.universityId || uvIdFromCookie(document.cookie, "3195") || "3195";
     const qs = new URLSearchParams({
@@ -11725,7 +12865,7 @@
     return null;
   }
   function contentUrl(it) {
-    const cid = current?.id || currentClassId();
+    const cid = current?.id || currentClassId$1();
     if (!cid || !it.id) return "";
     return `${location.origin}/ai-workspace/lms-graph/${encodeURIComponent(cid)}/graph/${encodeURIComponent(it.id)}?is_chapter=1`;
   }
@@ -11891,7 +13031,7 @@
       logLine(`缺少 cardsId/activityId：「${it.title}」`, "bad");
       return false;
     }
-    const cid = current?.id || currentClassId();
+    const cid = current?.id || currentClassId$1();
     const viewer = $("#ykt-brush-viewer");
     if (!viewer) return false;
     const close = () => {
@@ -11912,7 +13052,8 @@
       try {
         before = await fetchClassCardProgress(cid, it.cardsId);
       } catch {/* ignore */}
-      const read = new Set((before?.depthDetail || []).map(x => Number(x)));
+      // 复刷已完成班级课件时不要沿用旧进度，否则会全部跳过。
+            const read = it.completed && includeCompleted() ? new Set : new Set((before?.depthDetail || []).map(x => Number(x)));
       const thumbs = [ ...d.querySelectorAll(".swiper-slide") ].map(el => {
         const page = Number(el.querySelector(".page")?.textContent?.trim());
         return Number.isFinite(page) && page > 0 ? {
@@ -12001,7 +13142,7 @@
   }, {
     id: "assign",
     icon: "fa-file-lines",
-    label: "作业",
+    label: "作业/考试",
     panelId: "ykt-assign-tab",
     mount: () => mountAssignmentsPanel()
   }, {
@@ -12203,6 +13344,9 @@
     },
     showAIPanel(visible = true) {
       openTab("ai", visible);
+    },
+    showAssignmentsPanel(visible = true) {
+      openTab("assign", visible);
     },
     showChatPanel(visible = true) {
       openTab("chat", visible);
@@ -14090,6 +15234,17 @@
         };
       },
       getHistory: getAIHistory,
+      /** 打开主面板指定 tab（测试模式）。 */
+      openShell(tab) {
+        openTab(tab);
+      },
+      /** 考试页 DOM 适配器（测试模式）：收集/填入，不提交。 */
+      examCollect() {
+        return collectExamQuestions(document);
+      },
+      examFill(answers) {
+        return fillExamAnswers(answers);
+      },
       /** 读取答题链路调试日志 */
       getAnswerLog: getAnswerLog,
       /** 走真实自动作答入口（actions.handleAutoAnswer，headless） */
