@@ -5,6 +5,9 @@ import { confirmDialog } from '../confirm.js';
 import { askAnswer, getOverride } from './ai.js';
 import { log } from '../../core/log.js';
 import {
+  getCourseContext, preferredCourse, rememberCourseSelection, subscribeCourseRoute,
+} from '../../core/course-context.js';
+import {
   fetchCourses, fetchAssignments, findCourseByQuiz, fetchQuizDataById, oldUrl, newUrl,
   enrichAssignments,
 } from '../../quiz/assignments.js';
@@ -18,7 +21,9 @@ import {
 } from '../../quiz/quiz-paper.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { buildAssignmentTask } from '../../answer/adapters/assignment.js';
-import { buildExerciseTask } from '../../answer/adapters/exercise.js';
+import { buildExerciseTask, stripTags } from '../../answer/adapters/exercise.js';
+import { collectExamQuestions, fillExamAnswers } from '../../quiz/exam-fill.js';
+import { ensureExamConsent } from '../../core/exam-consent.js';
 import { normalizeType, typeLabel } from '../../answer/model.js';
 
 let mounted = false;
@@ -33,6 +38,8 @@ let viewData = null;
 let viewTitle = '';
 let viewAssignment = null;
 let loadSeq = 0;   // 课程切换请求序号：旧请求/旧 enrich 返回后直接丢弃
+let lastFocusedRoute = '';
+let autoOpening = false;
 
 function $(sel) { return root?.querySelector(sel); }
 
@@ -70,7 +77,7 @@ function setStatus(text) {
 
 function setBusy(on) {
   busy = on;
-  ['#ykt-ap-zip', '#ykt-ap-ai', '#ykt-ap-refresh'].forEach((s) => {
+  ['#ykt-ap-zip', '#ykt-ap-ai', '#ykt-ap-refresh', '#ykt-ap-exam-fill'].forEach((s) => {
     const b = $(s);
     if (b) b.disabled = on;
   });
@@ -301,17 +308,27 @@ async function openActiveDetail(a) {
   }
 }
 
-/** 加密字体题目：把题干+选项渲染成图，避免 AI 只看到私用区乱码。 */
-async function captureActiveProblem(index) {
+/**
+ * 新版作业/考试题目的整题截图。
+ * 不再只对加密字体截图：普通题目也可能只有图片/公式，文本不足以让 AI 作答。
+ */
+async function captureProblemCard(q) {
+  if (!q) return '';
   try {
-    const el = document.querySelectorAll('#ykt-ap-questions .ap-active-item')[index];
-    if (!el || !el.querySelector('.xuetangx-com-encrypted-font')) return '';
-    const body = el.querySelector('.ap-problem-body');
-    if (!body) return '';
     const box = document.createElement('div');
-    box.style.cssText = 'position:fixed;left:-99999px;top:0;width:720px;background:#fff;padding:12px;font-size:13px;line-height:1.6;';
-    box.appendChild(body.cloneNode(true));
-    for (const option of el.querySelectorAll('.ap-option')) box.appendChild(option.cloneNode(true));
+    box.style.cssText = 'position:fixed;left:-99999px;top:0;width:760px;background:#fff;padding:14px;font:13px/1.65 system-ui,sans-serif;color:#111;';
+    const body = document.createElement('div');
+    body.innerHTML = sanitizeHtml(q.bodyHtml || '');
+    box.appendChild(body);
+    for (const o of (q.options || [])) {
+      const row = document.createElement('div');
+      row.style.cssText = 'margin-top:8px;';
+      row.textContent = `${o.label}. `;
+      const opt = document.createElement('span');
+      opt.innerHTML = sanitizeHtml(o.html || '');
+      row.appendChild(opt);
+      box.appendChild(row);
+    }
     document.body.appendChild(box);
     try {
       try { await document.fonts?.ready; } catch { /* ignore */ }
@@ -323,7 +340,36 @@ async function captureActiveProblem(index) {
       box.remove();
     }
   } catch (e) {
-    log.warn('[assign] encrypted font capture failed', e);
+    log.warn('[assign] problem capture failed', e);
+    return '';
+  }
+}
+
+async function captureActiveProblem(index) {
+  const q = viewData?.problems?.[index];
+  if (!q) return '';
+  return captureProblemCard(q);
+}
+
+/** 考试页 DOM 题目截图（图片题/公式题/加密字体）。 */
+async function captureExamElement(el) {
+  if (!el) return '';
+  try {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:-99999px;top:0;width:760px;background:#fff;padding:14px;font:13px/1.65 system-ui,sans-serif;color:#111;';
+    box.appendChild(el.cloneNode(true));
+    document.body.appendChild(box);
+    try {
+      try { await document.fonts?.ready; } catch { /* ignore */ }
+      const html2canvas = await ensureHtml2Canvas();
+      if (!html2canvas) return '';
+      const canvas = await html2canvas(box, { backgroundColor: '#fff', useCORS: true, scale: 2 });
+      return canvas.toDataURL('image/jpeg', 0.9);
+    } finally {
+      box.remove();
+    }
+  } catch (e) {
+    log.warn('[assign] exam capture failed', e);
     return '';
   }
 }
@@ -391,23 +437,26 @@ function renderList() {
   box.innerHTML = list.map((a) => {
     const oldU = oldUrl(a);
     const newU = newUrl(a, cid);
-    const detailBtn = a.type === 19 && a.leafTypeId
-      ? `<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}">详情</button>` : '';
-    const reviewBtn = a.type === 20 && a.canReview && a.leafTypeId
-      ? `<button type="button" data-act="review" data-id="${escapeHtml(a.id)}">回顾</button>` : '';
+    // 只保留一个主入口：有新版入口走新版，只有老版时才走老版。
+    let openBtn = '';
+    if (a.type === 20 && a.canReview && a.leafTypeId) {
+      openBtn = `<button type="button" data-act="review" data-id="${escapeHtml(a.id)}">回顾</button>`;
+    } else if (a.type === 19 && a.leafTypeId) {
+      openBtn = `<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}">详情</button>`;
+    } else if (a.type === 4 && a.oldId) {
+      openBtn = `<button type="button" data-q="${escapeHtml(a.id)}">打开</button>`;
+    } else if (newU) {
+      openBtn = `<button type="button" data-link="${escapeHtml(newU)}">打开新界面</button>`;
+    } else if (oldU) {
+      openBtn = `<button type="button" data-link="${escapeHtml(oldU)}">打开老界面</button>`;
+    }
     return `<div class="ap-row" data-id="${escapeHtml(a.id)}">
       <input type="checkbox" class="ap-check" data-id="${escapeHtml(a.id)}" ${selected.has(a.id) ? 'checked' : ''}>
       <div class="ap-main">
         <div class="ap-title">${escapeHtml(a.title)}</div>
         <div class="ap-meta">${rowMetaParts(a)}</div>
       </div>
-      <div class="ap-links">
-        ${detailBtn}
-        ${reviewBtn}
-        ${a.oldId ? `<button type="button" data-q="${escapeHtml(a.id)}">题目</button>` : ''}
-        ${oldU ? `<button type="button" data-link="${escapeHtml(oldU)}">老界面</button>` : ''}
-        ${newU ? `<button type="button" data-link="${escapeHtml(newU)}">新界面</button>` : ''}
-      </div>
+      <div class="ap-links">${openBtn}</div>
     </div>`;
   }).join('');
 }
@@ -433,9 +482,58 @@ async function loadList(courseId) {
   renderList();
   setStatus(list.length ? `共 ${list.length} 项` : '没有找到作业');
   await enrichIfNeeded(seq);
+  syncExamFillButton();
+}
+
+function routeKey(ctx) {
+  return `${ctx.classId || ''}|${ctx.newId || ''}|${ctx.oldQuizId || ''}`;
+}
+
+/** 找到当前 URL 指向的作业/考试行。 */
+function findRouteTarget(ctx = getCourseContext()) {
+  if (!ctx.newId && !ctx.oldQuizId) return null;
+  return list.find((a) => (
+    (ctx.newId && (String(a.newId) === String(ctx.newId) || String(a.leafTypeId) === String(ctx.newId)))
+    || (ctx.oldQuizId && String(a.oldId) === String(ctx.oldQuizId))
+  )) || null;
+}
+
+/**
+ * 当前页面是作业/考试时：选中对应行，并按需展开详情。
+ * 只对“直接路由”生效；普通课程页只选课程，不自动展开题目。
+ */
+async function focusRouteTarget({ open = true } = {}) {
+  const ctx = getCourseContext();
+  if (!ctx.newId && !ctx.oldQuizId) return false;
+  const key = routeKey(ctx);
+  const target = findRouteTarget(ctx);
+  if (!target) {
+    setStatus('没有在列表中定位到当前作业/考试，请刷新或回到课程页重试。');
+    return false;
+  }
+  selected.clear();
+  selected.add(target.id);
+  renderList();
+  const row = [...root.querySelectorAll('.ap-row')].find((r) => String(r.dataset.id) === String(target.id));
+  row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  if (!open || key === lastFocusedRoute) return true;
+  lastFocusedRoute = key;
+
+  // 直接路由：自动展开，用户不需要再找一次。
+  if (target.type === 20) {
+    if (target.canReview) await openActiveDetail(target);
+    else setStatus(target.statusMessage || '该考试暂不可回顾；进行中考试可打开考试页使用 AI 参考。');
+  } else if (target.type === 19) {
+    await openActiveDetail(target);
+  } else if (target.oldId) {
+    await openAssignmentQuestions(target);
+  }
+  return true;
 }
 
 async function loadCourses() {
+  if (autoOpening) return;
+  autoOpening = true;
   setStatus('正在读取课程列表…');
   try {
     courses = await fetchCourses();
@@ -444,11 +542,13 @@ async function loadCourses() {
       sel.innerHTML = courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
     }
     if (!courses.length) { setStatus('没有读取到课程'); return; }
-    const quizId = String(window.quizID || '');
-    if (quizId) {
+
+    const ctx = getCourseContext();
+    const oldQuizId = String(ctx.oldQuizId || window.quizID || '');
+    if (oldQuizId) {
       const scanSeq = loadSeq;
       setStatus('正在定位当前作业所属课程…');
-      const found = await findCourseByQuiz(courses, quizId);
+      const found = await findCourseByQuiz(courses, oldQuizId);
       if (found && scanSeq === loadSeq) {   // 扫描期间用户没切课程
         const seq = ++loadSeq;
         if (sel) sel.value = found.cid;
@@ -458,16 +558,20 @@ async function loadCourses() {
         renderList();
         setStatus(`共 ${list.length} 项`);
         await enrichIfNeeded(seq);
+        await focusRouteTarget();
         return;
       }
     }
-    const urlCid = new URLSearchParams(location.search).get('classroom_id');
-    const prefer = courses.find((c) => c.id === urlCid) || courses[0];
+
+    const prefer = preferredCourse(courses, ctx) || courses[0];
     if (sel) sel.value = prefer.id;
     await loadList(prefer.id);
+    await focusRouteTarget();
   } catch (e) {
     log.warn('[assign] courses failed', e);
     setStatus('读取课程失败：' + (e?.message || e));
+  } finally {
+    autoOpening = false;
   }
 }
 
@@ -550,55 +654,239 @@ async function batchZip() {
   }
 }
 
+function activeProblemPrompt(q) {
+  const opts = (q.options || []).map((o) => `${o.label}. ${stripTags(o.html || '')}`).join('\n');
+  return [
+    `第 ${q.index ?? '?'} 题（${q.typeText || ''}，${q.score ?? ''} 分）`,
+    stripTags(q.bodyHtml || ''),
+    opts,
+    (q.attachments || []).length ? `附件：${q.attachments.map((x) => x.name).join('、')}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+async function answerOneProblem({ prompt, imageDataUrl, override }) {
+  const content = [{ type: 'text', text: prompt }];
+  if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
+  const res = await agnesChat({
+    messages: [
+      { role: 'system', content: '你是学习助手。请根据题目文字和图片给出答案和简要步骤。填空题/选择题请明确写出答案。' },
+      { role: 'user', content },
+    ],
+    stream: false,
+    thinking: true,
+    override,
+    traceKind: 'assignment',
+    traceMode: 'none',
+  });
+  return res.content || '（空回复）';
+}
+
+function currentExamContext() {
+  const ctx = getCourseContext();
+  const target = list.find((a) => Number(a.type) === 20 && (
+    (ctx.newId && String(a.newId) === String(ctx.newId))
+    || (ctx.oldQuizId && String(a.oldId) === String(ctx.oldQuizId))
+  )) || null;
+  const byTitle = /考试|exam/i.test(String(document.title || ''));
+  const isExam = ctx.kind === 'exam' || !!target || (!!ctx.oldQuizId && byTitle);
+  return {
+    isExam,
+    examId: ctx.newId || ctx.oldQuizId || target?.newId || target?.oldId || '',
+    courseId: ctx.classId || cid,
+    target,
+  };
+}
+
+function syncExamFillButton() {
+  const btn = $('#ykt-ap-exam-fill');
+  if (!btn) return;
+  btn.style.display = currentExamContext().isExam ? '' : 'none';
+}
+
+/**
+ * 进行中考试：AI 逐题生成答案并写入当前页控件，不点击提交。
+ * 第一次使用前弹免责确认；同意后永久记住。
+ */
+async function fillCurrentExam({ fromBatch = false } = {}) {
+  const ctx = currentExamContext();
+  if (!ctx.isExam) { ui.toast?.('当前页面不是考试页', 2200); return null; }
+  const questions = collectExamQuestions(document);
+  if (!questions.length) {
+    ui.toast?.('未识别到考试题目控件；请确认考试页已加载，或使用「AI 解答」复制答案', 4000);
+    return null;
+  }
+  const override = getOverride();
+  if (!override) { ui.toast?.('请先在设置里配置 AI', 2500); return null; }
+  const ok = await ensureExamConsent({
+    mode: fromBatch ? 'batch' : 'single',
+    examId: ctx.examId,
+    courseId: ctx.courseId,
+    source: 'exam-fill',
+  });
+  if (!ok) { ui.toast?.('已取消自动填入；AI 答案仍会显示，不会提交', 3000); return null; }
+
+  if (!fromBatch) setBusy(true);
+  const answers = [];
+  try {
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      setStatus(`考试 AI 填入：第 ${i + 1}/${questions.length} 题…`);
+      const prompt = [
+        '这是一道正在进行的考试题。请给出最终答案。',
+        '选择题只返回选项字母（多选用逗号分隔）；填空题只返回填空内容；不要解释，不要重复题目。',
+        q.text,
+      ].join('\n');
+      try {
+        const imageDataUrl = await captureExamElement(q.element);
+        const userContent = [{ type: 'text', text: prompt }];
+        if (imageDataUrl) userContent.push({ type: 'image_url', image_url: { url: imageDataUrl } });
+        const res = await agnesChat({
+          messages: [
+            { role: 'system', content: '你只输出考试题的最终答案，不输出过程或解释。选择题输出 A/B/C/D 字母，多选用逗号分隔。' },
+            { role: 'user', content: userContent },
+          ],
+          stream: false,
+          thinking: true,
+          override,
+          traceKind: 'exam',
+          traceMode: 'none',
+        });
+        answers.push(String(res.content || '').trim());
+      } catch (e) {
+        answers.push('');
+        log.warn('[assign] exam fill answer failed', i, e?.message || e);
+      }
+    }
+    const result = fillExamAnswers(answers, { questions });
+    setStatus(`考试填入完成：${result.filled} 题已填，${result.skipped} 题跳过；未提交，请逐题核对。`);
+    ui.toast?.(`已填入 ${result.filled} 题，未提交；请核对后再手动交卷`, 4500);
+    return result;
+  } catch (e) {
+    setStatus('考试填入失败：' + (e?.message || e));
+    return null;
+  } finally {
+    if (!fromBatch) setBusy(false);
+  }
+}
+
+async function examFillCurrent() {
+  if (busy) return;
+  await fillCurrentExam();
+}
+
 async function batchAI() {
   if (busy) return;
-  const items = selectedItems().filter((a) => a.oldId);
-  if (!items.length) { ui.toast?.('请先勾选带老版界面的作业', 2500); return; }
+  const items = selectedItems().filter((a) => [4, 19, 20].includes(Number(a.type)));
+  if (!items.length) { ui.toast?.('请先勾选作业或考试', 2500); return; }
   const override = getOverride();
   if (!override) { ui.toast?.('请先在设置里配置 AI', 2500); return; }
-  const ok = await confirmDialog(
-    `将依次对 ${items.length} 份作业调用 AI 解答，题目较多时耗时和费用都会增加。确定继续吗？`,
-    { okText: '开始解答', danger: true },
-  );
+  const examCount = items.filter((a) => Number(a.type) === 20).length;
+  const inProgressCount = items.filter((a) => Number(a.type) === 20 && !a.canReview).length;
+  const detail = [
+    `将依次对 ${items.length} 份作业/考试调用 AI 解答，题目较多时耗时和费用都会增加。`,
+    examCount ? `其中 ${examCount} 份是考试；AI 只生成参考，不自动提交。` : '',
+    inProgressCount ? `有 ${inProgressCount} 份进行中/不可回顾考试：只有当前打开的考试页能自动填入，其余会被跳过。` : '',
+    '考试规则风险请自行承担。确定继续吗？',
+  ].filter(Boolean).join('\n');
+  const ok = await confirmDialog(detail, { okText: '开始解答', danger: true });
   if (!ok) return;
 
   setBusy(true);
   const md = [];
   let done = 0;
-  let total = 0;
   try {
-    const datasets = [];
     for (const a of items) {
-      const data = await fetchQuizDataById(a.oldId);
-      total += (data.Slides || []).filter((s) => s?.Problem).length;
-      datasets.push({ a, data });
-    }
-    for (const { a, data } of datasets) {
       md.push(`# ${a.title}\n`);
-      for (let i = 0; i < (data.Slides || []).length; i++) {
-        if (!data.Slides[i]?.Problem) continue;
-        setStatus(`正在解答「${a.title}」第 ${i + 1} 题（${done + 1}/${total}）…`);
-        const dataUrl = await quizQuestionDataUrl(data, i, 2);
-        const p = data.Slides[i].Problem;
-        const res = await agnesChat({
-          messages: [
-            { role: 'system', content: '你是学习助手。请根据题目图片给出答案和简要步骤。填空题/选择题请明确写出答案。' },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: `第 ${i + 1} 题（${p.Type || ''}，${p.Score ?? ''} 分）` },
-                { type: 'image_url', image_url: { url: dataUrl } },
-              ],
-            },
-          ],
-          stream: false,
-          thinking: true,
-          override,
-          traceKind: 'assignment',
-          traceMode: 'none',
-        });
-        md.push(`## 第 ${i + 1} 题\n\n${res.content || '（空回复）'}\n`);
-        done++;
+      setStatus(`正在读取「${a.title}」…`);
+      try {
+        if (Number(a.type) === 4) {
+          if (!a.oldId) { md.push('> 缺少老版作业入口，已跳过。\n'); continue; }
+          const data = await fetchQuizDataById(a.oldId);
+          const slides = data.Slides || [];
+          for (let i = 0; i < slides.length; i++) {
+            if (!slides[i]?.Problem) continue;
+            done++;
+            setStatus(`正在解答「${a.title}」第 ${i + 1} 题（已完成 ${done} 题）…`);
+            try {
+              const imageDataUrl = await quizQuestionDataUrl(data, i, 2);
+              const p = slides[i].Problem;
+              const answer = await answerOneProblem({
+                prompt: `第 ${i + 1} 题（${p.Type || ''}，${p.Score ?? ''} 分）`,
+                imageDataUrl,
+                override,
+              });
+              md.push(`## 第 ${i + 1} 题\n\n${answer}\n`);
+            } catch (e) {
+              md.push(`## 第 ${i + 1} 题\n\n> 解答失败：${e?.message || e}\n`);
+            }
+          }
+        } else if (Number(a.type) === 19) {
+          const detail = await fetchExerciseDetail({
+            leafTypeId: a.leafTypeId,
+            classroomId: a.classroomId,
+            uvId: uvIdFromCookie(document.cookie),
+          });
+          await injectActiveFont(detail.fontUrl);
+          for (const q of (detail.problems || [])) {
+            done++;
+            setStatus(`正在解答「${a.title}」第 ${q.index ?? done} 题（已完成 ${done} 题）…`);
+            try {
+              const imageDataUrl = await captureProblemCard(q);
+              const answer = await answerOneProblem({
+                prompt: activeProblemPrompt(q),
+                imageDataUrl,
+                override,
+              });
+              md.push(`## 第 ${q.index ?? done} 题\n\n${answer}\n`);
+            } catch (e) {
+              md.push(`## 第 ${q.index ?? done} 题\n\n> 解答失败：${e?.message || e}\n`);
+            }
+          }
+        } else if (Number(a.type) === 20) {
+          if (!a.canReview) {
+            const current = currentExamContext();
+            const samePage = current.isExam && current.examId && (
+              (a.newId && String(current.examId) === String(a.newId))
+              || (a.oldId && String(current.examId) === String(a.oldId))
+            );
+            if (samePage) {
+              // 进行中考试只能在当前打开的考试页读取并填入；不后台抓题、不提交。
+              const r = await fillCurrentExam({ fromBatch: true });
+              if (r) {
+                done += r.filled;
+                md.push(`> 已在当前考试页自动填入 ${r.filled} 题，跳过 ${r.skipped} 题；未提交，请核对后手动交卷。\n`);
+              } else {
+                md.push('> 当前考试页自动填入已取消或失败；未提交。\n');
+              }
+            } else {
+              md.push('> 进行中或不可回顾的考试需要先打开考试页；本工具不后台抓题、不自动提交。\n');
+            }
+            continue;
+          }
+          const detail = await fetchExamReview(a);
+          if (detail.mode !== 'exam-review') {
+            md.push(`> 暂不可回顾：${detail.progress?.statusMessage || '未出分或未公布'}\n`);
+            continue;
+          }
+          await injectActiveFont(detail.fontUrl);
+          for (const q of (detail.problems || [])) {
+            done++;
+            setStatus(`正在解答「${a.title}」第 ${q.index ?? done} 题（已完成 ${done} 题）…`);
+            try {
+              const imageDataUrl = await captureProblemCard(q);
+              const answer = await answerOneProblem({
+                prompt: activeProblemPrompt(q),
+                imageDataUrl,
+                override,
+              });
+              md.push(`## 第 ${q.index ?? done} 题\n\n${answer}\n`);
+            } catch (e) {
+              md.push(`## 第 ${q.index ?? done} 题\n\n> 解答失败：${e?.message || e}\n`);
+            }
+          }
+        }
+      } catch (e) {
+        md.push(`> 读取失败：${e?.message || e}\n`);
       }
     }
     await saveBlob(new Blob([md.join('\n')], { type: 'text/markdown;charset=utf-8' }), `作业解答_${stamp()}.md`);
@@ -618,7 +906,7 @@ export function mountAssignmentsPanel() {
   root.id = 'ykt-assign-tab';
   root.className = 'ykt-panel';
   root.innerHTML = `
-    <div class="panel-header"><h3>作业</h3></div>
+    <div class="panel-header"><h3>作业/考试</h3></div>
     <div class="panel-body">
       <div id="ykt-ap-current" style="display:none"></div>
       <div class="ap-toolbar">
@@ -629,13 +917,18 @@ export function mountAssignmentsPanel() {
         <label class="ap-all"><input type="checkbox" id="ykt-ap-all"> 全选</label>
         <button type="button" id="ykt-ap-zip">批量下载（ZIP）</button>
         <button type="button" id="ykt-ap-ai">批量 AI 解答</button>
+        <button type="button" id="ykt-ap-exam-fill" style="display:none;border-color:#f59e0b;color:#92400e;">考试 AI 自动填入（不提交）</button>
       </div>
       <div id="ykt-ap-status" class="ap-status"></div>
       <div id="ykt-ap-list" class="ap-list"></div>
       <div id="ykt-ap-questions" class="ap-questions" style="display:none"></div>
     </div>`;
 
-  $('#ykt-ap-course')?.addEventListener('change', (e) => { showListView(); loadList(e.target.value); });
+  $('#ykt-ap-course')?.addEventListener('change', (e) => {
+    rememberCourseSelection(e.target.value);
+    showListView();
+    loadList(e.target.value);
+  });
   $('#ykt-ap-refresh')?.addEventListener('click', () => loadList(cid));
   $('#ykt-ap-all')?.addEventListener('change', (e) => {
     if (e.target.checked) list.forEach((a) => selected.add(a.id));
@@ -644,6 +937,7 @@ export function mountAssignmentsPanel() {
   });
   $('#ykt-ap-zip')?.addEventListener('click', batchZip);
   $('#ykt-ap-ai')?.addEventListener('click', batchAI);
+  $('#ykt-ap-exam-fill')?.addEventListener('click', examFillCurrent);
 
   $('#ykt-ap-list')?.addEventListener('click', (e) => {
     const link = e.target.closest('button[data-link]');
@@ -681,9 +975,30 @@ export function mountAssignmentsPanel() {
   document.body.appendChild(root);
 
   root.__yksOnShow = () => {
-    renderCurrentCard();
-    if (!loaded) { loaded = true; loadCourses(); }
+    const ctx = getCourseContext();
+    syncExamFillButton();
+    if (!loaded) {
+      loaded = true;
+      loadCourses();
+      return;
+    }
+    if (ctx.newId || ctx.oldQuizId) void focusRouteTarget();
+    else renderCurrentCard();
   };
+  subscribeCourseRoute(() => {
+    const ctx = getCourseContext();
+    if (!ctx.newId && !ctx.oldQuizId) return;
+    // 直接进入新版/老版作业或考试页：自动切到「作业/考试」。
+    setTimeout(() => {
+      try { ui.showAssignmentsPanel?.(true); } catch { /* ignore */ }
+    }, 350);
+  });
   renderCurrentCard();
+  const initialCtx = getCourseContext();
+  if (initialCtx.newId || initialCtx.oldQuizId) {
+    setTimeout(() => {
+      try { ui.showAssignmentsPanel?.(true); } catch { /* ignore */ }
+    }, 900);
+  }
   return root;
 }

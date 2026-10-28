@@ -135,6 +135,10 @@ export const ui = {
     Shell.openTab('ai', visible);
   },
 
+  showAssignmentsPanel(visible = true) {
+    Shell.openTab('assign', visible);
+  },
+
   showChatPanel(visible = true) {
     Shell.openTab('chat', visible);
   },

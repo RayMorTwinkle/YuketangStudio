@@ -70,6 +70,10 @@ export function setEnhanced(v) {
   return true;
 }
 
+export function getInstallId() {
+  return installId();
+}
+
 function installId() {
   let id = storage.get(K_ID);
   if (!id) {

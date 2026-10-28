@@ -4,12 +4,13 @@
 import tpl from './brush.html';
 import { ui } from '../ui-api.js';
 import { log } from '../../core/log.js';
-import { currentClassId } from '../../core/history-capture.js';
+import { currentClassId, preferredCourse, rememberCourseSelection, subscribeCourseRoute } from '../../core/course-context.js';
 import { uvIdFromCookie } from '../../quiz/active-core.js';
 import { fetchCourses } from '../../quiz/assignments.js';
 import {
   fetchClassCards, fetchClassCardProgress, fetchCourseScores,
 } from '../../quiz/course-cards.js';
+import { loadCourseSnapshot, mergeBrushItems, TYPE_LABEL } from '../../quiz/course-data.js';
 
 let mounted = false;
 let root;
@@ -21,10 +22,6 @@ let paused = false;
 let stopped = false;
 let busy = false;
 
-const TYPE_LABEL = {
-  0: '视频', 1: '音频', 2: '直播', 3: '图文', 4: '讨论',
-  5: '考试', 6: '作业', 7: '班级课件', 8: '课堂', 9: '试卷',
-};
 const BRUSHABLE = new Set([0, 1, 3, 7]);
 
 function $(sel) { return root?.querySelector(sel); }
@@ -54,6 +51,10 @@ export function mountBrushPanel() {
   $('#ykt-brush-pause')?.addEventListener('click', () => togglePause());
   $('#ykt-brush-stop')?.addEventListener('click', () => stop());
   $('#ykt-brush-only-score')?.addEventListener('change', renderQueue);
+  $('#ykt-brush-include-completed')?.addEventListener('change', () => {
+    updateButtons();
+    renderQueue();
+  });
   $('#ykt-brush-course')?.addEventListener('change', (e) => {
     if (running || busy) {
       e.target.value = current?.id || '';
@@ -61,6 +62,7 @@ export function mountBrushPanel() {
       return;
     }
     current = courses.find((c) => c.id === e.target.value) || null;
+    if (current) rememberCourseSelection(current.id);
     updateScoreView(null);
     items = [];
     renderQueue();
@@ -68,6 +70,9 @@ export function mountBrushPanel() {
 
   mounted = true;
   root.__yksOnShow = () => { void refreshCourses(); };
+  subscribeCourseRoute(() => {
+    if (root?.classList.contains('visible') && !running && !busy) void refreshCourses();
+  });
   void refreshCourses();
   return root;
 }
@@ -78,8 +83,7 @@ async function refreshCourses(force = false) {
     courses = await fetchCourses();
     const sel = $('#ykt-brush-course');
     if (!sel) return;
-    const cid = currentClassId();
-    const preferred = courses.find((c) => c.id === cid) || (current && courses.find((c) => c.id === current.id)) || courses[0] || null;
+    const preferred = preferredCourse(courses);
     sel.innerHTML = courses.map((c) => `<option value="${escapeText(c.id)}">${escapeText(c.name)}</option>`).join('');
     if (preferred) {
       sel.value = preferred.id;
@@ -184,7 +188,13 @@ function scheduleOf(schedule) {
   return { done: 0, total: 0 };
 }
 
-function makeItems(outline, classCards, score) {
+function scoreNum(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function makeItems(outline, classCards, score, extraItems = []) {
   const evalById = new Map((score?.summary?.evaluation || []).map((e) => [String(e.id), e]));
   const scoreById = new Map((score?.items || []).map((x) => [String(x.id), x]));
   const cardByTitle = new Map();
@@ -199,9 +209,10 @@ function makeItems(outline, classCards, score) {
       id: `classcard:${c.cardsId}`,
       title: c.title,
       type: 7,
-      typeLabel: '班级课件',
+      typeLabel: TYPE_LABEL[7],
       schedule: { done: 0, total: Number(c.count) || 0 },
       completed: false,
+      completionSource: 'class-card',
       brushable: true,
       scored: false,
       weight: 0,
@@ -226,6 +237,7 @@ function makeItems(outline, classCards, score) {
       : (leaf.is_score ? 1 : 0);
     const weightUnknown = type === 7 && !hasScore;
     const weight = weightUnknown ? 0 : (Number(matchedWeight) || 0);
+    const userScore = scoreNum(scoreRow?.userScore);
     rows.push({
       id: String(leaf.id),
       title: String(leaf.name || '未命名内容'),
@@ -233,11 +245,15 @@ function makeItems(outline, classCards, score) {
       typeLabel: TYPE_LABEL[type] || `类型${type}`,
       schedule,
       completed: schedule.total > 0 ? schedule.done >= schedule.total : false,
+      completionSource: schedule.total > 0 ? 'outline' : '',
       brushable: BRUSHABLE.has(type),
       scored: !weightUnknown && !!leaf.is_score && Number(weight) > 0,
       weight,
       weightUnknown,
       isScore: !!leaf.is_score,
+      score: userScore,
+      maxScore: scoreNum(scoreRow?.leafScore),
+      hasScore: userScore != null,
       cardsId: card?.cardsId || '',
       activityId: card?.activityId || '',
       total: card?.count || schedule.total || 0,
@@ -248,7 +264,7 @@ function makeItems(outline, classCards, score) {
   for (const c of classCards) {
     if (!usedCards.has(c.cardsId)) appendClassCard(c);
   }
-  return rows;
+  return mergeBrushItems(rows, extraItems);
 }
 
 async function scanCourse() {
@@ -265,35 +281,47 @@ async function scanCourse() {
     logLine(`扫描课程 ${cid}…`);
     if (!courses.length) await refreshCourses(true);
     current = current || courses.find((c) => c.id === cid) || null;
-    let classCards = [];
-    try { classCards = await fetchClassCards(cid); } catch (e) { logLine('班级课件列表读取失败：' + (e?.message || e), 'warn'); }
-    let score = null;
-    if (current?.skuId) {
-      try {
-        score = await fetchCourseScores(cid, current.skuId);
-        updateScoreView(score);
-      } catch (e) {
-        logLine('成绩读取失败：' + (e?.message || e), 'warn');
-      }
-    } else {
-      updateScoreView(null);
+    if (current && cid && current.id !== cid) {
+      const hit = courses.find((c) => c.id === cid);
+      if (hit) current = hit;
     }
-    const outline = await waitOutline();
-    if (outline?.skuId && current && !current.skuId) current.skuId = outline.skuId;
-    if (current?.skuId && !score) {
-      try {
-        score = await fetchCourseScores(cid, current.skuId);
-        updateScoreView(score);
-      } catch (e) {
-        logLine('成绩读取失败：' + (e?.message || e), 'warn');
+
+    // API 优先：先拿成绩/日志/班级课件/作业状态；当前页 Vue 目录只做补充。
+    let outline = readOutline();
+    const snapshot = await loadCourseSnapshot(cid, current?.skuId || '');
+    let score = snapshot.score;
+    let classCards = snapshot.classCards;
+    if (snapshot.errors.length) {
+      for (const err of snapshot.errors) logLine('数据源降级：' + err, 'warn');
+    }
+    updateScoreView(score);
+
+    if (!outline && !snapshot.items.length) {
+      outline = await waitOutline();
+    }
+    if (outline?.skuId && current && !current.skuId) {
+      current.skuId = outline.skuId;
+      if (!score) {
+        try {
+          score = await fetchCourseScores(cid, current.skuId);
+          updateScoreView(score);
+        } catch (e) {
+          logLine('成绩读取失败：' + (e?.message || e), 'warn');
+        }
       }
     }
-    items = makeItems(outline, classCards, score);
-    if (!outline) logLine('没有读到课程目录数据；先只加载班级上传课件。', 'warn');
+    if (!classCards.length) {
+      try { classCards = await fetchClassCards(cid); } catch (e) { logLine('班级课件列表读取失败：' + (e?.message || e), 'warn'); }
+    }
+
+    items = makeItems(outline, classCards, score, snapshot.items);
+    if (!outline) logLine('没有读到当前页课程目录；使用 API 数据（可能缺少部分未计分内容）。', 'warn');
+    if (!items.length) logLine('没有读取到课程内容，请确认登录状态或切换到课程页后重试。', 'bad');
     renderQueue();
     const unfinished = items.filter((x) => x.brushable && !x.completed).length;
-    ui.toast(`扫描完成：${items.length} 个内容，${unfinished} 个可刷`, 2800);
-    logLine(`扫描完成：总 ${items.length}，可刷未完成 ${unfinished}，班级课件 ${classCards.length}`);
+    const completed = items.filter((x) => x.brushable && x.completed).length;
+    ui.toast(`扫描完成：${items.length} 个内容，未完成 ${unfinished}，已完成 ${completed}`, 2800);
+    logLine(`扫描完成：总 ${items.length}，未完成可刷 ${unfinished}，已完成 ${completed}，班级课件 ${classCards.length}`);
   } finally {
     busy = false;
     if (btn) btn.disabled = false;
@@ -342,7 +370,14 @@ function renderQueue() {
     const weightText = it.weightUnknown
       ? '权重未知'
       : (it.weight ? `占比 ${Math.round(it.weight * 100)}%` : '不计入总评');
-    meta.textContent = `${it.typeLabel} · ${weightText} · ${it.total ? `${it.schedule.done}/${it.total}` : (it.completed ? '已完成' : '未开始')}`;
+    const progressText = it.schedule?.total > 0
+      ? `${it.schedule.done}/${it.schedule.total}`
+      : (it.completed ? '已完成' : '进度未知');
+    const scoreText = it.hasScore
+      ? `成绩 ${fmt(it.score)}${it.maxScore != null ? `/${fmt(it.maxScore)}` : ''}`
+      : '';
+    meta.textContent = [it.typeLabel, weightText, progressText, scoreText, it.statusMessage]
+      .filter(Boolean).join(' · ');
     title.appendChild(b);
     title.appendChild(meta);
     const state = document.createElement('span');
@@ -379,11 +414,19 @@ function updateItemState(it, state) {
   }
 }
 
+function includeCompleted() {
+  return !!$('#ykt-brush-include-completed')?.checked;
+}
+
+function eligibleForStart() {
+  return items.some((x) => x.brushable && (includeCompleted() || !x.completed));
+}
+
 function updateButtons() {
   const start = $('#ykt-brush-start');
   const pause = $('#ykt-brush-pause');
   const stop = $('#ykt-brush-stop');
-  if (start) start.disabled = running || !items.some((x) => x.brushable && !x.completed);
+  if (start) start.disabled = running || !eligibleForStart();
   if (pause) pause.disabled = !running;
   if (stop) stop.disabled = !running;
 }
@@ -392,8 +435,8 @@ async function start() {
   if (running) return;
   if (busy) { ui.toast('正在扫描内容，请稍候', 2000); return; }
   if (!items.length) await scanCourse();
-  if (!items.some((x) => x.brushable && !x.completed)) {
-    ui.toast('没有可刷的未完成内容', 2000);
+  if (!eligibleForStart()) {
+    ui.toast(includeCompleted() ? '没有可刷内容' : '没有可刷的未完成内容', 2000);
     return;
   }
   running = true;
@@ -408,7 +451,7 @@ async function start() {
       if (stopped) break;
       while (paused && !stopped) await sleep(500);
       if (stopped) break;
-      if (!it.brushable || it.completed) continue;
+      if (!it.brushable || (it.completed && !includeCompleted())) continue;
       if (it.type === 7) {
         await processClassCard(it);
       } else if (it.type === 3 || it.type === 0 || it.type === 1) {
@@ -634,7 +677,10 @@ async function processClassCard(it) {
 
     let before = null;
     try { before = await fetchClassCardProgress(cid, it.cardsId); } catch { /* ignore */ }
-    const read = new Set((before?.depthDetail || []).map((x) => Number(x)));
+    // 复刷已完成班级课件时不要沿用旧进度，否则会全部跳过。
+    const read = (it.completed && includeCompleted())
+      ? new Set()
+      : new Set((before?.depthDetail || []).map((x) => Number(x)));
     const thumbs = [...d.querySelectorAll('.swiper-slide')]
       .map((el) => {
         const page = Number(el.querySelector('.page')?.textContent?.trim());

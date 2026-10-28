@@ -4,6 +4,7 @@
 //      → 去重排序 → 直接生成横屏 PDF 下载 → 通过 GM_setValue 通知主页面 → 关闭标签页
 import { exportImagesToPdf } from './pdf-export.js';
 import { log } from './log.js';
+import { currentClassId as classIdFromContext } from './course-context.js';
 
 const RESULT_KEY_PREFIX = 'ykt-history-result:';
 const PROGRESS_KEY_PREFIX = 'ykt-history-progress:';
@@ -353,13 +354,7 @@ export async function fetchClassActivities(classId) {
   return all;
 }
 
-/** 从当前页面路径提取 classId（含桌面版与移动版 /m/v2 课程日志页） */
+/** 从当前页面路径提取 classId（桌面/移动/新版作业页统一走 course-context）。 */
 export function currentClassId() {
-  const path = window.location.pathname;
-  const m = path.match(/\/studentLog\/(\d+)/)
-    || path.match(/\/student-lesson-report\/(\d+)/)
-    || path.match(/\/student-v3\/(\d+)/)
-    || path.match(/\/studentCards\/(\d+)/)   // 班级上传课件查看页
-    || path.match(/\/m\/v\d\/course\/[^/]+\/logs\/(\d+)\/(\d+)/);   // 移动版：/logs/{courseId}/{classId}
-  return m ? (m[2] || m[1]) : null;
+  return classIdFromContext();
 }
