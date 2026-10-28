@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.7.5
+// @version      0.8.0
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档
@@ -179,7 +179,7 @@
       };
       // 兜底计时器：部分 GM 实现不支持 timeout 字段 / 未授权域挂起等待用户授权时
       // ontimeout 也不会触发——不能让 Promise 永远 pending
-            const watchdog = setTimeout(() => done(reject, new Error(`图片下载超时(${timeoutMs}ms): ${hostOf(url)}`)), timeoutMs + 5e3);
+            const watchdog = setTimeout(() => done(reject, new Error(`图片下载超时(${timeoutMs}ms): ${hostOf$1(url)}`)), timeoutMs + 5e3);
       try {
         gm.xhr({
           method: "GET",
@@ -189,7 +189,7 @@
           onload: res => {
             // 回调内任何同步 throw 都会让 Promise 永远 pending——整体包 try
             try {
-              if (res.status !== 200) return done(reject, new Error(`图片下载 HTTP ${res.status}: ${hostOf(url)}`));
+              if (res.status !== 200) return done(reject, new Error(`图片下载 HTTP ${res.status}: ${hostOf$1(url)}`));
               let blob = res.response;
               // 兼容返回 ArrayBuffer/string 的 GM 实现
                             if (!(blob instanceof Blob)) blob = new Blob([ blob || "" ]);
@@ -201,16 +201,16 @@
               done(reject, new Error(`图片响应处理失败: ${e?.message || e}`));
             }
           },
-          onerror: () => done(reject, new Error(`图片下载失败: ${hostOf(url)}`)),
-          ontimeout: () => done(reject, new Error(`图片下载超时: ${hostOf(url)}`)),
-          onabort: () => done(reject, new Error(`图片下载中止: ${hostOf(url)}`))
+          onerror: () => done(reject, new Error(`图片下载失败: ${hostOf$1(url)}`)),
+          ontimeout: () => done(reject, new Error(`图片下载超时: ${hostOf$1(url)}`)),
+          onabort: () => done(reject, new Error(`图片下载中止: ${hostOf$1(url)}`))
         });
       } catch (e) {
         done(reject, e);
       }
     });
   }
-  function hostOf(url) {
+  function hostOf$1(url) {
     try {
       return new URL(url).hostname;
     } catch {
@@ -673,7 +673,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.7.5" !== "undefined" && "0.7.5") return String("0.7.5");
+      if (typeof "0.8.0" !== "undefined" && "0.8.0") return String("0.8.0");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -2751,7 +2751,7 @@
     type: "function",
     function: {
       name: "submit_answer",
-      description: "把本题的最终答案提交/暂存到雨课堂。确定答案后必须调用本工具；只输出文字不算完成。" + "选择题传选项标签；判断题传选项标签（A/B 或 √/×）；填空题按空位顺序每空一项；主观题传完整作答文本。",
+      description: "把本题的最终答案提交/暂存到雨课堂。确定答案后必须调用本工具；只输出文字不算完成。" + "选择题传选项标签；判断题传选项标签（A/B 或 √/×）；填空题按空位顺序每空一项；主观题传完整作答文本。" + "填空答案必须是普通文本：不要带 TeX/LaTeX 或 Markdown 格式，数学式写成普通文字（如 1/2、x^2，不要写 \\frac{1}{2}、$x^2$、**加粗**）。",
       parameters: {
         type: "object",
         properties: {
@@ -2760,11 +2760,15 @@
             items: {
               type: "string"
             },
-            description: '答案数组。单选/多选/投票：["A"] 或 ["A","C"]；' + '判断题：["A"]/["B"] 或 ["√"]/["×"]；' + '填空：每个空一项，如 ["12","3.5"]；主观/问答：一个元素，内容为完整作答文本。'
+            description: '答案数组。单选/多选/投票：["A"] 或 ["A","C"]；' + '判断题：["A"]/["B"] 或 ["√"]/["×"]；' + '填空：每个空一项，如 ["12","3.5"]，必须是普通文本（数学式写 1/2、x^2，不带 TeX/LaTeX 或 Markdown）；主观/问答：一个元素，内容为完整作答文本。'
           },
           reason: {
             type: "string",
             description: "一句话说明选择该答案的理由（可选）。"
+          },
+          confidence: {
+            type: "number",
+            description: "你对这个答案的把握：0 到 1 的小数（如 0.9 很有把握，0.4 不太确定）。可选。"
           }
         },
         required: [ "answers" ]
@@ -2790,7 +2794,7 @@
   /** 题目上下文：作为 user 消息的主体 */  function buildQuestionBlock(task) {
     const q = task?.question || {};
     const lines = [ "【题目信息（来自系统，比截图更可靠）】" ];
-    lines.push(`来源：${task?.source === "assignment" ? "作业题" : task?.source === "problem-list" ? "历史题目" : "课堂实时题"}`);
+    lines.push(`来源：${task?.source === "assignment" ? "作业题" : task?.source === "exercise" ? "新版作业题" : task?.source === "problem-list" ? "历史题目" : "课堂实时题"}`);
     lines.push(`题型：${q.typeLabel || typeLabel(q.type)}`);
     if (q.body) lines.push(`题干：${q.body}`);
     lines.push(...optionLines(q));
@@ -2814,7 +2818,7 @@
     if (transport === "tools") {
       lines.push("【工具使用要求】");
       if (soft) lines.push("当前有题目上下文。如果用户要的是最终答案，请调用 submit_answer；如果只是解释、追问或讨论，可以直接用文字回答。"); else lines.push(`当前有可提交的题目。确定最终答案后必须调用 submit_answer；只输出文字不算完成。本题会${target}。`);
-      lines.push("submit_answer 的 answers 参数：", '- 单选/多选/投票：选项标签数组，例如 ["A"] 或 ["A","C"]；', '- 判断题：必须是选项标签（如 ["A"]/["B"]，或题目选项本身就是 √/× 时用 ["√"]/["×"]）；', "- 如果题目只给了 A/B 标签，只能输出 A/B，不要输出 √/× 或解释；", "- 填空：按空位顺序，每个空一项；", "- 主观/问答：一个元素，内容为完整作答文本。");
+      lines.push("submit_answer 的 answers 参数：", '- 单选/多选/投票：选项标签数组，例如 ["A"] 或 ["A","C"]；', '- 判断题：必须是选项标签（如 ["A"]/["B"]，或题目选项本身就是 √/× 时用 ["√"]/["×"]）；', "- 如果题目只给了 A/B 标签，只能输出 A/B，不要输出 √/× 或解释；", "- 填空：按空位顺序，每个空一项；每空必须是普通文本，不要用 TeX/LaTeX 或 Markdown 格式（数学式写 1/2、x^2，不写 \\frac{1}{2}、$x^2$、**加粗**）；", "- 主观/问答：一个元素，内容为完整作答文本。");
       if (autoSubmit) lines.push("本次为自动作答：必须调用 submit_answer，否则本次作答视为失败。");
       return lines.join("\n");
     }
@@ -2832,7 +2836,7 @@
         break;
 
        case QTYPE.FILL:
-        lines.push("- 填空：每个空一行，例如 <answer>\\n12\\n3.5\\n</answer>");
+        lines.push("- 填空：每个空一行，例如 <answer>\\n12\\n3.5\\n</answer>；每空必须是普通文本，不要用 TeX/LaTeX 或 Markdown 格式（数学式写 1/2、x^2，不写 \\frac{1}{2}、$x^2$、**加粗**）");
         break;
 
        case QTYPE.SUBJECTIVE:
@@ -3039,9 +3043,22 @@
     return text;
   }
   /**
+   * 置信度归一化：'85%' → 0.85；>1 且 ≤100 的数视为百分数（85 → 0.85）；
+   * 非有限数 → null；结果钳制到 [0, 1]。
+   */  function normalizeConfidence(value) {
+    if (value === null || value === void 0) return null;
+    const raw = typeof value === "string" ? value.trim() : value;
+    if (raw === "") return null;
+    const percent = typeof raw === "string" && raw.endsWith("%");
+    const numeric = percent ? Number(raw.replace(/%$/, "")) : Number(raw);
+    if (!Number.isFinite(numeric)) return null;
+    const normalized = percent || numeric > 1 && numeric <= 100 ? numeric / 100 : numeric;
+    return Math.max(0, Math.min(1, normalized));
+  }
+  /**
    * 归一化一份答案。
    * @param {object} task
-   * @param {object|Array|string} raw {answers, reason} / answers / string
+   * @param {object|Array|string} raw {answers, reason, confidence} / answers / string
    * @param {'tool'|'regex'|'text'} source
    * @returns {object} Answer
    */  function normalizeAnswer(task, raw, source = "tool") {
@@ -3061,11 +3078,13 @@
     if (!answers.length) fail(ERROR.EMPTY_ANSWER, "answers 为空");
     const type = task?.question?.type;
     const reason = String(args.reason || "").trim();
+    const confidence = normalizeConfidence(args.confidence);
     if (type === QTYPE.SINGLE || type === QTYPE.MULTIPLE || type === QTYPE.POLL) return {
       kind: "choice",
       values: parseChoice(task, answers),
       text: "",
       reason: reason,
+      confidence: confidence,
       source: source
     };
     if (type === QTYPE.JUDGE) return {
@@ -3073,6 +3092,7 @@
       values: parseJudge(task, answers),
       text: "",
       reason: reason,
+      confidence: confidence,
       source: source
     };
     if (type === QTYPE.FILL) return {
@@ -3080,6 +3100,7 @@
       values: parseFill(task, answers),
       text: "",
       reason: reason,
+      confidence: confidence,
       source: source
     };
     if (type === QTYPE.SUBJECTIVE) {
@@ -3089,6 +3110,7 @@
         values: [ text ],
         text: text,
         reason: reason,
+        confidence: confidence,
         source: source
       };
     }
@@ -3222,6 +3244,7 @@
       text: answer.text || "",
       textLen: (answer.text || "").length,
       display: answer.kind === "subjective" ? answer.text : (answer.values || []).join("、"),
+      confidence: answer.confidence ?? null,
       source: answer.source
     };
   }
@@ -4312,6 +4335,14 @@
     title.className = "ykt-tool-title";
     title.textContent = displayOnly ? "💡 参考答案（不提交）" : isQuiz ? "📥 暂存答案（作业）" : "📤 提交答案";
     card.appendChild(title);
+    if (typeof answer?.confidence === "number" && Number.isFinite(answer.confidence)) {
+      const conf = document.createElement("div");
+      conf.className = "ykt-tool-confidence";
+      const pct = Math.round(answer.confidence * 100);
+      conf.textContent = `置信度 ${pct}%`;
+      if (pct < 50) conf.classList.add("ykt-conf-low");
+      card.appendChild(conf);
+    }
     const ans = document.createElement("div");
     ans.className = "ykt-tool-answer";
     ans.textContent = toDisplayAnswer(answer);
@@ -9192,7 +9223,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.7.5";
+      return "0.8.0";
     } catch {}
     return "0.0.0";
   }
@@ -9367,8 +9398,8 @@
   function mountAboutPanel() {
     if (mounted$2) return root$2;
     const host = document.createElement("div");
-    // "0.7.5" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.7.5"}<`);
+    // "0.8.0" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.8.0"}<`);
     document.body.appendChild(host.firstElementChild);
     root$2 = document.getElementById("ykt-about-panel");
     const $btn = root$2.querySelector("#ykt-about-check");
@@ -9441,18 +9472,602 @@
     mounted$2 = true;
     return root$2;
   }
-  // src/quiz/assignments.js
-  // 本课作业列表：courses/list + logs/learn；兼容老版(type=4)与新版(type=19/20)
-    const enc = encodeURIComponent;
-  async function getJson(url) {
-    const r = await fetch(url, {
-      credentials: "include"
+  // src/quiz/active-core.js
+  // 新版作业（type 19）/考试（type 20）纯函数核心：数据解包、状态解析、题目解析、试卷拼装、保留窗口。
+  // 协议参考：smartThise/OneTHU PR #28（b9b82ef）/ PR #32（5225a05），适配本项目数据形态。
+  // 本文件只含纯函数（无 fetch/DOM），供 active-http/exercise/exam/assignments 复用与单测覆盖。
+  /** 登录态失效：发现/详情队列遇到后应整体中止并提示用户刷新。 */  class AuthError extends Error {
+    constructor() {
+      super("雨课堂登录已失效，请刷新页面或重新登录后再试。");
+    }
+  }
+  /** 对象则原样返回，否则 null（数组也算非对象）。 */  function record(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+  }
+  /** 字符串则原样返回，否则 ''。 */  function text(value) {
+    return typeof value === "string" ? value : "";
+  }
+  /** string/number → trim 后字符串，否则 ''。 */  function id(value) {
+    return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+  }
+  /** 非负有限数（字符串数字也接受，如 '0.00'→0）；负数/NaN/Infinity/空串 → null。 */  function number(value) {
+    const n = typeof value === "string" && value.trim() ? Number(value) : value;
+    return typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  /** 严格非负安全整数（不接受字符串）。 */  function nonnegativeInteger(value) {
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  /** 严格非负有限数（不接受字符串）。 */  function nonnegativeNumber(value) {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  /** 分数字段归一：'5.00'→5，-1/缺失 → null。 */  function numericScore(value) {
+    return nonnegativeNumber(typeof value === "string" && value.trim() ? Number(value) : value);
+  }
+  /** 我的作答是否有实质内容（trim 后非空字符串 / 递归数组 / 有限数字）。 */  function hasAnswer(value) {
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.some(hasAnswer);
+    return typeof value === "number" && Number.isFinite(value);
+  }
+  /** https 绝对/协议相对 URL 规范化；非 https/非法 → null。 */  function httpsUrl(value) {
+    const raw = text(value);
+    if (!raw.trim()) return null;
+    try {
+      const u = new URL(raw, "https://pro.yuketang.cn/");
+      return u.protocol === "https:" && !u.username && !u.password ? u.href : null;
+    } catch {
+      return null;
+    }
+  }
+  /** 5 实体 HTML 转义。 */  function escapeText(value) {
+    return value.replace(/[&<>"']/g, c => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+  /** 正确答案渲染：数组逐项转义后 <br> 连接，字符串原样（服务端 HTML 交由 sanitizeHtml）。 */  function reviewAnswer(value) {
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return value.filter(v => typeof v === "string" || typeof v === "number").map(v => escapeText(String(v))).join("<br>");
+    return typeof value === "number" ? String(value) : "";
+  }
+  /** uv_id → university_id → '2598' 兜底（与官网前端行为一致）。 */  function uvIdFromCookie(cookieString) {
+    const raw = typeof cookieString === "string" ? cookieString : "";
+    const jar = new Map;
+    for (const part of raw.split(";")) {
+      const eq = part.indexOf("=");
+      if (eq <= 0) continue;
+      const name = part.slice(0, eq).trim();
+      if (!jar.has(name)) jar.set(name, part.slice(eq + 1).trim());
+    }
+    return jar.get("uv_id") || jar.get("university_id") || "2598";
+  }
+  /**
+   * 解包 {success, data} / {errcode|error_code|code, ...} 信封。
+   * 401000/401/403（任意字段）→ AuthError；其余错误码/未成功/缺数据 → Error。
+   */  function dataOf(value) {
+    const body = record(value);
+    if (!body) throw new Error("雨课堂返回非 JSON，请重新登录后重试。");
+    for (const field of [ "errcode", "error_code", "code" ]) {
+      const code = body[field];
+      if (code === void 0 || code === null || code === 0 || code === "0") continue;
+      if ([ "401000", "401", "403" ].includes(String(code))) throw new AuthError;
+      throw new Error(`雨课堂作业接口失败（${field}=${String(code)}）。`);
+    }
+    if (body.success === false) throw new Error("雨课堂作业接口未成功。");
+    const data = record(body.data);
+    if (!data) throw new Error("雨课堂作业接口未返回数据。");
+    return data;
+  }
+  /** 三个日历月（UTC，月末钳制），与宿主时区无关。 */  function assignmentRetentionCutoff(now = Date.now()) {
+    const date = new Date(now);
+    const day = date.getUTCDate();
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() - 3);
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, lastDay));
+    return date.getTime();
+  }
+  /** 缺失/非法 deadline 不能证明过期，一律保留；否则按三个月窗口过滤。 */  function isAssignmentRetained(assignment, now = Date.now()) {
+    const d = assignment !== null && typeof assignment === "object" ? assignment.deadline : null;
+    return d === null || d === void 0 || !Number.isFinite(d) || d >= assignmentRetentionCutoff(now);
+  }
+  /**
+   * 考试 cover 状态（/v/exam/cover 与 /exam_room/cover 同构）。
+   * 已验证官网判定：result.status 4/5=已交卷，6=缺考；monitor_status=2 覆盖为作废；
+   * 仅已交卷且 score_finish!==false 且 score/total_score 均为非负有限数才算已出分（零分有效）。
+   */  function parseExamProgress(data) {
+    const cover = record(data) ?? {};
+    const result = record(cover.result) ?? {};
+    const code = result.status;
+    const submitted = code === 4 || code === 5;
+    const invalid = (record(cover.face_auth_status) ?? {}).monitor_status === 2;
+    const examStatus = invalid ? "invalid" : submitted ? "submitted" : code === 6 ? "absent" : "unknown";
+    const total = nonnegativeInteger(cover.problem_count);
+    const unfinished = nonnegativeInteger(result.unfinished_count);
+    const totalCount = total !== null && total > 0 ? total : null;
+    // 缺失/越界的未答数不是 0；仅交卷不等于全部作答。
+        const answeredCount = submitted && !invalid && totalCount !== null && unfinished !== null && unfinished <= totalCount ? totalCount - unfinished : null;
+    const score = nonnegativeNumber(result.score);
+    const totalScore = nonnegativeNumber(cover.total_score);
+    const graded = submitted && !invalid && result.score_finish !== false && score !== null && totalScore !== null;
+    return {
+      examStatus: examStatus,
+      graded: graded,
+      score: graded ? score : null,
+      totalScore: graded ? totalScore : null,
+      status: answeredCount === null ? "unknown" : answeredCount === totalCount ? "answered" : answeredCount > 0 ? "partial" : "unanswered",
+      answeredCount: answeredCount,
+      totalCount: totalCount,
+      // cover 只有总题数与未答数，无逐题明细。
+      questions: [],
+      statusMessage: examStatus === "unknown" ? "暂无法获取考试状态，请在官网查看。" : null
+    };
+  }
+  /** 考试回顾门禁：已交卷 + 已出分 + 允许查看 + 成绩公布时间已到，才允许读取题目。 */  function canReviewExam(data, now) {
+    const cover = record(data) ?? {};
+    const progress = parseExamProgress(cover);
+    const release = number(cover.show_score_time);
+    return progress.examStatus === "submitted" && progress.graded === true && cover.show_perm === true && cover.show_score === true && (release === null || release <= (number(cover.server_time) ?? now));
+  }
+  /** 作业批改汇总（graded 仅在证据充分时给出 true/false，否则 null）。 */  function homeworkGraded(problems, aggregate, answered) {
+    if (answered === 0 && (aggregate ?? 0) === 0) return false;
+    const relevant = problems.filter(value => {
+      const user = record(record(value)?.user) ?? {};
+      const answer = record(user.my_answer) ?? {};
+      return (aggregate ?? 0) > 0 || [ 3, 4 ].includes(user.status) || hasAnswer(answer.content) || Array.isArray(answer.attachment) && answer.attachment.length > 0;
     });
-    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!relevant.length) return null;
+    let allGraded = true;
+    for (const value of relevant) {
+      const user = record(record(value)?.user) ?? {};
+      const rawScore = user.my_score;
+      const score = typeof rawScore === "string" && rawScore.trim() ? Number(rawScore) : rawScore;
+      // status=3 或 my_score=-1（含 '-1.00'）优先表示待批改。
+            if (user.status === 3 || score === -1) return false;
+      // 缺少批改字段不能被误判为已批改。
+            if (user.status !== 4 && nonnegativeNumber(score) === null) allGraded = false;
+    }
+    return allGraded ? true : null;
+  }
+  /**
+   * 作业（exercise）状态汇总：逐题 user 数据缺失时 answered=null（未知≠未答）。
+   * problems 为空且 answer_count 缺失时抛错（调用方降级为 statusMessage）。
+   */  function parseProgress(data) {
+    const body = record(data) ?? {};
+    const raw = Array.isArray(body.problems) ? body.problems : [];
+    const aggregate = nonnegativeInteger(numericScore(body.answer_count));
+    if (!raw.length && aggregate === null) throw new Error("作业状态数据为空");
+    const questions = raw.map((value, index) => {
+      const problem = record(value) ?? {};
+      const user = record(problem.user);
+      const answer = user ? record(user.my_answer) : null;
+      return {
+        id: id(problem.problem_id) || id(problem.id) || String(index + 1),
+        index: index + 1,
+        // 缺失的 user 数据不能证明该题未作答。
+        answered: !user ? null : user.status === 3 || user.status === 4 || hasAnswer(record(user.my_answer)?.content) || answer !== null && Array.isArray(answer.attachment) && answer.attachment.length > 0
+      };
+    });
+    const answered = questions.filter(q => q.answered === true).length;
+    const allKnown = questions.length > 0 && questions.every(q => q.answered !== null);
+    // 聚合数只能证明有活动，不能定位到具体题目。
+        const count = answered > 0 ? answered : aggregate ?? (allKnown ? 0 : null);
+    const status = allKnown && answered === questions.length ? "answered" : count !== null && count > 0 ? "partial" : allKnown || aggregate === 0 ? "unanswered" : "unknown";
+    const scored = raw.length > 0 && raw.every(value => {
+      const user = record(record(value)?.user) ?? {};
+      const content = record(record(value)?.content) ?? {};
+      return user.status !== 3 && numericScore(user.my_score) !== null && numericScore(content.score) !== null;
+    });
+    const graded = homeworkGraded(raw, aggregate, answered);
+    return {
+      status: status,
+      score: graded === true && scored ? raw.reduce((sum, value) => sum + numericScore((record(record(value)?.user) ?? {}).my_score), 0) : null,
+      totalScore: graded === true && scored ? raw.reduce((sum, value) => sum + numericScore((record(record(value)?.content) ?? {}).score), 0) : null,
+      graded: graded,
+      answeredCount: count,
+      totalCount: questions.length || null,
+      questions: questions,
+      statusMessage: null
+    };
+  }
+  /**
+   * 单题解析（exercise 详情 / 考试试卷共用）。
+   * status：3=已交待批改；4 或非负 my_score=已批改；有作答内容=已作答；
+   * my_answer 显式含 content=未作答；其余=未知。
+   */  function parseProblem(raw, position = 0) {
+    const problem = record(raw) ?? {};
+    const content = record(problem.content) ?? {};
+    const user = record(problem.user) ?? {};
+    const answer = record(user.my_answer) ?? {};
+    const answerHtml = typeof answer.content === "string" ? answer.content : Array.isArray(answer.content) ? answer.content.filter(v => typeof v === "string" || typeof v === "number").map(v => escapeText(String(v))).join("<br>") : typeof answer.content === "number" ? String(answer.content) : "";
+    const attachments = (Array.isArray(answer.attachment) ? answer.attachment : []).flatMap(item => {
+      const entry = record(item) ?? {};
+      const name = text(entry.name);
+      const href = httpsUrl(entry.url);
+      return name || href ? [ {
+        name: name || "附件",
+        url: href
+      } ] : [];
+    });
+    const userStatus = number(user.status);
+    const score = number(user.my_score);
+    const pendingScore = String(user.my_score ?? "").trim() !== "" && Number(user.my_score) === -1;
+    const status = userStatus === 3 ? "submitted" : !pendingScore && (userStatus === 4 || score !== null) ? "graded" : answerHtml.trim() || attachments.length ? "answered" : Object.hasOwn(answer, "content") ? "unanswered" : "unknown";
+    const count = number(user.count);
+    const used = number(user.my_count) ?? 0;
+    const type = number(content.ProblemType ?? content.Type) ?? 0;
+    const typeNames = {
+      1: "单选题",
+      2: "多选题",
+      3: "判断题",
+      4: "填空题",
+      5: "主观题",
+      6: "试卷",
+      9: "外链题"
+    };
+    return {
+      id: id(problem.problem_id) || String(position + 1),
+      index: number(problem.index) ?? position + 1,
+      type: type,
+      typeText: text(content.TypeText) || typeNames[type] || "题目",
+      score: number(content.score),
+      bodyHtml: text(content.Body),
+      options: (Array.isArray(content.Options) ? content.Options : []).map((rawOption, i) => {
+        const option = record(rawOption) ?? {};
+        return {
+          label: text(option.name) || String.fromCharCode(65 + i),
+          html: typeof rawOption === "string" ? rawOption : text(option.content ?? option.Body ?? option.text)
+        };
+      }),
+      answerHtml: answerHtml,
+      attachments: attachments,
+      status: status,
+      myScore: status === "graded" ? score : null,
+      remarkHtml: text(user.remark),
+      comments: (Array.isArray(user.comment) ? user.comment : []).flatMap(rawComment => {
+        const item = record(rawComment) ?? {};
+        const html = text(item.content);
+        return html.trim() ? [ {
+          html: html,
+          name: text(item.name),
+          index: number(item.index)
+        } ] : [];
+      }),
+      externalUrl: type === 9 ? httpsUrl((record(content.data) ?? {}).answer_problem_url) : null,
+      maxRetry: number(content.max_retry ?? problem.max_retry) ?? 0,
+      remainingRetries: count !== null && count > 0 ? Math.max(0, count - used) : null,
+      allowResults: (Array.isArray(content.AllowResults) ? content.AllowResults : []).filter(v => typeof v === "string")
+    };
+  }
+  /**
+   * 拼装考试回顾试卷（show_paper × problem_results × exam 域 cover）。
+   * 已验证试卷 index 恒为 0、results 与试卷顺序相反：一律按 problem_id 关联并重排 index=i+1。
+   * show_answer!==true 时隐去参考答案与解析（answer/Remark）。
+   */  function joinExamPaper(paper, results, reviewCover) {
+    const paperBody = record(paper) ?? {};
+    const cover = record(reviewCover) ?? {};
+    const byId = new Map((Array.isArray(record(results)?.problem_results) ? record(results).problem_results : []).map(raw => [ id(record(raw)?.problem_id), record(raw) ?? {} ]).filter(([key]) => key));
+    const problems = (Array.isArray(paperBody.problems) ? paperBody.problems : []).map((raw, i) => {
+      const p = record(raw) ?? {};
+      const pid = id(p.problem_id ?? p.ProblemID);
+      const result = pid ? byId.get(pid) ?? {} : {};
+      const grade = number(result.grade);
+      const parsed = parseProblem({
+        problem_id: pid,
+        index: i + 1,
+        content: {
+          ...p,
+          score: p.score ?? p.Score,
+          Options: (Array.isArray(p.Options) ? p.Options : []).map(rawOption => {
+            const option = record(rawOption) ?? {};
+            return {
+              name: option.key,
+              content: option.value
+            };
+          })
+        },
+        user: {
+          my_answer: {
+            content: result.result
+          }
+        }
+      }, i);
+      return {
+        ...parsed,
+        status: grade !== null ? "graded" : result.finished === false ? "unanswered" : result.finished === true ? "submitted" : "unknown",
+        myScore: grade,
+        correct: grade !== null && typeof result.correct === "boolean" ? result.correct : null,
+        correctAnswerHtml: cover.show_answer === true ? reviewAnswer(result.answer ?? p.Answer) : "",
+        explanationHtml: cover.show_answer === true ? text(p.Remark) : ""
+      };
+    });
+    return {
+      problems: problems,
+      questions: problems.map(p => {
+        const entry = byId.get(p.id);
+        return {
+          id: p.id,
+          index: p.index,
+          answered: typeof entry?.finished === "boolean" ? entry.finished : null
+        };
+      }),
+      fontUrl: httpsUrl(paperBody.font),
+      descriptionHtml: text(cover.description)
+    };
+  }
+  const EXAM_HOSTS = [ "tsinghua-exam.yuketang.cn", "examination.xuetangx.com" ];
+  /**
+   * gen_token 返回的 exam_host 白名单校验：仅 https、无凭据/端口、域名在白名单内。
+   * 非法/不支持 → Error（提示去官网），默认缺省为 examination.xuetangx.com。
+   */  function parseExamHost(value) {
+    let host;
+    try {
+      host = new URL(typeof value === "string" && value ? value : "https://examination.xuetangx.com");
+    } catch {
+      throw new Error("考试结果服务地址暂不支持，请在官网查看。");
+    }
+    if (host.protocol !== "https:" || host.username || host.password || host.port || !EXAM_HOSTS.includes(host.hostname)) throw new Error("考试结果服务地址暂不支持，请在官网查看。");
+    return host.origin;
+  }
+  // src/quiz/active-http.js
+  // 新版作业/考试 HTTP 层。
+  // EP1-EP5（pro 站点）：同源相对路径 fetch（credentials include，登录 Cookie 自动携带）；
+  // EP6-EP9（考试域 tsinghua-exam.yuketang.cn / examination.xuetangx.com）：跨源走
+  //   GM_xmlhttpRequest（userscript.meta 已 @connect *；Android 壳内 gm-shim 的 fetch
+  //   遇跨域 CORS 预检失败会自动回退原生 fetchRequest，无需平台分支）。
+  // 跨源请求绝不携带 pro 平台凭据：GM 按目标域独立 Cookie jar，headers 只发 x-client/xtbz/referer。
+  /** document.cookie 中的 csrftoken（非 HttpOnly；与 quiz-paper.js 暂存、官网前端一致）。 */  function csrfToken() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  /** 同源 GET（相对路径）。401/403 → AuthError；其余非 2xx → Error。 */  async function proGet(path) {
+    let r;
+    try {
+      r = await fetch(path, {
+        credentials: "include"
+      });
+    } catch {
+      throw new Error(`网络请求失败：${path}`);
+    }
+    if (r.status === 401 || r.status === 403) throw new AuthError;
+    if (!r.ok) throw new Error(`HTTP ${r.status}：${path}`);
     return r.json();
   }
+  /** 同源 POST JSON（相对路径），自动携带 X-CSRFToken；extraHeaders 覆盖默认头。 */  async function proPost(path, payload, extraHeaders = {}) {
+    const token = csrfToken();
+    const headers = {
+      "Content-Type": "application/json",
+      ...token ? {
+        "X-CSRFToken": token
+      } : {},
+      ...extraHeaders
+    };
+    let r;
+    try {
+      r = await fetch(path, {
+        method: "POST",
+        credentials: "include",
+        headers: headers,
+        body: JSON.stringify(payload ?? {})
+      });
+    } catch {
+      throw new Error(`网络请求失败：${path}`);
+    }
+    if (r.status === 401 || r.status === 403) throw new AuthError;
+    if (!r.ok) throw new Error(`HTTP ${r.status}：${path}`);
+    return r.json();
+  }
+  /**
+   * 跨源 GET（GM_xmlhttpRequest）。返回 GM 响应对象（status/responseText/...）。
+   * watchdog 兜底：部分 GM 实现 timeout 字段不生效，不能让 Promise 永远 pending。
+   */  function gmGet(url, headers = {}, timeoutMs = 15e3) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const done = (fn, v) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(watchdog);
+          fn(v);
+        }
+      };
+      const watchdog = setTimeout(() => done(reject, new Error(`考试结果请求超时：${hostOf(url)}`)), timeoutMs + 5e3);
+      try {
+        gm.xhr({
+          method: "GET",
+          url: url,
+          headers: headers,
+          timeout: timeoutMs,
+          onload: res => done(resolve, res),
+          onerror: () => done(reject, new Error(`考试结果请求失败：${hostOf(url)}`)),
+          ontimeout: () => done(reject, new Error(`考试结果请求超时：${hostOf(url)}`)),
+          onabort: () => done(reject, new Error(`考试结果请求中止：${hostOf(url)}`))
+        });
+      } catch (e) {
+        done(reject, e);
+      }
+    });
+  }
+  function hostOf(url) {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return String(url).slice(0, 60);
+    }
+  }
+  // src/quiz/exercise.js
+  // EP3：新版作业（type 19）题目与状态读取。
+  // GET /mooc-api/v1/lms/exercise/get_exercise_list/{leafTypeId}/?classroom_id=&term=latest&uv_id=
+  // 纯 I/O 壳：解析逻辑全部在 active-core（parseProblem/parseProgress），便于复用与单测。
+    function unknownProgress() {
+    return {
+      status: "unknown",
+      graded: null,
+      score: null,
+      totalScore: null,
+      answeredCount: null,
+      totalCount: null,
+      questions: [],
+      statusMessage: null
+    };
+  }
+  /** EP3 路径（enrichAssignments 复用）。 */  function exerciseListPath({leafTypeId: leafTypeId, classroomId: classroomId, uvId: uvId}) {
+    const query = new URLSearchParams({
+      classroom_id: String(classroomId || ""),
+      term: "latest",
+      uv_id: String(uvId || "")
+    });
+    return `/mooc-api/v1/lms/exercise/get_exercise_list/${encodeURIComponent(leafTypeId)}/?${query}`;
+  }
+  /**
+   * 读取新版作业详情（题目 + 状态汇总）。
+   * 题目列表与聚合作答数都缺失时状态未知（未知≠未答），不抛错。
+   */  async function fetchExerciseDetail({leafTypeId: leafTypeId, classroomId: classroomId, uvId: uvId}) {
+    const data = dataOf(await proGet(exerciseListPath({
+      leafTypeId: leafTypeId,
+      classroomId: classroomId,
+      uvId: uvId
+    })));
+    const problems = (Array.isArray(data.problems) ? data.problems : []).map((raw, i) => parseProblem(raw, i));
+    const hasStatus = problems.length > 0 || number(data.answer_count) !== null;
+    let progress = unknownProgress();
+    if (hasStatus) try {
+      progress = parseProgress(data);
+    } catch {
+      progress = unknownProgress();
+    }
+    const late = number(data.late_submission);
+    return {
+      mode: "exercise",
+      problems: problems,
+      progress: progress,
+      title: text(data.name) || null,
+      descriptionHtml: text(data.description),
+      fontUrl: httpsUrl(data.font),
+      maxRetry: number(data.max_retry) ?? 0,
+      lateAllowed: data.is_allowed_late_submission === true,
+      lateDeadline: late !== null && late > 0 ? late : null
+    };
+  }
+  // src/quiz/exam.js
+  // 考试（type 20）只读链路：
+  //   EP4  GET  /v/exam/cover?exam_id=&classroom_id=[&sku_id=]        （pro 同源）
+  //   EP5  POST /v/exam/gen_token {exam_id, classroom_id}              （pro 同源，xtbz/xt-agent/referer）
+  //   EP6  GET  {exam_host}/login?exam_id&user_id&crypt&next&language  （跨域 gm；接受 200/302/303）
+  //   EP7-9 GET {exam_host}/exam_room/{cover,problem_results,show_paper}?exam_id=
+  // 只读：绝不发起开始/重置/交卷类请求；跨域请求不携带 pro 平台凭据。
+    const enc$1 = encodeURIComponent;
+  /** EP4 路径（enrichAssignments 复用）。 */  function examCoverPath({leafTypeId: leafTypeId, classroomId: classroomId, skuId: skuId}) {
+    const query = new URLSearchParams({
+      exam_id: String(leafTypeId || ""),
+      classroom_id: String(classroomId || "")
+    });
+    if (skuId) query.set("sku_id", String(skuId));
+    return `/v/exam/cover?${query}`;
+  }
+  /**
+   * EP5-6：gen_token 换取考试域入口并完成 login。
+   * 返回 examGet(path) 读取器：路径白名单 + cover 首调强制校验 user_id
+   * 与 token 一致后才放行题目接口（401/403/3xx → AuthError）。
+   */  async function openExamReview(row) {
+    const tokenData = dataOf(await proPost("/v/exam/gen_token", {
+      exam_id: row.leafTypeId,
+      classroom_id: row.classroomId
+    }, {
+      xtbz: "ykt",
+      "xt-agent": "web",
+      "classroom-id": String(row.classroomId || ""),
+      "university-id": "0",
+      "uv-id": "0",
+      referer: `https://pro.yuketang.cn/v2/web/trans/${enc$1(String(row.classroomId || ""))}/${enc$1(String(row.leafTypeId || ""))}?status=4&isFrom=2`
+    }));
+    const token = typeof tokenData.token === "string" ? tokenData.token : "";
+    const userIdOk = [ "number", "string" ].includes(typeof tokenData.user_id) && String(tokenData.user_id) !== "";
+    if (!token || !userIdOk) throw new AuthError;
+    const origin = parseExamHost(tokenData.exam_host);
+    const resultUrl = `${origin}/result/${enc$1(String(row.leafTypeId))}?isFrom=2`;
+    const loginQuery = new URLSearchParams({
+      exam_id: String(row.leafTypeId),
+      user_id: String(tokenData.user_id),
+      crypt: token,
+      next: resultUrl,
+      language: "zh"
+    });
+    // GM 自动跟随重定向，正常终态 200（结果页）；302/303 为个别实现的中间态上报
+        const login = await gmGet(`${origin}/login?${loginQuery}`);
+    if (![ 200, 302, 303 ].includes(login.status)) throw new AuthError;
+    let verifiedUser = false;
+    return async path => {
+      if (![ "/exam_room/cover", "/exam_room/problem_results", "/exam_room/show_paper" ].includes(path)) throw new Error("不支持的考试结果接口。");
+      if (path !== "/exam_room/cover" && !verifiedUser) throw new AuthError;
+      const res = await gmGet(`${origin}${path}?${new URLSearchParams({
+        exam_id: String(row.leafTypeId)
+      })}`, {
+        "x-client": "web",
+        xtbz: "cloud",
+        referer: resultUrl
+      });
+      if (res.status === 401 || res.status === 403 || res.status >= 300 && res.status < 400) throw new AuthError;
+      if (res.status !== 200) throw new Error(`考试结果读取失败（HTTP ${res.status}）。`);
+      let body;
+      try {
+        body = JSON.parse(String(res.responseText ?? ""));
+      } catch {
+        throw new Error("考试结果返回非 JSON。");
+      }
+      if (path === "/exam_room/cover") {
+        const user = dataOf(body).user;
+        const u = user !== null && typeof user === "object" ? user : null;
+        if (!u || String(u.user_id ?? "") !== String(tokenData.user_id)) throw new AuthError;
+        verifiedUser = true;
+      }
+      return body;
+    };
+  }
+  /**
+   * 考试详情（只读）：
+   *   1. EP4 拉最新 cover —— 即使列表缓存说已出分也以实时为准；
+   *   2. 未达回顾门禁（未交卷/未出分/缺考/作废/未公布）→ 只返回状态，不碰 token；
+   *   3. 达门禁 → EP5-9 考试域复核 cover 后读 problem_results + show_paper 拼卷。
+   */  async function fetchExamReview(row) {
+    const cover = dataOf(await proGet(examCoverPath(row)));
+    const base = {
+      mode: "exam-cover",
+      progress: parseExamProgress(cover),
+      problems: [],
+      questions: [],
+      fontUrl: null,
+      descriptionHtml: ""
+    };
+    if (!canReviewExam(cover, Date.now())) return base;
+    const examGet = await openExamReview(row);
+    const reviewCoverBody = await examGet("/exam_room/cover");
+    const reviewCover = dataOf(reviewCoverBody);
+    const refreshed = {
+      ...base,
+      progress: parseExamProgress(reviewCover)
+    };
+    if (!canReviewExam(reviewCover, Date.now())) return refreshed;
+    const results = dataOf(await examGet("/exam_room/problem_results"));
+    const paper = dataOf(await examGet("/exam_room/show_paper"));
+    const joined = joinExamPaper(paper, results, reviewCover);
+    return {
+      ...refreshed,
+      mode: "exam-review",
+      problems: joined.problems,
+      questions: joined.questions,
+      fontUrl: joined.fontUrl,
+      descriptionHtml: joined.descriptionHtml
+    };
+  }
+  // src/quiz/assignments.js
+  // 本课作业列表：courses/list + logs/learn；兼容老版(type=4)与新版(type=19/20)。
+  // 新版行结构：leafTypeId/skuId/classroomId + enrichAssignments 填充的状态字段；
+  // 保留窗口：type 19/20 仅显示近三个月（deadline 缺失时保留），type 4 不限。
+    const enc = encodeURIComponent;
   async function fetchCourses() {
-    const j = await getJson("/v2/api/web/courses/list?identity=2");
+    const j = await proGet("/v2/api/web/courses/list?identity=2");
     const list = j?.data?.list || j?.list || [];
     return list.map(c => ({
       id: String(c.classroom_id || ""),
@@ -9460,15 +10075,34 @@
       role: c.role
     })).filter(c => c.id);
   }
+  const PAGE_SIZE = 200;
+  const MAX_PAGES = 50;
   async function fetchAssignments(cid) {
-    const j = await getJson(`/v2/api/web/logs/learn/${enc(cid)}?page=0&offset=200&sort=0&actype=-1`);
-    const acts = j?.data?.activities || j?.activities || [];
-    return acts.filter(a => a && (a.type === 4 || a.type === 19 || a.type === 20)).map(a => {
+    const acts = [];
+    const seenPages = new Set;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const data = dataOf(await proGet(`/v2/api/web/logs/learn/${enc(cid)}?page=${page}&offset=${PAGE_SIZE}&sort=0&actype=-1`));
+      const items = Array.isArray(data.activities) ? data.activities : [];
+      // 服务器忽略分页参数时整页重复：指纹去重后停止翻页（上游同款策略）
+            const signature = JSON.stringify(items);
+      if (seenPages.has(signature)) break;
+      seenPages.add(signature);
+      acts.push(...items);
+      if (items.length < PAGE_SIZE) break;
+      if (page === MAX_PAGES - 1) log$1.warn(`[assign] 学习日志过多，仅显示前 ${MAX_PAGES * PAGE_SIZE} 条活动中的作业`);
+    }
+    const rows = new Map;
+    for (const a of acts) {
+      if (!a || a.type !== 4 && a.type !== 19 && a.type !== 20) continue;
       const c = a.content || {};
-      const oldId = a.type === 4 ? String(a.courseware_id || "") : String(c.leaf_type_id || "");
+      const oldId = a.type === 4 ? String(a.courseware_id || "") : "";
       const newId = a.type === 4 ? String(a.courseware_id || "") : String(c.leaf_id || "");
-      return {
-        id: String(a.id || oldId || newId),
+      const leafTypeId = a.type === 4 ? "" : String(c.leaf_type_id || "");
+      const skuId = a.type === 4 ? "" : String(c.sku_id || "");
+      const id = String(a.id || a.courseware_id || newId || leafTypeId || "");
+      if (!id) continue;
+      const row = {
+        id: id,
         type: a.type,
         kind: a.type === 20 ? "exam" : "homework",
         title: a.title || (a.type === 20 ? "考试" : "作业"),
@@ -9477,9 +10111,88 @@
         problemCount: a.problem_count ?? null,
         status: a.status ?? null,
         oldId: oldId,
-        newId: newId
+        newId: newId,
+        leafTypeId: leafTypeId,
+        skuId: skuId,
+        classroomId: String(a.classroom_id || cid || "")
       };
-    }).sort((a, b) => (b.deadline || 0) - (a.deadline || 0));
+      rows.set(`${a.type}:${id}`, row);
+    }
+    return [ ...rows.values() ].filter(r => r.type === 4 || isAssignmentRetained({
+      deadline: r.deadline || null
+    })).sort((a, b) => (b.deadline || 0) - (a.deadline || 0));
+  }
+  /**
+   * 为 type 19/20 行补充作答状态（4 并发；AuthError 中止队列并整体抛出）。
+   * 单项失败只降级为 statusMessage，不影响其余行；返回新数组，不改入参。
+   */  async function enrichAssignments(rows) {
+    const uvId = uvIdFromCookie(typeof document !== "undefined" ? document.cookie : "");
+    const out = rows.map(r => ({
+      ...r
+    }));
+    const pending = out.filter(r => (r.type === 19 || r.type === 20) && r.leafTypeId);
+    let cursor = 0;
+    let stopped = false;
+    let failure = null;
+    await Promise.all(Array.from({
+      length: Math.min(4, pending.length)
+    }, async () => {
+      while (!stopped && cursor < pending.length) {
+        const row = pending[cursor++];
+        try {
+          if (row.type === 20) await enrichExamRow(row); else await enrichExerciseRow(row, uvId);
+        } catch (e) {
+          if (e instanceof AuthError) {
+            stopped = true;
+            failure = e;
+            continue;
+          }
+          row.statusMessage = row.type === 20 ? "考试状态获取失败，请刷新或在官网查看。" : "作答状态获取失败，请刷新或在官网确认。";
+        }
+      }
+    }));
+    if (failure) throw failure;
+    return out;
+  }
+  /** type 19：EP3 读状态（不解析题目，详情按需再拉）。 */  async function enrichExerciseRow(row, uvId) {
+    const data = dataOf(await proGet(exerciseListPath({
+      leafTypeId: row.leafTypeId,
+      classroomId: row.classroomId,
+      uvId: uvId
+    })));
+    let progress;
+    try {
+      progress = parseProgress(data);
+    } catch {
+      row.statusMessage = "暂无法获取作答状态，请在官网查看。";
+      return;
+    }
+    Object.assign(row, {
+      status: progress.status,
+      graded: progress.graded,
+      score: progress.score,
+      totalScore: progress.totalScore,
+      answeredCount: progress.answeredCount,
+      totalCount: progress.totalCount,
+      statusMessage: progress.statusMessage
+    });
+    if (progress.totalCount !== null) row.problemCount = progress.totalCount;
+  }
+  /** type 20：EP4 读 cover 状态，并记录 canReview 供列表「回顾」按钮显隐。 */  async function enrichExamRow(row) {
+    const cover = dataOf(await proGet(examCoverPath(row)));
+    const p = parseExamProgress(cover);
+    Object.assign(row, {
+      examStatus: p.examStatus,
+      status: p.status,
+      graded: p.graded,
+      score: p.score,
+      totalScore: p.totalScore,
+      answeredCount: p.answeredCount,
+      totalCount: p.totalCount,
+      statusMessage: p.statusMessage,
+      canReview: canReviewExam(cover, Date.now())
+    });
+    if (p.totalCount !== null) row.problemCount = p.totalCount;
   }
   function oldUrl(a) {
     if (!a?.oldId) return "";
@@ -9593,6 +10306,58 @@
       }
     };
   }
+  // src/answer/adapters/exercise.js
+  // 新版作业（type 19）/考试回顾（type 20）题目 → AnswerTask
+  // 入参 problem 为 active-core parseProblem/joinExamPaper 的输出；
+  // 仅展示：新版暂存接口未接入（预留 target.kind='exercise'），先只做 AI 解答。
+  /** HTML → 纯文本（正则实现，node 单测可直接导入；不解码加密字体，原字符保留）。 */  function stripTags(html) {
+    return String(html ?? "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|tr|h[1-6]|pre|table)>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/g, "'").replace(/&hellip;/gi, "…").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  /**
+   * @param {object} args
+   * @param {object} args.problem parseProblem/joinExamPaper 输出（id/index/type/bodyHtml/options/...）
+   * @param {object} [args.assignment] 作业列表行（id/leafTypeId/title/type）
+   * @returns {object|null} AnswerTask（display-only）
+   */  function buildExerciseTask({problem: problem, assignment: assignment = null} = {}) {
+    if (!problem || !problem.id) return null;
+    const options = normalizeOptions((Array.isArray(problem.options) ? problem.options : []).map(o => ({
+      key: o?.label,
+      text: stripTags(o?.html)
+    })));
+    const rawType = problem.type;
+    const type = normalizeType(rawType, {
+      source: "assignment",
+      options: options
+    });
+    const body = stripTags(problem.bodyHtml);
+    return {
+      id: `exercise:${safeId(assignment?.leafTypeId || assignment?.id)}:${safeId(problem.id)}`,
+      source: "exercise",
+      question: {
+        type: type,
+        typeLabel: typeLabel(type),
+        body: [ `第 ${problem.index ?? "?"} 题（${problem.typeText || typeLabel(type)}，${problem.score ?? ""} 分）`, body ].filter(Boolean).join("\n"),
+        options: options,
+        optionLabels: options.map(o => o.key),
+        // 新版填空无显式空位结构，无法强校验空数（AI 按题面作答）
+        blanks: 0,
+        image: {},
+        rawType: rawType
+      },
+      target: {
+        kind: "display",
+        allowSubmit: false,
+        submitLabel: "仅展示",
+        answered: false
+      },
+      meta: {
+        assignmentId: assignment?.id != null ? String(assignment.id) : null,
+        title: assignment?.title || "",
+        index: problem.index ?? null,
+        score: problem.score ?? null
+      }
+    };
+  }
   // src/ui/panels/assignments-panel.js
   // 工具箱「作业」tab：本课作业列表 + 当前试卷题目 + 批量下载/批量 AI + 单题 AI（复用 AI 解答面板）
     let mounted$1 = false;
@@ -9675,6 +10440,10 @@
   function renderQuestions() {
     const box = $("#ykt-ap-questions");
     if (!box) return;
+    if (viewData?.mode === "exercise" || viewData?.mode === "exam-review") {
+      renderActiveQuestions();
+      return;
+    }
     const slides = viewData?.Slides || [];
     const rows = slides.map((s, i) => {
       if (!s?.Problem) return "";
@@ -9686,6 +10455,142 @@
     $("#ykt-ap-goto-submit")?.addEventListener("click", () => {
       if (viewAssignment?.oldId) location.href = oldUrl(viewAssignment);
     });
+  }
+  /** 列表行 meta：类型 + 截止 + 题数/分值 + enrich 出的作答状态。 */  function rowMetaParts(a) {
+    const parts = [ a.type === 20 ? "考试" : a.type === 4 ? "作业（老版）" : "作业" ];
+    parts.push(`截止 ${deadlineText(a.deadline)}`);
+    if (a.problemCount != null) parts.push(`${a.problemCount} 题`);
+    if (a.totalScore != null) parts.push(`${a.totalScore} 分`);
+    if (a.answeredCount != null) parts.push(`已答 ${a.answeredCount}${a.totalCount != null ? `/${a.totalCount}` : ""}`);
+    if (a.score != null) parts.push(`得分 ${a.score}`);
+    if (a.type === 20) {
+      if (a.examStatus === "submitted") parts.push("已交卷"); else if (a.examStatus === "absent") parts.push("缺考"); else if (a.examStatus === "invalid") parts.push("已作废");
+    } else if (a.type === 19 && a.graded === false && (a.answeredCount ?? 0) > 0) parts.push("待批改");
+    if (a.statusMessage) parts.push(a.statusMessage);
+    return parts.map(s => escapeHtml(String(s))).join(" · ");
+  }
+  function activeProblemBadge(q, isExam) {
+    if (isExam) {
+      if (q.status === "graded") {
+        if (q.correct === true) return '<span class="ap-badge ap-ok">答对</span>';
+        if (q.correct === false) return '<span class="ap-badge ap-bad">答错</span>';
+        return '<span class="ap-badge">已批改</span>';
+      }
+      if (q.status === "unanswered") return '<span class="ap-badge ap-bad">未作答</span>';
+      if (q.status === "submitted") return '<span class="ap-badge">已作答</span>';
+      return "";
+    }
+    if (q.status === "graded") return '<span class="ap-badge ap-ok">已批改</span>';
+    if (q.status === "submitted") return '<span class="ap-badge">已交待批改</span>';
+    if (q.status === "answered") return '<span class="ap-badge">已作答</span>';
+    if (q.status === "unanswered") return '<span class="ap-badge ap-bad">未作答</span>';
+    return "";
+  }
+  /** 服务端 HTML 统一走 sanitizeHtml；为空不渲染。 */  function activeAnswerBlock(label, html) {
+    const clean = sanitizeHtml(html || "");
+    if (!clean.trim()) return "";
+    return `<div class="ap-ans"><span class="ap-ans-k">${escapeHtml(label)}</span><div class="ap-ans-v">${clean}</div></div>`;
+  }
+  function activeProblemCard(q, i, isExam) {
+    const options = (q.options || []).map(o => `\n    <div class="ap-option"><span class="ap-opt-key">${escapeHtml(o.label)}</span><span class="ap-opt-html">${sanitizeHtml(o.html)}</span></div>`).join("");
+    const files = (q.attachments || []).map(f => f.url ? `<div class="ap-attach"><a href="${escapeHtml(f.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(f.name)}</a></div>` : `<div class="ap-attach">${escapeHtml(f.name)}</div>`).join("");
+    const comments = (q.comments || []).map(c => activeAnswerBlock(c.name || "评论", c.html)).join("");
+    return `<div class="ap-active-item">\n    <div class="ap-active-head">\n      <span class="ap-active-idx">${q.index ?? i + 1}</span>\n      <b>${escapeHtml(q.typeText || "题目")}</b>\n      ${q.score != null ? `<span class="ap-active-score">${q.score} 分</span>` : ""}\n      ${activeProblemBadge(q, isExam)}\n      ${q.myScore != null ? `<span class="ap-badge">得分 ${q.myScore}</span>` : ""}\n      <span class="ap-active-links">\n        ${q.externalUrl ? `<a href="${escapeHtml(q.externalUrl)}" target="_blank" rel="noopener noreferrer">打开外链题</a>` : ""}\n        <button type="button" data-qact="aai" data-i="${i}">AI 解答</button>\n      </span>\n    </div>\n    <div class="ap-problem-body">${sanitizeHtml(q.bodyHtml)}</div>\n    ${options}\n    ${activeAnswerBlock("我的作答", q.answerHtml)}\n    ${isExam ? activeAnswerBlock("参考答案", q.correctAnswerHtml) : ""}\n    ${activeAnswerBlock("解析", q.explanationHtml)}\n    ${activeAnswerBlock("评语", q.remarkHtml)}\n    ${comments}\n    ${files}\n  </div>`;
+  }
+  /** type 19 详情 / type 20 回顾共用的题目视图（viewData.mode = exercise|exam-review）。 */  function renderActiveQuestions() {
+    const box = $("#ykt-ap-questions");
+    if (!box) return;
+    const d = viewData || {};
+    const isExam = d.mode === "exam-review";
+    const p = d.progress || {};
+    const head = [];
+    if (p.answeredCount != null) head.push(`已答 ${p.answeredCount}${p.totalCount != null ? `/${p.totalCount}` : ""}`);
+    if (p.score != null) head.push(`得分 ${p.score}${p.totalScore != null ? `/${p.totalScore}` : ""}`);
+    if (isExam) {
+      if (p.examStatus === "submitted") head.push("已交卷"); else if (p.examStatus === "absent") head.push("缺考"); else if (p.examStatus === "invalid") head.push("已作废");
+    } else if (p.graded === false && (p.answeredCount ?? 0) > 0) head.push("待批改");
+    if (!isExam && d.lateAllowed) head.push("允许迟交");
+    const rows = (d.problems || []).map((q, i) => activeProblemCard(q, i, isExam)).join("");
+    const desc = sanitizeHtml(d.descriptionHtml || "");
+    box.innerHTML = `\n    <div class="ap-qhead">\n      <button type="button" id="ykt-ap-back">← 返回作业列表</button>\n      <b>${escapeHtml(viewTitle || "详情")}</b>\n      <span class="ap-head-meta">${head.map(s => escapeHtml(String(s))).join(" · ")}</span>\n    </div>\n    ${desc ? `<div class="ap-desc">${desc}</div>` : ""}\n    <div class="ap-active-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
+    $("#ykt-ap-back")?.addEventListener("click", showListView);
+    injectActiveFont(d.fontUrl);
+  }
+  /** 加密字体：GM_xhr 拉 dataURL 注入 @font-face；失败保持原字符（降级）。 */  let activeFontUrl = "";
+  async function injectActiveFont(fontUrl) {
+    if (!fontUrl || fontUrl === activeFontUrl) return;
+    activeFontUrl = fontUrl;
+    try {
+      const dataUrl = (await fetchAsDataURL(fontUrl, 2e4)).replace(/'/g, "%27");
+      if (activeFontUrl !== fontUrl) return;
+      document.getElementById("ykt-active-font")?.remove();
+      const style = document.createElement("style");
+      style.id = "ykt-active-font";
+      style.textContent = `@font-face{font-family:'ykt-encrypted';src:url('${dataUrl}');}` + ` #ykt-assign-tab .xuetangx-com-encrypted-font{font-family:'ykt-encrypted' !important;}`;
+      document.head.appendChild(style);
+    } catch (e) {
+      log$1.warn("[assign] font inject failed", e);
+    }
+  }
+  /** type 19「详情」/ type 20「回顾」入口。 */  async function openActiveDetail(a) {
+    if (busy) return;
+    if (!a.leafTypeId) {
+      ui.toast?.("缺少作业标识，请先在官网打开一次该作业", 2500);
+      return;
+    }
+    setBusy(true);
+    try {
+      if (a.type === 20) {
+        setStatus(`正在读取「${a.title}」回顾…`);
+        const detail = await fetchExamReview(a);
+        if (detail.mode !== "exam-review") {
+          setStatus(detail.progress?.statusMessage || "该考试暂不可回顾（未出分或未公布），请在官网查看。");
+          return;
+        }
+        showQuestionsView(detail, a.title, a);
+      } else {
+        setStatus(`正在读取「${a.title}」…`);
+        const detail = await fetchExerciseDetail({
+          leafTypeId: a.leafTypeId,
+          classroomId: a.classroomId,
+          uvId: uvIdFromCookie(document.cookie)
+        });
+        showQuestionsView(detail, detail.title || a.title, a);
+      }
+    } catch (e) {
+      log$1.warn("[assign] active detail failed", e);
+      setStatus("读取失败：" + (e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  /** 新版作业/考试题目的 AI 解答（仅展示，不提交）。 */  async function aiForActiveProblem(index) {
+    try {
+      const q = viewData?.problems?.[index];
+      if (!q) return;
+      const task = buildExerciseTask({
+        problem: q,
+        assignment: viewAssignment
+      });
+      if (!task) throw new Error("题目信息不完整");
+      ui.showAIPanel?.(true);
+      await askAnswer(task);
+    } catch (e) {
+      ui.toast?.("AI 解答失败：" + (e?.message || e), 3500);
+    }
+  }
+  /** 列表里的 19/20 行补作答状态：不阻塞首屏，完成后重渲染。 */  async function enrichIfNeeded() {
+    if (!list.some(r => r.type === 19 || r.type === 20)) return;
+    setStatus("正在获取新版作业/考试状态…");
+    try {
+      list = await enrichAssignments(list);
+    } catch (e) {
+      log$1.warn("[assign] enrich failed", e);
+      setStatus("状态获取失败：" + (e?.message || e));
+      return;
+    }
+    renderList();
+    setStatus(list.length ? `共 ${list.length} 项` : "没有找到作业");
   }
   function renderCurrentCard() {
     const box = $("#ykt-ap-current");
@@ -9714,8 +10619,9 @@
     box.innerHTML = list.map(a => {
       const oldU = oldUrl(a);
       const newU = newUrl(a, cid);
-      const kind = a.type === 20 ? "考试" : a.type === 4 ? "作业（老版）" : "作业";
-      return `<div class="ap-row" data-id="${escapeHtml(a.id)}">\n      <input type="checkbox" class="ap-check" data-id="${escapeHtml(a.id)}" ${selected.has(a.id) ? "checked" : ""}>\n      <div class="ap-main">\n        <div class="ap-title">${escapeHtml(a.title)}</div>\n        <div class="ap-meta">${kind} · 截止 ${deadlineText(a.deadline)}${a.problemCount != null ? ` · ${a.problemCount} 题` : ""}${a.totalScore != null ? ` · ${a.totalScore} 分` : ""}</div>\n      </div>\n      <div class="ap-links">\n        ${a.oldId ? `<button type="button" data-q="${escapeHtml(a.id)}">题目</button>` : ""}\n        ${oldU ? `<button type="button" data-link="${escapeHtml(oldU)}">老界面</button>` : ""}\n        ${newU ? `<button type="button" data-link="${escapeHtml(newU)}">新界面</button>` : ""}\n      </div>\n    </div>`;
+      const detailBtn = a.type === 19 && a.leafTypeId ? `<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}">详情</button>` : "";
+      const reviewBtn = a.type === 20 && a.canReview && a.leafTypeId ? `<button type="button" data-act="review" data-id="${escapeHtml(a.id)}">回顾</button>` : "";
+      return `<div class="ap-row" data-id="${escapeHtml(a.id)}">\n      <input type="checkbox" class="ap-check" data-id="${escapeHtml(a.id)}" ${selected.has(a.id) ? "checked" : ""}>\n      <div class="ap-main">\n        <div class="ap-title">${escapeHtml(a.title)}</div>\n        <div class="ap-meta">${rowMetaParts(a)}</div>\n      </div>\n      <div class="ap-links">\n        ${detailBtn}\n        ${reviewBtn}\n        ${a.oldId ? `<button type="button" data-q="${escapeHtml(a.id)}">题目</button>` : ""}\n        ${oldU ? `<button type="button" data-link="${escapeHtml(oldU)}">老界面</button>` : ""}\n        ${newU ? `<button type="button" data-link="${escapeHtml(newU)}">新界面</button>` : ""}\n      </div>\n    </div>`;
     }).join("");
   }
   async function loadList(courseId) {
@@ -9724,14 +10630,16 @@
     setStatus("正在读取作业列表…");
     try {
       list = await fetchAssignments(cid);
-      renderList();
-      setStatus(list.length ? `共 ${list.length} 项` : "没有找到作业");
     } catch (e) {
       log$1.warn("[assign] load failed", e);
       list = [];
       renderList();
       setStatus("读取失败：" + (e?.message || e));
+      return;
     }
+    renderList();
+    setStatus(list.length ? `共 ${list.length} 项` : "没有找到作业");
+    await enrichIfNeeded();
   }
   async function loadCourses() {
     setStatus("正在读取课程列表…");
@@ -9754,6 +10662,7 @@
           selected.clear();
           renderList();
           setStatus(`共 ${list.length} 项`);
+          await enrichIfNeeded();
           return;
         }
       }
@@ -9945,6 +10854,14 @@
         location.href = link.dataset.link;
         return;
       }
+      const act = e.target.closest("button[data-act]");
+      if (act) {
+        if (act.dataset.act === "detail" || act.dataset.act === "review") {
+          const a = list.find(x => x.id === act.dataset.id);
+          if (a) openActiveDetail(a);
+        }
+        return;
+      }
       const q = e.target.closest("button[data-q]");
       if (q) {
         const a = list.find(x => x.id === q.dataset.q);
@@ -9960,7 +10877,7 @@
       const btn = e.target.closest("button[data-qact]");
       if (!btn) return;
       const i = Number(btn.dataset.i);
-      if (btn.dataset.qact === "dl") downloadQuestion(i); else if (btn.dataset.qact === "ai") aiForQuestion(i);
+      if (btn.dataset.qact === "dl") downloadQuestion(i); else if (btn.dataset.qact === "ai") aiForQuestion(i); else if (btn.dataset.qact === "aai") aiForActiveProblem(i);
     });
     document.body.appendChild(root$1);
     root$1.__yksOnShow = () => {
@@ -11732,7 +12649,7 @@
         };
     log$1.dbg("[雨课堂助手][INFO][fetch-interceptor] fetch() 已被拦截");
   })();
-  var css = '/* ===== 通用 & 修复 ===== */\n#watermark_layer { display: none !important; visibility: hidden !important; }\n.hidden { display: none !important; }\n\n:root{\n  --ykt-z: 10000000;\n  --ykt-border: #ddd;\n  --ykt-border-strong: #ccc;\n  --ykt-bg: #fff;\n  --ykt-fg: #222;\n  --ykt-muted: #607190;\n  --ykt-accent: #1d63df;\n  --ykt-hover: #1e3050;\n  --ykt-shadow: 0 10px 30px rgba(0,0,0,.18);\n}\n\n/* ===== 工具栏 ===== */\n#ykt-helper-toolbar{\n  position: fixed; z-index: calc(var(--ykt-z) + 1);\n  left: 15px; bottom: 15px;\n  /* 移除固定宽度，让内容自适应 */\n  height: 36px; padding: 5px;\n  display: flex; gap: 6px; align-items: center;\n  background: var(--ykt-bg);\n  border: 1px solid var(--ykt-border-strong);\n  border-radius: 4px;\n  box-shadow: 0 1px 4px 3px rgba(0,0,0,.1);\n}\n\n#ykt-helper-toolbar .btn{\n  display: inline-block; padding: 4px; cursor: pointer;\n  color: var(--ykt-muted); line-height: 1;\n}\n#ykt-helper-toolbar .btn:hover{ color: var(--ykt-hover); }\n#ykt-helper-toolbar .btn.active{ color: var(--ykt-accent); }\n\n/* 手机/窄屏：工具栏改为纵向贴左，按钮放大到可触控尺寸 */\n@media (max-width: 560px) {\n  #ykt-helper-toolbar{\n    left: 8px; bottom: 8px;\n    flex-direction: column;\n    height: auto; padding: 4px;\n  }\n  #ykt-helper-toolbar .btn{\n    width: 40px; height: 40px;\n    display: inline-flex; align-items: center; justify-content: center;\n    font-size: 17px;\n  }\n}\n\n/* 手机端：工具栏可收起为左侧窄轨（纯 Web，不依赖安卓外壳） */\n#ykt-helper-toolbar #ykt-btn-toolbar-toggle{ display: none; }\n#ykt-toolbar-badge{ display: none; }\n\nbody.ykt-narrow #ykt-helper-toolbar{\n  left: calc(8px + env(safe-area-inset-left, 0px));\n  bottom: calc(8px + env(safe-area-inset-bottom, 0px));\n}\nbody.ykt-narrow #ykt-helper-toolbar #ykt-btn-toolbar-toggle{\n  display: inline-flex; align-items: center; justify-content: center;\n  width: 40px; height: 22px; padding: 0; font-size: 13px;\n  border-top: 1px solid var(--ykt-border);\n}\nbody.ykt-narrow #ykt-helper-toolbar.collapsed{\n  width: 34px; height: 50px; padding: 2px; gap: 0;\n  justify-content: center; box-sizing: border-box;\n  border-radius: 4px 8px 8px 4px;\n}\nbody.ykt-narrow #ykt-helper-toolbar.collapsed > .btn:not(#ykt-btn-toolbar-toggle){\n  display: none;\n}\nbody.ykt-narrow #ykt-helper-toolbar.collapsed #ykt-btn-toolbar-toggle{\n  width: 28px; height: 44px; font-size: 14px;\n  border-top: 0;\n}\nbody.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{\n  display: block; position: absolute; top: 3px; right: 3px;\n  width: 6px; height: 6px; border-radius: 50%;\n  background: var(--ykt-accent); box-shadow: 0 0 0 2px var(--ykt-bg);\n  pointer-events: none;\n}\n\n/* ===== 面板通用样式 ===== */\n.ykt-panel{\n  position: fixed; right: 20px; bottom: 60px;\n  width: min(560px, calc(100vw - 48px));   /* 窄窗口不溢出 */\n  max-height: min(72vh, calc(100vh - 140px)); overflow: auto;\n  background: var(--ykt-bg); color: var(--ykt-fg);\n  border: 1px solid var(--ykt-border-strong); border-radius: 8px;\n  box-shadow: var(--ykt-shadow);\n  display: none;\n  /* 提高z-index，确保后打开的面板在最上层 */\n  z-index: var(--ykt-z);\n}\n.ykt-panel.visible{ \n  display: block; \n  /* 动态提升z-index */\n  z-index: calc(var(--ykt-z) + 10);\n}\n\n.panel-header{\n  display: flex; align-items: center; justify-content: space-between;\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\n  flex-wrap: wrap;   /* 窄屏下 actions 允许换行，不再把按钮挤碎 */\n}\n.panel-header h3{ margin: 0; font-size: 16px; font-weight: 600; }\n.panel-body{ padding: 10px 12px; }\n.close-btn{ cursor: pointer; color: var(--ykt-muted); }\n.close-btn:hover{ color: var(--ykt-hover); }\n\n/* 窄屏适配：header 里的按钮不换行、不挤压 */\n@media (max-width: 560px){\n  .panel-header{ gap: 8px; }\n  .panel-header h3{ font-size: 15px; flex: 1 1 60%; }\n  #ykt-settings-panel .setting-actions{ margin-top: 0; flex: 1 1 100%; }\n  #ykt-settings-panel .setting-actions button{ flex: 1; white-space: nowrap; }\n}\n\n/* 窄屏：面板打开时隐藏悬浮工具栏，避免压住面板左下角内容 */\n@media (max-width: 560px){\n  body.ykt-shell-open #ykt-helper-toolbar { display: none !important; }\n}\n\n/* ===== 设置面板 (#ykt-settings-panel) ===== */\n#ykt-settings-panel .settings-content{ display: flex; flex-direction: column; gap: 14px; }\n#ykt-settings-panel .setting-group{ border: 1px dashed var(--ykt-border); border-radius: 6px; padding: 10px; }\n#ykt-settings-panel .setting-group h4{ margin: 0 0 8px 0; font-size: 14px; }\n#ykt-settings-panel .setting-item{ display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }\n#ykt-settings-panel label{ font-size: 13px; }\n#ykt-settings-panel input[type="text"],\n#ykt-settings-panel input[type="password"],\n#ykt-settings-panel input[type="number"]{\n  height: 30px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 4px; padding: 0 8px; min-width: 160px; max-width: 100%;\n  box-sizing: border-box; flex: 1 1 160px;\n}\n\n/* API Key 行：输入框 + 眼睛 + 测试按钮 */\n#ykt-settings-panel .apikey-row{\n  display: flex; align-items: center; gap: 6px; flex: 1 1 160px; min-width: 0;\n}\n#ykt-settings-panel .apikey-input{ flex: 1 1 auto; min-width: 0; }\n#ykt-settings-panel .apikey-eye,\n#ykt-settings-panel .apikey-test{\n  flex: 0 0 auto; height: 30px; padding: 0 10px;\n  border: 1px solid var(--ykt-border-strong); border-radius: 4px;\n  background: #f7f8fa; cursor: pointer; font-size: 12px; white-space: nowrap;\n}\n#ykt-settings-panel .apikey-eye:hover,\n#ykt-settings-panel .apikey-test:hover{\n  background: #eef3ff; border-color: var(--ykt-accent);\n}\n#ykt-settings-panel .apikey-test-result{ display: block; margin-top: 4px; font-size: 12px; }\n\n/* 高级选项折叠 */\n#ykt-settings-panel .setting-advanced{ margin: 6px 0; }\n#ykt-settings-panel .setting-advanced summary{\n  cursor: pointer; font-size: 12px; color: #607190; user-select: none;\n  padding: 4px 0; list-style: none;\n}\n#ykt-settings-panel .setting-advanced summary::-webkit-details-marker{ display: none; }\n#ykt-settings-panel .setting-advanced summary::before{ content: "▸ "; font-size: 10px; }\n#ykt-settings-panel .setting-advanced[open] summary::before{ content: "▾ "; }\n#ykt-settings-panel .setting-advanced summary:hover{ color: var(--ykt-accent); }\n#ykt-settings-panel small{ color: #666; }\n#ykt-settings-panel .setting-actions{ display: flex; gap: 8px; margin-top: 6px; }\n#ykt-settings-panel button{\n  height: 30px; padding: 0 12px; border-radius: 6px;\n  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\n}\n#ykt-settings-panel button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\n\n/* 自定义复选框（与手写脚本一致的视觉语义） */\n#ykt-settings-panel .checkbox-label{ position: relative; padding-left: 26px; cursor: pointer; user-select: none; }\n#ykt-settings-panel .checkbox-label input{ position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }\n#ykt-settings-panel .checkbox-label .checkmark{\n  position: absolute; left: 0; top: 50%; transform: translateY(-50%);\n  height: 16px; width: 16px; border:1px solid var(--ykt-border-strong); border-radius: 3px; background: #fff;\n}\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark{\n  background: var(--ykt-accent); border-color: var(--ykt-accent);\n}\n#ykt-settings-panel .checkbox-label .checkmark:after{\n  content: ""; position: absolute; display: none;\n  left: 5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);\n}\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark:after{ display: block; }\n\n/* ===== AI 解答面板 (#ykt-ai-answer-panel) =====\n   气泡的 markdown 排版样式见文件底部（作用于 .ykt-ai-msg.ai / .ykt-chat-msg.ai） */\n\n/* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */\n#ykt-presentation-panel{ width: 900px; }\n#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n#ykt-presentation-panel .panel-body{\n  display: grid; grid-template-columns: 300px 1fr; gap: 10px;\n}\n#ykt-presentation-panel .panel-left,\n#ykt-presentation-panel .panel-right{\n  display: flex;\n  flex-direction: column;\n}\n#ykt-presentation-panel .presentation-list{\n  border: 1px solid var(--ykt-border);\n  border-radius: 8px;\n  background: #fff;\n  padding: 10px;\n  box-sizing: border-box;\n}\n#ykt-presentation-panel .presentation-title{\n  font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);\n}\n#ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }\n#ykt-presentation-panel .slide-thumb{\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;\n  min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;\n}\n#ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }\n#ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }\n#ykt-presentation-panel .slide-index {\n  position: absolute; top: 4px; left: 4px; z-index: 2;               \n  padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 1;\n  background: rgba(0, 0, 0, 0.6); color: #fff; pointer-events: none;\n}\n#ykt-presentation-panel .slide-view{\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;\n}\n#ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }\n#ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }\n#ykt-presentation-panel .problem-box{\n  position: absolute; left: 12px; right: 12px; bottom: 12px;\n  background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);\n  border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);\n}\n#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; padding-right: 28px; }\n#ykt-presentation-panel .problem-box-close{\n  position: absolute; top: 6px; right: 6px;\n  width: 22px; height: 22px; border-radius: 999px;\n  border: 1px solid var(--ykt-border-strong);\n  background: #fff; color: #555;\n  cursor: pointer; font-size: 16px; line-height: 18px;\n  padding: 0;\n}\n#ykt-presentation-panel .problem-box-close:hover{ color: #111; border-color: var(--ykt-accent); }\n#ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }\n#ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }\n\n\n\n/* ===== 活动题目列表（右下角小卡片） ===== */\n#ykt-active-problems-panel.ykt-active-wrapper{\n  position: fixed; right: 20px; bottom: 60px; z-index: var(--ykt-z);\n}\n#ykt-active-problems{ display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }\n#ykt-active-problems .active-problem-card{\n  position: relative;\n  width: 320px; background: #fff; border: 1px solid var(--ykt-border);\n  border-radius: 8px; box-shadow: var(--ykt-shadow); padding: 10px;\n}\n#ykt-active-problems .ap-close{\n  position: absolute; top: 6px; right: 6px;\n  width: 20px; height: 20px; border-radius: 999px;\n  border: 1px solid var(--ykt-border-strong);\n  background: #fff; color: #555;\n  cursor: pointer; padding: 0; font-size: 14px; line-height: 16px;\n}\n#ykt-active-problems .ap-close:hover{ color: #111; border-color: var(--ykt-accent); }\n#ykt-active-problems .ap-title{ font-weight: 600; margin-bottom: 4px; }\n#ykt-active-problems .ap-info{ color: #666; font-size: 12px; margin-bottom: 8px; }\n#ykt-active-problems .ap-actions{ display: flex; gap: 8px; }\n#ykt-active-problems .ap-actions button{\n  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\n}\n#ykt-active-problems .ap-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\n\n/* ===== 关于面板 (#ykt-about-panel) ===== */\n#ykt-about-panel .tutorial-content h4{ margin: 8px 0 6px; }\n#ykt-about-panel .tutorial-content p,\n#ykt-about-panel .tutorial-content li{ line-height: 1.5; }\n#ykt-about-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }\n#ykt-about-panel .tutorial-content a:hover{ text-decoration: underline; }\n\n/* 版本与更新块 */\n#ykt-about-panel .ykt-about-version{\n  border: 1px solid var(--ykt-border); border-radius: 6px;\n  padding: 10px; margin: 4px 0 10px; background: #fafbfc;\n}\n#ykt-about-panel .ykt-about-ver-row{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n#ykt-about-panel .ykt-about-cur{ font-size: 13px; font-weight: 600; }\n#ykt-about-panel .ykt-about-status{ font-size: 12px; margin-top: 6px; line-height: 1.5; min-height: 16px; }\n#ykt-about-panel .ykt-about-status[data-kind="muted"]{ color: var(--ykt-muted); }\n#ykt-about-panel .ykt-about-status[data-kind="ok"]{ color: #1a7f37; }\n#ykt-about-panel .ykt-about-status[data-kind="update"]{ color: #9a6700; }\n#ykt-about-panel .ykt-about-status[data-kind="error"]{ color: #cf222e; }\n#ykt-about-panel .ykt-about-actions{ display: flex; gap: 8px; margin-top: 8px; }\n\n/* ===== 小屏适配 ===== */\n@media (max-width: 1200px){\n  #ykt-presentation-panel{ width: 760px; }\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 260px 1fr; }\n}\n@media (max-width: 900px){\n  .ykt-panel{ right: 12px; left: 12px; width: auto; }\n  #ykt-presentation-panel{ width: auto; }\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 1fr; }\n}\n\n/* ===== 自动作答成功弹窗 ===== */\n.auto-answer-popup{\n  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 2);\n  background: rgba(0,0,0,.2);\n  display: flex; align-items: flex-end; justify-content: flex-end;\n  opacity: 0; transition: opacity .18s ease;\n}\n.auto-answer-popup.visible{ opacity: 1; }\n\n.auto-answer-popup .popup-content{\n  width: min(560px, 96vw);\n  background: #fff; border: 1px solid var(--ykt-border-strong);\n  border-radius: 10px; box-shadow: var(--ykt-shadow);\n  margin: 16px; overflow: hidden;\n}\n\n.auto-answer-popup .popup-header{\n  display: flex; align-items: center; justify-content: space-between;\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\n}\n.auto-answer-popup .popup-header h4{ margin: 0; font-size: 16px; }\n.auto-answer-popup .close-btn{ cursor: pointer; color: var(--ykt-muted); }\n.auto-answer-popup .close-btn:hover{ color: var(--ykt-hover); }\n\n.auto-answer-popup .popup-body{ padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }\n.auto-answer-popup .popup-row{ display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: start; }\n.auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }\n.auto-answer-popup .content{ white-space: normal; word-break: break-word; }\n\n/* ===== 1.16.6: 课件浏览面板：固定右侧详细视图，左侧独立滚动 ===== */\n#ykt-presentation-panel {\n  --ykt-panel-max-h: 72vh;           /* 与 .ykt-panel 的最大高度保持一致 */\n}\n\n/* 两列布局：左列表 + 右详细视图 */\n#ykt-presentation-panel .panel-body{\n  display: grid;\n  grid-template-columns: minmax(200px, 300px) 1fr;\n  gap: 12px;\n  overflow: hidden;\n  align-items: start;\n}\n\n/* 左侧：只让左列滚动，限制在面板可视高度内 */\n#ykt-presentation-panel .panel-left{\n  max-height: var(--ykt-panel-max-h);\n  overflow: auto;\n  min-width: 0;\n  align-self: stretch;\n}\n\n/* 右侧：粘性定位为“固定”，始终在面板可视区内 */\n#ykt-presentation-panel .panel-right{\n  position: sticky;\n  top: 0;                            \n  align-self: start;\n  gap: 12px;\n}\n\n/* 右侧详细视图自身也限制高度并允许内部滚动 */\n#ykt-presentation-panel .slide-view{\n  max-height: var(--ykt-panel-max-h);\n  overflow: auto;\n  border: 1px solid var(--ykt-border);\n  border-radius: 8px;\n  background: #fff;\n}\n\n/* 小屏自适配：堆叠布局时取消 sticky，避免遮挡 */\n@media (max-width: 900px){\n  #ykt-presentation-panel .panel-body{\n    grid-template-columns: 1fr;\n  }\n  #ykt-presentation-panel .panel-right{\n    position: static;\n  }\n}\n\n\n\n/* ===== Markdown 排版样式 =====\n   作用对象：AI 解答面板（.ykt-ai-msg.ai）与 PPT 对话面板（.ykt-chat-msg.ai）的 AI 气泡。\n   注意：渲染产物里没有 .ai-answer 容器——旧选择器全部落空，是本文件历史遗留的死规则 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) {\n  white-space: normal;\n  line-height: 1.6;\n  font-size: 14px;\n}\n\n/* 段落和标题间距 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) p { margin: 8px 0; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 {\n  margin: 12px 0 6px;\n  line-height: 1.35;\n  font-weight: 600;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1 { font-size: 20px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2 { font-size: 18px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3 { font-size: 16px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4 { font-size: 15px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 { font-size: 14px; }\n\n/* 链接 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) a {\n  text-decoration: underline;\n  cursor: pointer;\n}\n\n/* 引用块 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {\n  margin: 8px 0;\n  padding: 6px 10px;\n  border-left: 3px solid rgba(0,0,0,0.2);\n  background: rgba(0,0,0,0.03);\n}\n\n/* 水平线 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr {\n  border: 0;\n  border-top: 1px solid rgba(0,0,0,0.15);\n  margin: 10px 0;\n}\n\n/* 代码块与行内代码 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code {\n  margin: 8px 0;\n  padding: 10px;\n  overflow: auto;\n  border: 1px solid rgba(0,0,0,0.15);\n  border-radius: 6px;\n  background: #f7f8fa;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code code {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\n  font-size: 12px;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {\n  padding: 1px 4px;\n  border: 1px solid rgba(0,0,0,0.15);\n  border-radius: 4px;\n  background: #f7f8fa;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\n  font-size: 12px;\n}\n\n/* 列表 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol {\n  margin: 6px 0 6px 22px;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul { list-style: disc; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol { list-style: decimal; }\n\n/* 表格 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) table {\n  border-collapse: collapse;\n  margin: 8px 0;\n  width: 100%;\n  max-width: 100%;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td {\n  border: 1px solid rgba(0,0,0,0.15);\n  padding: 6px 8px;\n  text-align: left;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th {\n  background: rgba(0,0,0,0.05);\n  font-weight: 600;\n}\n\n/* 适配深色 */\n@media (prefers-color-scheme: dark) {\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {\n    border-left-color: rgba(255,255,255,0.35);\n    background: rgba(255,255,255,0.06);\n  }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code,\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {\n    background: #111418;\n    border-color: rgba(255,255,255,0.2);\n  }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr { border-top-color: rgba(255,255,255,0.2); }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td { border-color: rgba(255,255,255,0.2); }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th { background: rgba(255,255,255,0.08); }\n}\n\n/* MathJax tex 排版：作用在 AI 气泡上 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled svg { vertical-align: middle; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled .MathJax { line-height: 1; }\n\n/* ===== UI 调试模式（?ykt-debug-outline=1 或控制台 window.__yktDebugOutline(true)）===== */\n/* 给本脚本所有 UI 元素描红框+序号标签，用于排查 iframe 嵌套双挂载 */\nbody.ykt-debug-outline :is(\n  #ykt-helper-toolbar,\n  .ykt-panel,\n  .ykt-shell,\n  .ykt-problem-notify,\n  #ykt-presentation-panel,\n  #ykt-ai-panel,\n  #ykt-chat-panel,\n  #ykt-shell-panel,\n  [id^="ykt-"],\n  [class*="ykt-shell"]\n) {\n  outline: 3px solid #e11d48 !important;\n  outline-offset: 2px !important;\n  position: relative !important;\n}\n/* 顶层 vs iframe 用不同颜色区分：顶层红、嵌套 iframe 橙（嵌套脚本会给 html 加 ykt-in-iframe） */\nhtml.ykt-in-iframe body.ykt-debug-outline :is(\n  #ykt-helper-toolbar, .ykt-panel, .ykt-shell, .ykt-problem-notify,\n  [id^="ykt-"], [class*="ykt-shell"]\n) { outline-color: #f97316 !important; }\nbody.ykt-debug-outline #ykt-helper-toolbar::after,\nbody.ykt-debug-outline .ykt-panel::after {\n  content: "YKS·" attr(id) " @" attr(data-ykt-frame);\n  position: absolute; top: -18px; left: 0;\n  font: 10px/14px monospace; color: #fff; background: #e11d48;\n  padding: 0 4px; border-radius: 3px; z-index: 99999999; pointer-events: none;\n  white-space: nowrap;\n}\nhtml.ykt-in-iframe body.ykt-debug-outline #ykt-helper-toolbar::after,\nhtml.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f97316; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) .mjx-svg { color: currentColor; }\n\n/* ===== 首次使用引导 ===== */\n.ykt-onboarding{\n  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 50);\n  background: rgba(0,0,0,.35);\n  display: flex; align-items: flex-end; justify-content: flex-start;\n  padding: 0 16px 68px 16px;\n}\n.ykt-ob-card{\n  width: min(430px, calc(100vw - 32px));\n  background: #fff; color: var(--ykt-fg);\n  border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.25);\n  padding: 18px 18px 14px; line-height: 1.6;\n}\n.ykt-ob-title{ font-size: 16px; font-weight: 700; margin-bottom: 6px; }\n.ykt-ob-sub{ font-size: 12px; color: var(--ykt-muted); margin-bottom: 10px; }\n.ykt-ob-list{ margin: 0 0 10px; padding-left: 18px; font-size: 13px; }\n.ykt-ob-list li{ margin: 4px 0; }\n.ykt-ob-tip{\n  font-size: 11px; color: var(--ykt-muted);\n  background: #f6f8fb; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px;\n}\n.ykt-ob-actions{ display: flex; gap: 8px; justify-content: flex-end; }\n.ykt-ob-actions button{\n  padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 12px;\n  border: 1px solid var(--ykt-border-strong); background: #fff; color: var(--ykt-fg);\n}\n#ykt-ob-ok{ background: var(--ykt-accent); border-color: var(--ykt-accent); color: #fff; }\n\n/* 引导期间把工具栏抬到遮罩之上，并脉冲高亮 */\n#ykt-helper-toolbar.ykt-ob-raised{\n  z-index: calc(var(--ykt-z) + 60);\n  animation: yktObPulse 1.8s ease-in-out infinite;\n}\n@keyframes yktObPulse{\n  0%,100%{ box-shadow: 0 0 0 3px #4f8ef7, 0 0 0 9px rgba(79,142,247,.18); }\n  50%    { box-shadow: 0 0 0 3px #4f8ef7, 0 0 0 14px rgba(79,142,247,.08); }\n}\n\n@media (max-width: 560px){\n  .ykt-onboarding{ padding: 0 10px 12px 64px; }\n  .ykt-ob-card{ width: 100%; padding: 16px 14px 12px; }\n  .ykt-ob-list{ font-size: 12.5px; }\n}\n\n/* ===== 作业工具面板 ===== */\n#ykt-assign-tab .quiz-meta{ padding: 10px 16px 4px; font-size: 14px; }\n#ykt-assign-tab .quiz-sub{ color: var(--ykt-muted); font-size: 12px; }\n#ykt-assign-tab .quiz-actions{ display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 16px 10px; }\n#ykt-assign-tab .quiz-actions button,\n#ykt-assign-tab .quiz-item button{\n  padding: 6px 10px; border: 1px solid var(--ykt-border-strong); border-radius: 6px;\n  background: #fff; cursor: pointer; font-size: 12px; color: var(--ykt-fg);\n}\n#ykt-assign-tab .quiz-actions button:hover,\n#ykt-assign-tab .quiz-item button:hover{ border-color: var(--ykt-accent); color: var(--ykt-accent); }\n#ykt-assign-tab .quiz-item{\n  display: flex; align-items: center; gap: 8px;\n  padding: 8px 16px; border-top: 1px solid var(--ykt-border); font-size: 13px;\n}\n#ykt-assign-tab .quiz-idx{\n  width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;\n  background: #eef3fe; color: var(--ykt-accent);\n  display: flex; align-items: center; justify-content: center; font-size: 11px;\n}\n#ykt-assign-tab .quiz-info{ flex: 1 1 auto; }\n#ykt-assign-tab .quiz-answer{\n  margin: 10px 16px 16px; padding: 10px 12px;\n  border: 1px solid var(--ykt-border); border-radius: 8px;\n  font-size: 13px; line-height: 1.6; overflow-wrap: anywhere;\n}\n#ykt-assign-tab .quiz-ai-loading{ color: var(--ykt-muted); }\n#ykt-assign-tab .quiz-ai-err{ color: #cf222e; }\n#ykt-assign-tab .quiz-empty{ padding: 12px 16px; color: var(--ykt-muted); font-size: 13px; }\n\n/* ===== 本课作业面板 ===== */\n#ykt-assign-tab .ap-toolbar{ display:flex; gap:8px; padding:10px 16px 6px; }\n#ykt-assign-tab .ap-toolbar select{\n  flex:1; min-width:0; padding:6px 8px; font-size:13px;\n  border:1px solid var(--ykt-border-strong); border-radius:6px; background:#fff; color:var(--ykt-fg);\n}\n#ykt-assign-tab .ap-toolbar button,\n#ykt-assign-tab .ap-actions button{\n  padding:6px 10px; border:1px solid var(--ykt-border-strong); border-radius:6px;\n  background:#fff; cursor:pointer; font-size:12px; color:var(--ykt-fg);\n}\n#ykt-assign-tab .ap-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:4px 16px 8px; font-size:12px; }\n#ykt-assign-tab .ap-actions button:hover{ border-color:var(--ykt-accent); color:var(--ykt-accent); }\n#ykt-assign-tab .ap-status{ padding:0 16px 8px; font-size:12px; color:var(--ykt-muted); min-height:16px; }\n#ykt-assign-tab .ap-row{ display:flex; gap:8px; align-items:center; padding:8px 16px; border-top:1px solid var(--ykt-border); }\n#ykt-assign-tab .ap-main{ flex:1 1 auto; min-width:0; }\n#ykt-assign-tab .ap-title{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }\n#ykt-assign-tab .ap-meta{ font-size:11px; color:var(--ykt-muted); margin-top:2px; }\n#ykt-assign-tab .ap-links{ display:flex; gap:6px; flex:0 0 auto; }\n#ykt-assign-tab .ap-links button{\n  padding:3px 8px; border:1px solid var(--ykt-border-strong); border-radius:5px;\n  background:#fff; cursor:pointer; font-size:11px; color:var(--ykt-fg);\n}\n#ykt-assign-tab .ap-links button:hover{ border-color:var(--ykt-accent); color:var(--ykt-accent); }\n#ykt-assign-tab .ap-empty{ padding:16px; color:var(--ykt-muted); font-size:13px; }\n\n/* ===== 模型列表下拉（替代 datalist：Android WebView 里 datalist 打不开） ===== */\n.ykt-model-options{\n  margin: 2px 0 8px; border: 1px solid var(--ykt-border-strong); border-radius: 8px;\n  max-height: 220px; overflow: auto; background: #fff;\n}\n.ykt-model-options .opt{\n  display: flex; align-items: center; justify-content: space-between; gap: 10px;\n  padding: 9px 12px; font-size: 13px; cursor: pointer;\n  border-bottom: 1px solid var(--ykt-border);\n}\n.ykt-model-options .opt:last-child{ border-bottom: none; }\n.ykt-model-options .opt:hover, .ykt-model-options .opt:active{ background: #eef3ff; }\n.ykt-model-options .opt .provider{ color: var(--ykt-muted); font-size: 11px; flex: 0 0 auto; }\n\n/* 窄屏：设置项纵向堆叠，按钮不再溢出屏幕 */\n@media (max-width: 560px){\n  #ykt-settings-panel .setting-item{ align-items: stretch; }\n  #ykt-settings-panel .setting-item > label{ flex: 0 0 100%; }\n  #ykt-settings-panel .setting-item > input[type="text"],\n  #ykt-settings-panel .setting-item > input[type="password"],\n  #ykt-settings-panel .setting-item > input[type="number"],\n  #ykt-settings-panel .setting-item > select{ flex: 1 1 100%; width: 100%; min-width: 0; }\n  #ykt-settings-panel .setting-item > button{\n    flex: 1 1 auto; min-width: 0; height: auto; min-height: 30px;\n    padding: 6px 10px; white-space: normal;\n  }\n  #ykt-settings-panel .apikey-row{ flex: 1 1 100%; min-width: 0; }\n  #ykt-settings-panel .apikey-row .apikey-input{ min-width: 0; flex: 1 1 auto; }\n}\n\n\n/* ===== 作业 tab（工具箱内） ===== */\n#ykt-assign-tab.visible{ display: flex !important; flex-direction: column; }\n#ykt-assign-tab .panel-body{ flex: 1 1 auto; min-height: 0; overflow-y: auto; }\n#ykt-assign-tab .ap-current-card{\n  margin: 10px 16px 4px; padding: 10px 12px;\n  border: 1px solid var(--ykt-border); border-radius: 8px; background: #f7f9fc;\n}\n#ykt-assign-tab .ap-current-title{ font-size: 13px; font-weight: 600; }\n#ykt-assign-tab .ap-current-sub{ font-size: 11px; color: var(--ykt-muted); margin-top: 2px; }\n#ykt-assign-tab .ap-current-card button{\n  margin-top: 6px; padding: 4px 10px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px;\n}\n#ykt-assign-tab .ap-qhead{ display: flex; align-items: center; gap: 8px; padding: 10px 16px 6px; font-size: 13px; }\n#ykt-assign-tab .ap-qhead button{\n  padding: 3px 8px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px;\n}\n';
+  var css = '/* ===== 通用 & 修复 ===== */\n#watermark_layer { display: none !important; visibility: hidden !important; }\n.hidden { display: none !important; }\n\n:root{\n  --ykt-z: 10000000;\n  --ykt-border: #ddd;\n  --ykt-border-strong: #ccc;\n  --ykt-bg: #fff;\n  --ykt-fg: #222;\n  --ykt-muted: #607190;\n  --ykt-accent: #1d63df;\n  --ykt-hover: #1e3050;\n  --ykt-shadow: 0 10px 30px rgba(0,0,0,.18);\n}\n\n/* ===== 工具栏 ===== */\n#ykt-helper-toolbar{\n  position: fixed; z-index: calc(var(--ykt-z) + 1);\n  left: 15px; bottom: 15px;\n  /* 移除固定宽度，让内容自适应 */\n  height: 36px; padding: 5px;\n  display: flex; gap: 6px; align-items: center;\n  background: var(--ykt-bg);\n  border: 1px solid var(--ykt-border-strong);\n  border-radius: 4px;\n  box-shadow: 0 1px 4px 3px rgba(0,0,0,.1);\n}\n\n#ykt-helper-toolbar .btn{\n  display: inline-block; padding: 4px; cursor: pointer;\n  color: var(--ykt-muted); line-height: 1;\n}\n#ykt-helper-toolbar .btn:hover{ color: var(--ykt-hover); }\n#ykt-helper-toolbar .btn.active{ color: var(--ykt-accent); }\n\n/* 手机/窄屏：工具栏改为纵向贴左，按钮放大到可触控尺寸 */\n@media (max-width: 560px) {\n  #ykt-helper-toolbar{\n    left: 8px; bottom: 8px;\n    flex-direction: column;\n    height: auto; padding: 4px;\n  }\n  #ykt-helper-toolbar .btn{\n    width: 40px; height: 40px;\n    display: inline-flex; align-items: center; justify-content: center;\n    font-size: 17px;\n  }\n}\n\n/* 手机端：工具栏可收起为左侧窄轨（纯 Web，不依赖安卓外壳） */\n#ykt-helper-toolbar #ykt-btn-toolbar-toggle{ display: none; }\n#ykt-toolbar-badge{ display: none; }\n\nbody.ykt-narrow #ykt-helper-toolbar{\n  left: calc(8px + env(safe-area-inset-left, 0px));\n  bottom: calc(8px + env(safe-area-inset-bottom, 0px));\n}\nbody.ykt-narrow #ykt-helper-toolbar #ykt-btn-toolbar-toggle{\n  display: inline-flex; align-items: center; justify-content: center;\n  width: 40px; height: 22px; padding: 0; font-size: 13px;\n  border-top: 1px solid var(--ykt-border);\n}\nbody.ykt-narrow #ykt-helper-toolbar.collapsed{\n  width: 34px; height: 50px; padding: 2px; gap: 0;\n  justify-content: center; box-sizing: border-box;\n  border-radius: 4px 8px 8px 4px;\n}\nbody.ykt-narrow #ykt-helper-toolbar.collapsed > .btn:not(#ykt-btn-toolbar-toggle){\n  display: none;\n}\nbody.ykt-narrow #ykt-helper-toolbar.collapsed #ykt-btn-toolbar-toggle{\n  width: 28px; height: 44px; font-size: 14px;\n  border-top: 0;\n}\nbody.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{\n  display: block; position: absolute; top: 3px; right: 3px;\n  width: 6px; height: 6px; border-radius: 50%;\n  background: var(--ykt-accent); box-shadow: 0 0 0 2px var(--ykt-bg);\n  pointer-events: none;\n}\n\n/* ===== 面板通用样式 ===== */\n.ykt-panel{\n  position: fixed; right: 20px; bottom: 60px;\n  width: min(560px, calc(100vw - 48px));   /* 窄窗口不溢出 */\n  max-height: min(72vh, calc(100vh - 140px)); overflow: auto;\n  background: var(--ykt-bg); color: var(--ykt-fg);\n  border: 1px solid var(--ykt-border-strong); border-radius: 8px;\n  box-shadow: var(--ykt-shadow);\n  display: none;\n  /* 提高z-index，确保后打开的面板在最上层 */\n  z-index: var(--ykt-z);\n}\n.ykt-panel.visible{ \n  display: block; \n  /* 动态提升z-index */\n  z-index: calc(var(--ykt-z) + 10);\n}\n\n.panel-header{\n  display: flex; align-items: center; justify-content: space-between;\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\n  flex-wrap: wrap;   /* 窄屏下 actions 允许换行，不再把按钮挤碎 */\n}\n.panel-header h3{ margin: 0; font-size: 16px; font-weight: 600; }\n.panel-body{ padding: 10px 12px; }\n.close-btn{ cursor: pointer; color: var(--ykt-muted); }\n.close-btn:hover{ color: var(--ykt-hover); }\n\n/* 窄屏适配：header 里的按钮不换行、不挤压 */\n@media (max-width: 560px){\n  .panel-header{ gap: 8px; }\n  .panel-header h3{ font-size: 15px; flex: 1 1 60%; }\n  #ykt-settings-panel .setting-actions{ margin-top: 0; flex: 1 1 100%; }\n  #ykt-settings-panel .setting-actions button{ flex: 1; white-space: nowrap; }\n}\n\n/* 窄屏：面板打开时隐藏悬浮工具栏，避免压住面板左下角内容 */\n@media (max-width: 560px){\n  body.ykt-shell-open #ykt-helper-toolbar { display: none !important; }\n}\n\n/* ===== 设置面板 (#ykt-settings-panel) ===== */\n#ykt-settings-panel .settings-content{ display: flex; flex-direction: column; gap: 14px; }\n#ykt-settings-panel .setting-group{ border: 1px dashed var(--ykt-border); border-radius: 6px; padding: 10px; }\n#ykt-settings-panel .setting-group h4{ margin: 0 0 8px 0; font-size: 14px; }\n#ykt-settings-panel .setting-item{ display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }\n#ykt-settings-panel label{ font-size: 13px; }\n#ykt-settings-panel input[type="text"],\n#ykt-settings-panel input[type="password"],\n#ykt-settings-panel input[type="number"]{\n  height: 30px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 4px; padding: 0 8px; min-width: 160px; max-width: 100%;\n  box-sizing: border-box; flex: 1 1 160px;\n}\n\n/* API Key 行：输入框 + 眼睛 + 测试按钮 */\n#ykt-settings-panel .apikey-row{\n  display: flex; align-items: center; gap: 6px; flex: 1 1 160px; min-width: 0;\n}\n#ykt-settings-panel .apikey-input{ flex: 1 1 auto; min-width: 0; }\n#ykt-settings-panel .apikey-eye,\n#ykt-settings-panel .apikey-test{\n  flex: 0 0 auto; height: 30px; padding: 0 10px;\n  border: 1px solid var(--ykt-border-strong); border-radius: 4px;\n  background: #f7f8fa; cursor: pointer; font-size: 12px; white-space: nowrap;\n}\n#ykt-settings-panel .apikey-eye:hover,\n#ykt-settings-panel .apikey-test:hover{\n  background: #eef3ff; border-color: var(--ykt-accent);\n}\n#ykt-settings-panel .apikey-test-result{ display: block; margin-top: 4px; font-size: 12px; }\n\n/* 高级选项折叠 */\n#ykt-settings-panel .setting-advanced{ margin: 6px 0; }\n#ykt-settings-panel .setting-advanced summary{\n  cursor: pointer; font-size: 12px; color: #607190; user-select: none;\n  padding: 4px 0; list-style: none;\n}\n#ykt-settings-panel .setting-advanced summary::-webkit-details-marker{ display: none; }\n#ykt-settings-panel .setting-advanced summary::before{ content: "▸ "; font-size: 10px; }\n#ykt-settings-panel .setting-advanced[open] summary::before{ content: "▾ "; }\n#ykt-settings-panel .setting-advanced summary:hover{ color: var(--ykt-accent); }\n#ykt-settings-panel small{ color: #666; }\n#ykt-settings-panel .setting-actions{ display: flex; gap: 8px; margin-top: 6px; }\n#ykt-settings-panel button{\n  height: 30px; padding: 0 12px; border-radius: 6px;\n  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\n}\n#ykt-settings-panel button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\n\n/* 自定义复选框（与手写脚本一致的视觉语义） */\n#ykt-settings-panel .checkbox-label{ position: relative; padding-left: 26px; cursor: pointer; user-select: none; }\n#ykt-settings-panel .checkbox-label input{ position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }\n#ykt-settings-panel .checkbox-label .checkmark{\n  position: absolute; left: 0; top: 50%; transform: translateY(-50%);\n  height: 16px; width: 16px; border:1px solid var(--ykt-border-strong); border-radius: 3px; background: #fff;\n}\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark{\n  background: var(--ykt-accent); border-color: var(--ykt-accent);\n}\n#ykt-settings-panel .checkbox-label .checkmark:after{\n  content: ""; position: absolute; display: none;\n  left: 5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);\n}\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark:after{ display: block; }\n\n/* ===== AI 解答面板 (#ykt-ai-answer-panel) =====\n   气泡的 markdown 排版样式见文件底部（作用于 .ykt-ai-msg.ai / .ykt-chat-msg.ai） */\n\n/* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */\n#ykt-presentation-panel{ width: 900px; }\n#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n#ykt-presentation-panel .panel-body{\n  display: grid; grid-template-columns: 300px 1fr; gap: 10px;\n}\n#ykt-presentation-panel .panel-left,\n#ykt-presentation-panel .panel-right{\n  display: flex;\n  flex-direction: column;\n}\n#ykt-presentation-panel .presentation-list{\n  border: 1px solid var(--ykt-border);\n  border-radius: 8px;\n  background: #fff;\n  padding: 10px;\n  box-sizing: border-box;\n}\n#ykt-presentation-panel .presentation-title{\n  font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);\n}\n#ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }\n#ykt-presentation-panel .slide-thumb{\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;\n  min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;\n}\n#ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }\n#ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }\n#ykt-presentation-panel .slide-index {\n  position: absolute; top: 4px; left: 4px; z-index: 2;               \n  padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 1;\n  background: rgba(0, 0, 0, 0.6); color: #fff; pointer-events: none;\n}\n#ykt-presentation-panel .slide-view{\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;\n}\n#ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }\n#ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }\n#ykt-presentation-panel .problem-box{\n  position: absolute; left: 12px; right: 12px; bottom: 12px;\n  background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);\n  border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);\n}\n#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; padding-right: 28px; }\n#ykt-presentation-panel .problem-box-close{\n  position: absolute; top: 6px; right: 6px;\n  width: 22px; height: 22px; border-radius: 999px;\n  border: 1px solid var(--ykt-border-strong);\n  background: #fff; color: #555;\n  cursor: pointer; font-size: 16px; line-height: 18px;\n  padding: 0;\n}\n#ykt-presentation-panel .problem-box-close:hover{ color: #111; border-color: var(--ykt-accent); }\n#ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }\n#ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }\n\n\n\n/* ===== 活动题目列表（右下角小卡片） ===== */\n#ykt-active-problems-panel.ykt-active-wrapper{\n  position: fixed; right: 20px; bottom: 60px; z-index: var(--ykt-z);\n}\n#ykt-active-problems{ display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }\n#ykt-active-problems .active-problem-card{\n  position: relative;\n  width: 320px; background: #fff; border: 1px solid var(--ykt-border);\n  border-radius: 8px; box-shadow: var(--ykt-shadow); padding: 10px;\n}\n#ykt-active-problems .ap-close{\n  position: absolute; top: 6px; right: 6px;\n  width: 20px; height: 20px; border-radius: 999px;\n  border: 1px solid var(--ykt-border-strong);\n  background: #fff; color: #555;\n  cursor: pointer; padding: 0; font-size: 14px; line-height: 16px;\n}\n#ykt-active-problems .ap-close:hover{ color: #111; border-color: var(--ykt-accent); }\n#ykt-active-problems .ap-title{ font-weight: 600; margin-bottom: 4px; }\n#ykt-active-problems .ap-info{ color: #666; font-size: 12px; margin-bottom: 8px; }\n#ykt-active-problems .ap-actions{ display: flex; gap: 8px; }\n#ykt-active-problems .ap-actions button{\n  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\n}\n#ykt-active-problems .ap-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\n\n/* ===== 关于面板 (#ykt-about-panel) ===== */\n#ykt-about-panel .tutorial-content h4{ margin: 8px 0 6px; }\n#ykt-about-panel .tutorial-content p,\n#ykt-about-panel .tutorial-content li{ line-height: 1.5; }\n#ykt-about-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }\n#ykt-about-panel .tutorial-content a:hover{ text-decoration: underline; }\n\n/* 版本与更新块 */\n#ykt-about-panel .ykt-about-version{\n  border: 1px solid var(--ykt-border); border-radius: 6px;\n  padding: 10px; margin: 4px 0 10px; background: #fafbfc;\n}\n#ykt-about-panel .ykt-about-ver-row{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n#ykt-about-panel .ykt-about-cur{ font-size: 13px; font-weight: 600; }\n#ykt-about-panel .ykt-about-status{ font-size: 12px; margin-top: 6px; line-height: 1.5; min-height: 16px; }\n#ykt-about-panel .ykt-about-status[data-kind="muted"]{ color: var(--ykt-muted); }\n#ykt-about-panel .ykt-about-status[data-kind="ok"]{ color: #1a7f37; }\n#ykt-about-panel .ykt-about-status[data-kind="update"]{ color: #9a6700; }\n#ykt-about-panel .ykt-about-status[data-kind="error"]{ color: #cf222e; }\n#ykt-about-panel .ykt-about-actions{ display: flex; gap: 8px; margin-top: 8px; }\n\n/* ===== 小屏适配 ===== */\n@media (max-width: 1200px){\n  #ykt-presentation-panel{ width: 760px; }\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 260px 1fr; }\n}\n@media (max-width: 900px){\n  .ykt-panel{ right: 12px; left: 12px; width: auto; }\n  #ykt-presentation-panel{ width: auto; }\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 1fr; }\n}\n\n/* ===== 自动作答成功弹窗 ===== */\n.auto-answer-popup{\n  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 2);\n  background: rgba(0,0,0,.2);\n  display: flex; align-items: flex-end; justify-content: flex-end;\n  opacity: 0; transition: opacity .18s ease;\n}\n.auto-answer-popup.visible{ opacity: 1; }\n\n.auto-answer-popup .popup-content{\n  width: min(560px, 96vw);\n  background: #fff; border: 1px solid var(--ykt-border-strong);\n  border-radius: 10px; box-shadow: var(--ykt-shadow);\n  margin: 16px; overflow: hidden;\n}\n\n.auto-answer-popup .popup-header{\n  display: flex; align-items: center; justify-content: space-between;\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\n}\n.auto-answer-popup .popup-header h4{ margin: 0; font-size: 16px; }\n.auto-answer-popup .close-btn{ cursor: pointer; color: var(--ykt-muted); }\n.auto-answer-popup .close-btn:hover{ color: var(--ykt-hover); }\n\n.auto-answer-popup .popup-body{ padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }\n.auto-answer-popup .popup-row{ display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: start; }\n.auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }\n.auto-answer-popup .content{ white-space: normal; word-break: break-word; }\n\n/* ===== 1.16.6: 课件浏览面板：固定右侧详细视图，左侧独立滚动 ===== */\n#ykt-presentation-panel {\n  --ykt-panel-max-h: 72vh;           /* 与 .ykt-panel 的最大高度保持一致 */\n}\n\n/* 两列布局：左列表 + 右详细视图 */\n#ykt-presentation-panel .panel-body{\n  display: grid;\n  grid-template-columns: minmax(200px, 300px) 1fr;\n  gap: 12px;\n  overflow: hidden;\n  align-items: start;\n}\n\n/* 左侧：只让左列滚动，限制在面板可视高度内 */\n#ykt-presentation-panel .panel-left{\n  max-height: var(--ykt-panel-max-h);\n  overflow: auto;\n  min-width: 0;\n  align-self: stretch;\n}\n\n/* 右侧：粘性定位为“固定”，始终在面板可视区内 */\n#ykt-presentation-panel .panel-right{\n  position: sticky;\n  top: 0;                            \n  align-self: start;\n  gap: 12px;\n}\n\n/* 右侧详细视图自身也限制高度并允许内部滚动 */\n#ykt-presentation-panel .slide-view{\n  max-height: var(--ykt-panel-max-h);\n  overflow: auto;\n  border: 1px solid var(--ykt-border);\n  border-radius: 8px;\n  background: #fff;\n}\n\n/* 小屏自适配：堆叠布局时取消 sticky，避免遮挡 */\n@media (max-width: 900px){\n  #ykt-presentation-panel .panel-body{\n    grid-template-columns: 1fr;\n  }\n  #ykt-presentation-panel .panel-right{\n    position: static;\n  }\n}\n\n\n\n/* ===== Markdown 排版样式 =====\n   作用对象：AI 解答面板（.ykt-ai-msg.ai）与 PPT 对话面板（.ykt-chat-msg.ai）的 AI 气泡。\n   注意：渲染产物里没有 .ai-answer 容器——旧选择器全部落空，是本文件历史遗留的死规则 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) {\n  white-space: normal;\n  line-height: 1.6;\n  font-size: 14px;\n}\n\n/* 段落和标题间距 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) p { margin: 8px 0; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 {\n  margin: 12px 0 6px;\n  line-height: 1.35;\n  font-weight: 600;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h1 { font-size: 20px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h2 { font-size: 18px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h3 { font-size: 16px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h4 { font-size: 15px; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h5,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) h6 { font-size: 14px; }\n\n/* 链接 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) a {\n  text-decoration: underline;\n  cursor: pointer;\n}\n\n/* 引用块 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {\n  margin: 8px 0;\n  padding: 6px 10px;\n  border-left: 3px solid rgba(0,0,0,0.2);\n  background: rgba(0,0,0,0.03);\n}\n\n/* 水平线 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr {\n  border: 0;\n  border-top: 1px solid rgba(0,0,0,0.15);\n  margin: 10px 0;\n}\n\n/* 代码块与行内代码 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code {\n  margin: 8px 0;\n  padding: 10px;\n  overflow: auto;\n  border: 1px solid rgba(0,0,0,0.15);\n  border-radius: 6px;\n  background: #f7f8fa;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code code {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\n  font-size: 12px;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {\n  padding: 1px 4px;\n  border: 1px solid rgba(0,0,0,0.15);\n  border-radius: 4px;\n  background: #f7f8fa;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\n  font-size: 12px;\n}\n\n/* 列表 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol {\n  margin: 6px 0 6px 22px;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ul { list-style: disc; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) ol { list-style: decimal; }\n\n/* 表格 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) table {\n  border-collapse: collapse;\n  margin: 8px 0;\n  width: 100%;\n  max-width: 100%;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td {\n  border: 1px solid rgba(0,0,0,0.15);\n  padding: 6px 8px;\n  text-align: left;\n}\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th {\n  background: rgba(0,0,0,0.05);\n  font-weight: 600;\n}\n\n/* 适配深色 */\n@media (prefers-color-scheme: dark) {\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) blockquote {\n    border-left-color: rgba(255,255,255,0.35);\n    background: rgba(255,255,255,0.06);\n  }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) pre.ykt-md-code,\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) code.ykt-md-inline {\n    background: #111418;\n    border-color: rgba(255,255,255,0.2);\n  }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) hr { border-top-color: rgba(255,255,255,0.2); }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) th,\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) td { border-color: rgba(255,255,255,0.2); }\n  :where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) thead th { background: rgba(255,255,255,0.08); }\n}\n\n/* MathJax tex 排版：作用在 AI 气泡上 */\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled svg { vertical-align: middle; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai).tex-enabled .MathJax { line-height: 1; }\n\n/* ===== UI 调试模式（?ykt-debug-outline=1 或控制台 window.__yktDebugOutline(true)）===== */\n/* 给本脚本所有 UI 元素描红框+序号标签，用于排查 iframe 嵌套双挂载 */\nbody.ykt-debug-outline :is(\n  #ykt-helper-toolbar,\n  .ykt-panel,\n  .ykt-shell,\n  .ykt-problem-notify,\n  #ykt-presentation-panel,\n  #ykt-ai-panel,\n  #ykt-chat-panel,\n  #ykt-shell-panel,\n  [id^="ykt-"],\n  [class*="ykt-shell"]\n) {\n  outline: 3px solid #e11d48 !important;\n  outline-offset: 2px !important;\n  position: relative !important;\n}\n/* 顶层 vs iframe 用不同颜色区分：顶层红、嵌套 iframe 橙（嵌套脚本会给 html 加 ykt-in-iframe） */\nhtml.ykt-in-iframe body.ykt-debug-outline :is(\n  #ykt-helper-toolbar, .ykt-panel, .ykt-shell, .ykt-problem-notify,\n  [id^="ykt-"], [class*="ykt-shell"]\n) { outline-color: #f97316 !important; }\nbody.ykt-debug-outline #ykt-helper-toolbar::after,\nbody.ykt-debug-outline .ykt-panel::after {\n  content: "YKS·" attr(id) " @" attr(data-ykt-frame);\n  position: absolute; top: -18px; left: 0;\n  font: 10px/14px monospace; color: #fff; background: #e11d48;\n  padding: 0 4px; border-radius: 3px; z-index: 99999999; pointer-events: none;\n  white-space: nowrap;\n}\nhtml.ykt-in-iframe body.ykt-debug-outline #ykt-helper-toolbar::after,\nhtml.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f97316; }\n:where(.ykt-chat-msg.ai, .ykt-ai-msg.ai) .mjx-svg { color: currentColor; }\n\n/* ===== 首次使用引导 ===== */\n.ykt-onboarding{\n  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 50);\n  background: rgba(0,0,0,.35);\n  display: flex; align-items: flex-end; justify-content: flex-start;\n  padding: 0 16px 68px 16px;\n}\n.ykt-ob-card{\n  width: min(430px, calc(100vw - 32px));\n  background: #fff; color: var(--ykt-fg);\n  border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.25);\n  padding: 18px 18px 14px; line-height: 1.6;\n}\n.ykt-ob-title{ font-size: 16px; font-weight: 700; margin-bottom: 6px; }\n.ykt-ob-sub{ font-size: 12px; color: var(--ykt-muted); margin-bottom: 10px; }\n.ykt-ob-list{ margin: 0 0 10px; padding-left: 18px; font-size: 13px; }\n.ykt-ob-list li{ margin: 4px 0; }\n.ykt-ob-tip{\n  font-size: 11px; color: var(--ykt-muted);\n  background: #f6f8fb; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px;\n}\n.ykt-ob-actions{ display: flex; gap: 8px; justify-content: flex-end; }\n.ykt-ob-actions button{\n  padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 12px;\n  border: 1px solid var(--ykt-border-strong); background: #fff; color: var(--ykt-fg);\n}\n#ykt-ob-ok{ background: var(--ykt-accent); border-color: var(--ykt-accent); color: #fff; }\n\n/* 引导期间把工具栏抬到遮罩之上，并脉冲高亮 */\n#ykt-helper-toolbar.ykt-ob-raised{\n  z-index: calc(var(--ykt-z) + 60);\n  animation: yktObPulse 1.8s ease-in-out infinite;\n}\n@keyframes yktObPulse{\n  0%,100%{ box-shadow: 0 0 0 3px #4f8ef7, 0 0 0 9px rgba(79,142,247,.18); }\n  50%    { box-shadow: 0 0 0 3px #4f8ef7, 0 0 0 14px rgba(79,142,247,.08); }\n}\n\n@media (max-width: 560px){\n  .ykt-onboarding{ padding: 0 10px 12px 64px; }\n  .ykt-ob-card{ width: 100%; padding: 16px 14px 12px; }\n  .ykt-ob-list{ font-size: 12.5px; }\n}\n\n/* ===== 作业工具面板 ===== */\n#ykt-assign-tab .quiz-meta{ padding: 10px 16px 4px; font-size: 14px; }\n#ykt-assign-tab .quiz-sub{ color: var(--ykt-muted); font-size: 12px; }\n#ykt-assign-tab .quiz-actions{ display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 16px 10px; }\n#ykt-assign-tab .quiz-actions button,\n#ykt-assign-tab .quiz-item button{\n  padding: 6px 10px; border: 1px solid var(--ykt-border-strong); border-radius: 6px;\n  background: #fff; cursor: pointer; font-size: 12px; color: var(--ykt-fg);\n}\n#ykt-assign-tab .quiz-actions button:hover,\n#ykt-assign-tab .quiz-item button:hover{ border-color: var(--ykt-accent); color: var(--ykt-accent); }\n#ykt-assign-tab .quiz-item{\n  display: flex; align-items: center; gap: 8px;\n  padding: 8px 16px; border-top: 1px solid var(--ykt-border); font-size: 13px;\n}\n#ykt-assign-tab .quiz-idx{\n  width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;\n  background: #eef3fe; color: var(--ykt-accent);\n  display: flex; align-items: center; justify-content: center; font-size: 11px;\n}\n#ykt-assign-tab .quiz-info{ flex: 1 1 auto; }\n#ykt-assign-tab .quiz-answer{\n  margin: 10px 16px 16px; padding: 10px 12px;\n  border: 1px solid var(--ykt-border); border-radius: 8px;\n  font-size: 13px; line-height: 1.6; overflow-wrap: anywhere;\n}\n#ykt-assign-tab .quiz-ai-loading{ color: var(--ykt-muted); }\n#ykt-assign-tab .quiz-ai-err{ color: #cf222e; }\n#ykt-assign-tab .quiz-empty{ padding: 12px 16px; color: var(--ykt-muted); font-size: 13px; }\n\n/* ===== 本课作业面板 ===== */\n#ykt-assign-tab .ap-toolbar{ display:flex; gap:8px; padding:10px 16px 6px; }\n#ykt-assign-tab .ap-toolbar select{\n  flex:1; min-width:0; padding:6px 8px; font-size:13px;\n  border:1px solid var(--ykt-border-strong); border-radius:6px; background:#fff; color:var(--ykt-fg);\n}\n#ykt-assign-tab .ap-toolbar button,\n#ykt-assign-tab .ap-actions button{\n  padding:6px 10px; border:1px solid var(--ykt-border-strong); border-radius:6px;\n  background:#fff; cursor:pointer; font-size:12px; color:var(--ykt-fg);\n}\n#ykt-assign-tab .ap-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:4px 16px 8px; font-size:12px; }\n#ykt-assign-tab .ap-actions button:hover{ border-color:var(--ykt-accent); color:var(--ykt-accent); }\n#ykt-assign-tab .ap-status{ padding:0 16px 8px; font-size:12px; color:var(--ykt-muted); min-height:16px; }\n#ykt-assign-tab .ap-row{ display:flex; gap:8px; align-items:center; padding:8px 16px; border-top:1px solid var(--ykt-border); }\n#ykt-assign-tab .ap-main{ flex:1 1 auto; min-width:0; }\n#ykt-assign-tab .ap-title{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }\n#ykt-assign-tab .ap-meta{ font-size:11px; color:var(--ykt-muted); margin-top:2px; }\n#ykt-assign-tab .ap-links{ display:flex; gap:6px; flex:0 0 auto; }\n#ykt-assign-tab .ap-links button{\n  padding:3px 8px; border:1px solid var(--ykt-border-strong); border-radius:5px;\n  background:#fff; cursor:pointer; font-size:11px; color:var(--ykt-fg);\n}\n#ykt-assign-tab .ap-links button:hover{ border-color:var(--ykt-accent); color:var(--ykt-accent); }\n#ykt-assign-tab .ap-empty{ padding:16px; color:var(--ykt-muted); font-size:13px; }\n\n/* ===== 模型列表下拉（替代 datalist：Android WebView 里 datalist 打不开） ===== */\n.ykt-model-options{\n  margin: 2px 0 8px; border: 1px solid var(--ykt-border-strong); border-radius: 8px;\n  max-height: 220px; overflow: auto; background: #fff;\n}\n.ykt-model-options .opt{\n  display: flex; align-items: center; justify-content: space-between; gap: 10px;\n  padding: 9px 12px; font-size: 13px; cursor: pointer;\n  border-bottom: 1px solid var(--ykt-border);\n}\n.ykt-model-options .opt:last-child{ border-bottom: none; }\n.ykt-model-options .opt:hover, .ykt-model-options .opt:active{ background: #eef3ff; }\n.ykt-model-options .opt .provider{ color: var(--ykt-muted); font-size: 11px; flex: 0 0 auto; }\n\n/* 窄屏：设置项纵向堆叠，按钮不再溢出屏幕 */\n@media (max-width: 560px){\n  #ykt-settings-panel .setting-item{ align-items: stretch; }\n  #ykt-settings-panel .setting-item > label{ flex: 0 0 100%; }\n  #ykt-settings-panel .setting-item > input[type="text"],\n  #ykt-settings-panel .setting-item > input[type="password"],\n  #ykt-settings-panel .setting-item > input[type="number"],\n  #ykt-settings-panel .setting-item > select{ flex: 1 1 100%; width: 100%; min-width: 0; }\n  #ykt-settings-panel .setting-item > button{\n    flex: 1 1 auto; min-width: 0; height: auto; min-height: 30px;\n    padding: 6px 10px; white-space: normal;\n  }\n  #ykt-settings-panel .apikey-row{ flex: 1 1 100%; min-width: 0; }\n  #ykt-settings-panel .apikey-row .apikey-input{ min-width: 0; flex: 1 1 auto; }\n}\n\n\n/* ===== 作业 tab（工具箱内） ===== */\n#ykt-assign-tab.visible{ display: flex !important; flex-direction: column; }\n#ykt-assign-tab .panel-body{ flex: 1 1 auto; min-height: 0; overflow-y: auto; }\n#ykt-assign-tab .ap-current-card{\n  margin: 10px 16px 4px; padding: 10px 12px;\n  border: 1px solid var(--ykt-border); border-radius: 8px; background: #f7f9fc;\n}\n#ykt-assign-tab .ap-current-title{ font-size: 13px; font-weight: 600; }\n#ykt-assign-tab .ap-current-sub{ font-size: 11px; color: var(--ykt-muted); margin-top: 2px; }\n#ykt-assign-tab .ap-current-card button{\n  margin-top: 6px; padding: 4px 10px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px;\n}\n#ykt-assign-tab .ap-qhead{ display: flex; align-items: center; gap: 8px; padding: 10px 16px 6px; font-size: 13px; }\n#ykt-assign-tab .ap-qhead button{\n  padding: 3px 8px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px;\n}\n\n/* type 19 详情 / type 20 回顾（新版作业/考试题目视图） */\n#ykt-assign-tab .ap-head-meta{ color: var(--ykt-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n#ykt-assign-tab .ap-desc{\n  margin: 0 16px 8px; padding: 8px 10px; font-size: 12px;\n  border: 1px solid var(--ykt-border); border-radius: 8px; background: #f7f9fc;\n}\n#ykt-assign-tab .ap-desc:empty{ display: none; }\n#ykt-assign-tab .ap-active-list{ padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; }\n#ykt-assign-tab .ap-active-item{\n  border: 1px solid var(--ykt-border); border-radius: 8px; padding: 10px 12px; background: #fff;\n}\n#ykt-assign-tab .ap-active-head{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }\n#ykt-assign-tab .ap-active-idx{\n  min-width: 20px; height: 20px; line-height: 20px; text-align: center; font-size: 11px;\n  border-radius: 10px; background: var(--ykt-accent); color: #fff;\n}\n#ykt-assign-tab .ap-active-score{ color: var(--ykt-muted); font-size: 12px; }\n#ykt-assign-tab .ap-active-links{ margin-left: auto; display: flex; gap: 8px; align-items: center; }\n#ykt-assign-tab .ap-active-links button{\n  padding: 3px 10px; border: 1px solid var(--ykt-border-strong);\n  border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px;\n}\n#ykt-assign-tab .ap-active-links button:hover{ border-color: var(--ykt-accent); color: var(--ykt-accent); }\n#ykt-assign-tab .ap-active-links a{ color: var(--ykt-accent); font-size: 12px; }\n#ykt-assign-tab .ap-badge{\n  padding: 1px 8px; border-radius: 10px; font-size: 11px;\n  background: #f0f2f5; color: var(--ykt-muted);\n}\n#ykt-assign-tab .ap-badge.ap-ok{ background: #e6f6ec; color: #1a7f37; }\n#ykt-assign-tab .ap-badge.ap-bad{ background: #ffebe9; color: #cf222e; }\n#ykt-assign-tab .ap-problem-body{ font-size: 13px; margin: 8px 0; line-height: 1.6; overflow-wrap: anywhere; }\n#ykt-assign-tab .ap-problem-body img{ max-width: 100%; }\n#ykt-assign-tab .ap-problem-body table{ border-collapse: collapse; }\n#ykt-assign-tab .ap-problem-body td,\n#ykt-assign-tab .ap-problem-body th{ border: 1px solid var(--ykt-border); padding: 4px 8px; }\n#ykt-assign-tab .ap-option{ display: flex; gap: 8px; font-size: 13px; padding: 2px 0; line-height: 1.6; }\n#ykt-assign-tab .ap-opt-key{ flex: 0 0 auto; font-weight: 600; }\n#ykt-assign-tab .ap-opt-html{ overflow-wrap: anywhere; }\n#ykt-assign-tab .ap-ans{\n  margin-top: 8px; padding: 6px 10px; border-left: 3px solid var(--ykt-accent);\n  background: #f7f9fc; border-radius: 0 6px 6px 0; font-size: 12px;\n}\n#ykt-assign-tab .ap-ans-k{ display: block; color: var(--ykt-muted); margin-bottom: 2px; }\n#ykt-assign-tab .ap-ans-v{ line-height: 1.6; overflow-wrap: anywhere; }\n#ykt-assign-tab .ap-ans-v img{ max-width: 100%; }\n#ykt-assign-tab .ap-attach{ margin-top: 6px; font-size: 12px; }\n#ykt-assign-tab .ap-attach a{ color: var(--ykt-accent); }\n\n/* AI 答案卡置信度 */\n.ykt-tool-confidence{\n  display: inline-block; margin: 2px 0 4px; padding: 1px 8px;\n  font-size: 11px; border-radius: 10px;\n  background: #eef3ff; color: #1f4fd8;\n}\n.ykt-tool-confidence.ykt-conf-low{ background: #fff3cd; color: #8a6d00; }\n';
   // src/ui/styles.js
     function injectStyles() {
     gm.addStyle(css);
