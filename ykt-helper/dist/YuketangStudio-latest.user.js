@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.9.1
+// @version      0.9.2
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档、班级课件下载、刷课
@@ -753,7 +753,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.9.1" !== "undefined" && "0.9.1") return String("0.9.1");
+      if (typeof "0.9.2" !== "undefined" && "0.9.2") return String("0.9.2");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -9837,8 +9837,10 @@
       if ($fallbackAns) $fallbackAns.checked = !!ui.config.autoAnswerFallbackDefault;
       $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
       $iftex.checked = !!ui.config.iftex;
-      $delay.value = Math.floor((ui.config.autoAnswerDelay || 3e3) / 1e3);
-      $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1e3);
+      const delayMs = Number.isFinite(Number(ui.config.autoAnswerDelay)) && Number(ui.config.autoAnswerDelay) > 0 ? Number(ui.config.autoAnswerDelay) : 3e3;
+      const randMs = Number.isFinite(Number(ui.config.autoAnswerRandomDelay)) ? Number(ui.config.autoAnswerRandomDelay) : 2e3;
+      $delay.value = Math.floor(delayMs / 1e3);
+      $rand.value = Math.floor(randMs / 1e3);
       $priority.checked = ui.config.aiSlidePickPriority !== false;
       if ($regex) $regex.checked = !!ui.config.regexToolCall;
       $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5e3) / 1e3);
@@ -9979,7 +9981,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.9.1";
+      return "0.9.2";
     } catch {}
     return "0.0.0";
   }
@@ -10154,8 +10156,8 @@
   function mountAboutPanel() {
     if (mounted$3) return root$3;
     const host = document.createElement("div");
-    // "0.9.1" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.1"}<`);
+    // "0.9.2" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.2"}<`);
     document.body.appendChild(host.firstElementChild);
     root$3 = document.getElementById("ykt-about-panel");
     const $btn = root$3.querySelector("#ykt-about-check");
@@ -12098,6 +12100,11 @@
     if (typeof _config.ai !== "object" || !_config.ai) _config.ai = {};
   _config.ai = Object.assign({}, DEFAULT_CONFIG.ai, _config.ai);
   _config.ai.kimiApiKey = storage.get("kimiApiKey", _config.ai.kimiApiKey);
+  // 作答延迟/随机延迟：缺失或非法值回落到默认 3s / 2s；合法用户值（含 0 随机）保留
+    _config.autoAnswerDelay = Number(_config.autoAnswerDelay);
+  if (!Number.isFinite(_config.autoAnswerDelay) || _config.autoAnswerDelay <= 0) _config.autoAnswerDelay = DEFAULT_CONFIG.autoAnswerDelay;
+  _config.autoAnswerRandomDelay = Number(_config.autoAnswerRandomDelay);
+  if (!Number.isFinite(_config.autoAnswerRandomDelay) || _config.autoAnswerRandomDelay < 0) _config.autoAnswerRandomDelay = DEFAULT_CONFIG.autoAnswerRandomDelay;
   _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
   if (typeof _config.autoJoinEnabled === "undefined") _config.autoJoinEnabled = false;
   if (typeof _config.autoAnswerOnAutoJoin === "undefined") _config.autoAnswerOnAutoJoin = true;
