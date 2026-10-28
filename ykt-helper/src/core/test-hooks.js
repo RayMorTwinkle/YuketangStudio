@@ -11,6 +11,7 @@ import { buildAssignmentTask } from '../answer/adapters/assignment.js';
 import { resolveProblemListTask } from '../answer/context.js';
 import { getAnswerLog } from '../answer/debug.js';
 import { actions } from '../state/actions.js';
+import { collectExamQuestions, fillExamAnswers } from '../quiz/exam-fill.js';
 import * as telemetry from './telemetry.js';
 
 const L = (...a) => log.info('[test]', ...a);
@@ -248,6 +249,14 @@ export function installTestHooks() {
     },
 
     getHistory: getAIHistory,
+
+    /** 考试页 DOM 适配器（测试模式）：收集/填入，不提交。 */
+    examCollect() {
+      return collectExamQuestions(document);
+    },
+    examFill(answers) {
+      return fillExamAnswers(answers);
+    },
 
     /** 读取答题链路调试日志 */
     getAnswerLog,

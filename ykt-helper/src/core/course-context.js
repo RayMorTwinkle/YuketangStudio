@@ -139,7 +139,10 @@ export function preferredCourse(courses, context = getCourseContext()) {
   const list = Array.isArray(courses) ? courses : [];
   if (!list.length) return null;
   // 用户手动切课优先于 URL（但只在同一 classId 上下文内有效）。
-  const manual = findCourse(list, manualCourseId(context));
+  // 直接打开某个作业/考试时，路线里的课程必须优先，否则会定位到手动选错的课程。
+  const manual = (!context.newId && !context.oldQuizId)
+    ? findCourse(list, manualCourseId(context))
+    : null;
   if (manual) return manual;
   const byClass = findCourse(list, context.classId);
   if (byClass) return byClass;

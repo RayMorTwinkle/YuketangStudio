@@ -93,6 +93,14 @@ ok('换到另一门课后手动选择失效', () => {
   clearCourseSelection();
 });
 
+ok('直接打开作业/考试时路线课程优先于手动选择', () => {
+  clearCourseSelection();
+  rememberCourseSelection('333', context('/v2/web/studentLog/111'));
+  const direct = context('/ai-workspace/lms-graph/111/exercise/98765');
+  assert.equal(preferredCourse(courses, direct).id, '111');
+  clearCourseSelection();
+});
+
 ok('无 URL 课程时使用上次手动选择', () => {
   clearCourseSelection();
   const globalCtx = context('/m/v2');
