@@ -189,6 +189,9 @@ ok('零分有效；未出分/缺 total_score → graded:false 且不展示分数
   assert.equal(parseExamProgress({ ...examCoverBase, result: { ...examCoverBase.result, score: 0 } }).score, 0);
   const noFinish = parseExamProgress({ ...examCoverBase, result: { ...examCoverBase.result, score_finish: false } });
   assert.equal(noFinish.graded, false);
+  // 实测 changjiang 考试：score_finish=null 时官方结果页空白，不能算已出分
+  const nullFinish = parseExamProgress({ ...examCoverBase, result: { ...examCoverBase.result, score_finish: null } });
+  assert.equal(nullFinish.graded, false);
   assert.equal(noFinish.score, null);
   assert.equal(noFinish.totalScore, null);
   const noTotal = parseExamProgress({ problem_count: 10, result: examCoverBase.result });
@@ -276,6 +279,10 @@ ok('未出分/未公布 → 不可回顾', () => {
   }
   // 公布时间晚于服务器时间 → 不可回顾（show_score_time 是 cover 级字段）
   assert.equal(canReviewExam({ ...reviewableCover, show_score_time: 2000 }, 1000), false);
+  // 缺失公布时间不能证明已公布 → 不可回顾
+  const noRelease = { ...reviewableCover };
+  delete noRelease.show_score_time;
+  assert.equal(canReviewExam(noRelease, 1000), false);
   const noTotal = { ...reviewableCover };
   delete noTotal.total_score;
   assert.equal(canReviewExam(noTotal, 1000), false);
@@ -485,6 +492,8 @@ ok('容错：非对象输入不抛错，产出空集', () => {
 console.log('== parseExamHost（白名单） ==');
 ok('白名单域名与缺省值', () => {
   assert.equal(parseExamHost('https://tsinghua-exam.yuketang.cn'), 'https://tsinghua-exam.yuketang.cn');
+  assert.equal(parseExamHost('https://changjiang-exam.yuketang.cn'), 'https://changjiang-exam.yuketang.cn');
+  assert.equal(parseExamHost('https://changjiang-exam.yuketang.cn/result/1'), 'https://changjiang-exam.yuketang.cn');
   assert.equal(parseExamHost('https://examination.xuetangx.com/path/x'), 'https://examination.xuetangx.com');
   assert.equal(parseExamHost(undefined), 'https://examination.xuetangx.com');
   assert.equal(parseExamHost(''), 'https://examination.xuetangx.com');

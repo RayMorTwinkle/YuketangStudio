@@ -16,7 +16,8 @@ const enc = encodeURIComponent;
 
 export async function fetchCourses() {
   const j = await proGet('/v2/api/web/courses/list?identity=2');
-  const list = j?.data?.list || j?.list || [];
+  const data = dataOf(j);   // HTTP 200 里的 errcode/code 也要按登录失效处理
+  const list = data?.list || j?.list || [];
   return list
     .map(normalizeCourse)
     .filter((c) => c.id);
@@ -45,21 +46,23 @@ export async function fetchAssignments(cid) {
   }
   const rows = new Map();
   for (const a of acts) {
-    if (!a || (a.type !== 4 && a.type !== 19 && a.type !== 20)) continue;
+    if (!a) continue;
+    const type = Number(a.type);
+    if (![4, 19, 20].includes(type)) continue;
     const c = a.content || {};
-    const oldId = a.type === 4 ? String(a.courseware_id || '') : '';
-    const newId = a.type === 4
+    const oldId = type === 4 ? String(a.courseware_id || '') : '';
+    const newId = type === 4
       ? String(a.courseware_id || '')
       : String(c.leaf_id || '');
-    const leafTypeId = a.type === 4 ? '' : String(c.leaf_type_id || '');
-    const skuId = a.type === 4 ? '' : String(c.sku_id || '');
+    const leafTypeId = type === 4 ? '' : String(c.leaf_type_id || '');
+    const skuId = type === 4 ? '' : String(c.sku_id || '');
     const id = String(a.id || a.courseware_id || newId || leafTypeId || '');
     if (!id) continue;
     const row = {
       id,
-      type: a.type,
-      kind: a.type === 20 ? 'exam' : 'homework',
-      title: a.title || (a.type === 20 ? '考试' : '作业'),
+      type,
+      kind: type === 20 ? 'exam' : 'homework',
+      title: a.title || (type === 20 ? '考试' : '作业'),
       deadline: Number(a.deadline || c.score_d || 0) || 0,
       totalScore: a.total_score ?? null,
       problemCount: a.problem_count ?? null,
@@ -70,7 +73,7 @@ export async function fetchAssignments(cid) {
       skuId,
       classroomId: String(a.classroom_id || cid || ''),
     };
-    rows.set(`${a.type}:${id}`, row);
+    rows.set(`${type}:${id}`, row);
   }
   return [...rows.values()]
     .filter((r) => r.type === 4 || isAssignmentRetained({ deadline: r.deadline || null }))

@@ -16,9 +16,11 @@ export const repo = {
   currentSelectedUrl: null,
 
   // 按课程分组存储课件
-  setPresentation(id, data) {
+  setPresentation(id, data, { persist = true } = {}) {
     const pid = String(id);
     this.presentations.set(pid, { ...data, id: pid });
+    // 班级上传课件走 persist:false：只放内存，不占课堂课件的 5 个持久化槽位
+    if (!persist) return;
     const key = this.currentLessonId ? `presentations-${this.currentLessonId}` : 'presentations';
     storage.alterMap(key, (m) => {
       m.set(pid, data);
@@ -56,12 +58,38 @@ export const repo = {
 
   // 载入本课（按课程分组）在本地存储过的课件
   loadStoredPresentations() {
-    if (!this.currentLessonId) return;
-    const key = `presentations-${this.currentLessonId}`;
-    const stored = storage.getMap(key);
-    for (const [id, data] of stored.entries()) {
-      this.setPresentation(id, data);
+    const keys = ['presentations'];
+    if (this.currentLessonId) keys.push(`presentations-${this.currentLessonId}`);
+    for (const key of keys) {
+      const stored = storage.getMap(key);
+      let removedClassCards = false;
+      for (const [id, data] of [...stored.entries()]) {
+        // 0.9.0 曾把班级课件写进持久化槽位（含无 lesson 的 presentations 键）；
+        // 0.9.1 起只放内存，顺手清掉旧数据
+        if (data?.source === 'class-card') {
+          stored.delete(id);
+          removedClassCards = true;
+          continue;
+        }
+        // 有 lesson 时只载入本课键；无 lesson 时载入公共键
+        if (key !== 'presentations' || !this.currentLessonId) this.setPresentation(id, data);
+      }
+      if (removedClassCards) storage.setMap(key, stored);
     }
+  },
+
+  /** 清理 0.9.0 遗留在公共 presentations 键里的班级课件（只清这类，不动课堂课件）。 */
+  purgeLegacyClassCards() {
+    const key = 'presentations';
+    const stored = storage.getMap(key);
+    let removed = false;
+    for (const [id, data] of [...stored.entries()]) {
+      if (data?.source === 'class-card') {
+        stored.delete(id);
+        removed = true;
+      }
+    }
+    if (removed) storage.setMap(key, stored);
   },
 
   markLessonConnected(lessonId, ws, token) {
@@ -80,3 +108,5 @@ export const repo = {
     else this.autoJoinedLessons.delete(lessonId);
   },
 };
+
+try { repo.purgeLegacyClassCards(); } catch { /* storage may be unavailable */ }

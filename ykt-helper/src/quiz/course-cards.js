@@ -35,7 +35,7 @@ export async function fetchLearnActivities(cid) {
 export function pickClassCards(activities) {
   const rows = new Map();
   for (const a of Array.isArray(activities) ? activities : []) {
-    if (!a || a.type !== 2) continue;
+    if (!a || Number(a.type) !== 2) continue;
     const cardsId = String(a.courseware_id || '').trim();
     if (!cardsId) continue;
     const activityId = String(a.id || '').trim();
@@ -109,6 +109,8 @@ export function buildClassCardPresentation({ cid, cardsId, activityId = '', titl
     })
     .filter((s) => s.image);
   if (!slides.length) return null;
+  const width = Number(detail?.Width) || Number(detail?.last_cover_width) || 1280;
+  const height = Number(detail?.Height) || 720;
   return {
     id: `classcards:${cardsId}`,
     title: String(title || detail?.Title || `班级课件 ${cardsId}`),
@@ -116,8 +118,8 @@ export function buildClassCardPresentation({ cid, cardsId, activityId = '', titl
     cardsId: String(cardsId),
     activityId: String(activityId || ''),
     classroomId: String(cid || ''),
-    width: 1280,
-    height: 720,
+    width,
+    height,
     slides,
   };
 }
@@ -129,7 +131,8 @@ export function normalizeCourse(c = {}) {
     name: c.name || c.course_name || c.course?.name || '课程',
     role: c.role,
     skuId: String(c.free_sku_id || c.sku_id || ''),
-    courseId: String(c.course_id || ''),
+    courseId: String(c.course_id || c.course?.id || ''),
+    universityId: String(c.course?.university_id || c.university_id || ''),
     teacher: c.teacher_name || c.teacher?.name || '',
   };
 }
@@ -138,10 +141,16 @@ export function normalizeCourse(c = {}) {
 export async function fetchCourseScores(cid, skuId) {
   if (!cid || !skuId) return { summary: null, statistic: null, items: [] };
   const q = `classroom_id=${enc(cid)}&sku_id=${enc(skuId)}`;
-  const [detail, statistic] = await Promise.all([
+  const [detailRes, statisticRes] = await Promise.allSettled([
     proGet(`/c27/online_courseware/schedule/score_detail/single/${enc(skuId)}/0/?${q}`, { xtbz: 'ykt' }).then(dataOf),
     proGet(`/c27/online_courseware/schedule/score_statistic/${enc(cid)}/${enc(skuId)}/?${q}`, { xtbz: 'ykt' }).then(dataOf),
   ]);
+  const detail = detailRes.status === 'fulfilled' ? detailRes.value : null;
+  const statistic = statisticRes.status === 'fulfilled' ? statisticRes.value : null;
+  if (!detail && !statistic) {
+    throw (detailRes.status === 'rejected' ? detailRes.reason : statisticRes.reason)
+      || new Error('成绩接口读取失败');
+  }
   const evaluation = Array.isArray(detail?.evaluation_list) ? detail.evaluation_list : [];
   return {
     summary: {

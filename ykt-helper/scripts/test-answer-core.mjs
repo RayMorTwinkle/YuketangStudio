@@ -391,8 +391,8 @@ ok('置信度归一化：小数原样、百分数/100、越界钳制、非法为
   assert.equal(normalizeConfidence('85%'), 0.85);
   assert.equal(normalizeConfidence(85), 0.85);
   assert.equal(normalizeConfidence(100), 1);
-  assert.equal(normalizeConfidence(150), 1);
-  assert.equal(normalizeConfidence(-0.2), 0);
+  assert.equal(normalizeConfidence(150), null);
+  assert.equal(normalizeConfidence(-0.2), null);
   assert.equal(normalizeConfidence(null), null);
   assert.equal(normalizeConfidence('abc'), null);
   assert.equal(normalizeConfidence(undefined), null);

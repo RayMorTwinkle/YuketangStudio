@@ -112,7 +112,11 @@ export function fetchAsDataURL(url, timeoutMs = 20000) {
       const blob = await res.blob();
       return await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(normalizeImageDataUrl(reader.result));
+        reader.onload = () => {
+          const out = normalizeImageDataUrl(reader.result);
+          if (/^data:text\/html/i.test(String(out))) reject(new Error('图片下载返回 HTML'));
+          else resolve(out);
+        };
         reader.onerror = () => reject(new Error('图片读取失败'));
         reader.readAsDataURL(blob);
       });
@@ -140,7 +144,11 @@ function fetchViaGM(url, timeoutMs) {
             // 兼容返回 ArrayBuffer/string 的 GM 实现
             if (!(blob instanceof Blob)) blob = new Blob([blob || '']);
             const reader = new FileReader();
-            reader.onload = () => done(resolve, normalizeImageDataUrl(reader.result));
+            reader.onload = () => {
+              const out = normalizeImageDataUrl(reader.result);
+              if (/^data:text\/html/i.test(String(out))) done(reject, new Error('图片下载返回 HTML'));
+              else done(resolve, out);
+            };
             reader.onerror = () => done(reject, new Error('图片读取失败'));
             reader.readAsDataURL(blob);
           } catch (e) {

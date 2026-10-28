@@ -5,6 +5,7 @@ import tpl from './brush.html';
 import { ui } from '../ui-api.js';
 import { log } from '../../core/log.js';
 import { currentClassId } from '../../core/history-capture.js';
+import { uvIdFromCookie } from '../../quiz/active-core.js';
 import { fetchCourses } from '../../quiz/assignments.js';
 import {
   fetchClassCards, fetchClassCardProgress, fetchCourseScores,
@@ -54,6 +55,11 @@ export function mountBrushPanel() {
   $('#ykt-brush-stop')?.addEventListener('click', () => stop());
   $('#ykt-brush-only-score')?.addEventListener('change', renderQueue);
   $('#ykt-brush-course')?.addEventListener('change', (e) => {
+    if (running || busy) {
+      e.target.value = current?.id || '';
+      ui.toast('刷课进行中不能切换课程', 2000);
+      return;
+    }
     current = courses.find((c) => c.id === e.target.value) || null;
     updateScoreView(null);
     items = [];
@@ -66,19 +72,30 @@ export function mountBrushPanel() {
   return root;
 }
 
-async function refreshCourses() {
+async function refreshCourses(force = false) {
+  if (!force && (running || busy)) return;   // 刷课/扫描中不改变当前课程
   try {
     courses = await fetchCourses();
     const sel = $('#ykt-brush-course');
     if (!sel) return;
     const cid = currentClassId();
-    const preferred = courses.find((c) => c.id === cid) || (current && courses.find((c) => c.id === current.id)) || courses[0];
-    sel.innerHTML = courses.map((c) => `<option value="${c.id}">${escapeText(c.name)}</option>`).join('');
+    const preferred = courses.find((c) => c.id === cid) || (current && courses.find((c) => c.id === current.id)) || courses[0] || null;
+    sel.innerHTML = courses.map((c) => `<option value="${escapeText(c.id)}">${escapeText(c.name)}</option>`).join('');
     if (preferred) {
       sel.value = preferred.id;
+      if (current && current.id !== preferred.id) {
+        items = [];
+        updateScoreView(null);
+        renderQueue();
+      }
       current = preferred;
+    } else if (!courses.length) {
+      current = null;
+      items = [];
+      updateScoreView(null);
+      renderQueue();
+      logLine('没有读取到课程列表，请确认已登录雨课堂。', 'warn');
     }
-    if (!courses.length) logLine('没有读取到课程列表，请确认已登录雨课堂。', 'warn');
   } catch (e) {
     logLine('读取课程失败：' + (e?.message || e), 'bad');
     log.warn('[brush] refreshCourses failed', e);
@@ -175,16 +192,40 @@ function makeItems(outline, classCards, score) {
     if (!cardByTitle.has(c.title)) cardByTitle.set(c.title, c);
   }
   const rows = [];
+  const usedCards = new Set();
+  const hasScore = !!(score?.summary || (Array.isArray(score?.items) && score.items.length));
+  const appendClassCard = (c) => {
+    rows.push({
+      id: `classcard:${c.cardsId}`,
+      title: c.title,
+      type: 7,
+      typeLabel: '班级课件',
+      schedule: { done: 0, total: Number(c.count) || 0 },
+      completed: false,
+      brushable: true,
+      scored: false,
+      weight: 0,
+      weightUnknown: true,
+      isScore: false,
+      cardsId: c.cardsId,
+      activityId: c.activityId,
+      total: Number(c.count) || 0,
+      state: 'idle',
+    });
+  };
   const leaves = outline?.leaves || [];
   for (const leaf of leaves) {
     const type = Number(leaf.leaf_type) || 0;
     const schedule = scheduleOf(outline?.schedules?.[String(leaf.id)]);
     const scoreRow = scoreById.get(String(leaf.id));
     const card = type === 7 ? cardByTitle.get(String(leaf.name || '')) || null : null;
+    if (card) usedCards.add(card.cardsId);
     const evalId = scoreRow?.evaluationId;
-    const weight = evalId && evalById.has(String(evalId))
+    const matchedWeight = evalId && evalById.has(String(evalId))
       ? evalById.get(String(evalId)).proportion
       : (leaf.is_score ? 1 : 0);
+    const weightUnknown = type === 7 && !hasScore;
+    const weight = weightUnknown ? 0 : (Number(matchedWeight) || 0);
     rows.push({
       id: String(leaf.id),
       title: String(leaf.name || '未命名内容'),
@@ -193,8 +234,9 @@ function makeItems(outline, classCards, score) {
       schedule,
       completed: schedule.total > 0 ? schedule.done >= schedule.total : false,
       brushable: BRUSHABLE.has(type),
-      scored: !!leaf.is_score && Number(weight) > 0,
-      weight: Number(weight) || 0,
+      scored: !weightUnknown && !!leaf.is_score && Number(weight) > 0,
+      weight,
+      weightUnknown,
       isScore: !!leaf.is_score,
       cardsId: card?.cardsId || '',
       activityId: card?.activityId || '',
@@ -202,26 +244,9 @@ function makeItems(outline, classCards, score) {
       state: 'idle',
     });
   }
-  // 没有 outline 时，至少让班级课件可刷
-  if (!rows.length && Array.isArray(classCards)) {
-    for (const c of classCards) {
-      rows.push({
-        id: `classcard:${c.cardsId}`,
-        title: c.title,
-        type: 7,
-        typeLabel: '班级课件',
-        schedule: { done: 0, total: Number(c.count) || 0 },
-        completed: false,
-        brushable: true,
-        scored: true,
-        weight: 1,
-        isScore: true,
-        cardsId: c.cardsId,
-        activityId: c.activityId,
-        total: Number(c.count) || 0,
-        state: 'idle',
-      });
-    }
+  // 目录里没有列出的班级课件也要能刷；按 cardsId 去重，避免重复
+  for (const c of classCards) {
+    if (!usedCards.has(c.cardsId)) appendClassCard(c);
   }
   return rows;
 }
@@ -238,7 +263,7 @@ async function scanCourse() {
       return;
     }
     logLine(`扫描课程 ${cid}…`);
-    if (!courses.length) await refreshCourses();
+    if (!courses.length) await refreshCourses(true);
     current = current || courses.find((c) => c.id === cid) || null;
     let classCards = [];
     try { classCards = await fetchClassCards(cid); } catch (e) { logLine('班级课件列表读取失败：' + (e?.message || e), 'warn'); }
@@ -314,7 +339,10 @@ function renderQueue() {
     b.textContent = it.title;
     const meta = document.createElement('div');
     meta.className = 'bi-meta';
-    meta.textContent = `${it.typeLabel} · ${it.weight ? `占比 ${Math.round(it.weight * 100)}%` : '不计入总评'} · ${it.total ? `${it.schedule.done}/${it.total}` : (it.completed ? '已完成' : '未开始')}`;
+    const weightText = it.weightUnknown
+      ? '权重未知'
+      : (it.weight ? `占比 ${Math.round(it.weight * 100)}%` : '不计入总评');
+    meta.textContent = `${it.typeLabel} · ${weightText} · ${it.total ? `${it.schedule.done}/${it.total}` : (it.completed ? '已完成' : '未开始')}`;
     title.appendChild(b);
     title.appendChild(meta);
     const state = document.createElement('span');
@@ -362,6 +390,7 @@ function updateButtons() {
 
 async function start() {
   if (running) return;
+  if (busy) { ui.toast('正在扫描内容，请稍候', 2000); return; }
   if (!items.length) await scanCourse();
   if (!items.some((x) => x.brushable && !x.completed)) {
     ui.toast('没有可刷的未完成内容', 2000);
@@ -370,6 +399,8 @@ async function start() {
   running = true;
   paused = false;
   stopped = false;
+  const pauseBtn = $('#ykt-brush-pause');
+  if (pauseBtn) pauseBtn.textContent = '暂停';
   updateButtons();
   logLine('开始刷课');
   try {
@@ -414,8 +445,12 @@ function stop() {
 function cardUrl(it) {
   const cid = current?.id || currentClassId();
   if (!cid || !it.cardsId || !it.activityId) return '';
+  const universityId = new URLSearchParams(location.search).get('university_id')
+    || current?.universityId
+    || uvIdFromCookie(document.cookie, '3195')
+    || '3195';
   const qs = new URLSearchParams({
-    university_id: new URLSearchParams(location.search).get('university_id') || '3195',
+    university_id: String(universityId),
     platform_id: '3',
     classroom_id: cid,
   });
@@ -441,6 +476,54 @@ function contentUrl(it) {
 }
 
 /** 图文/视频/音频：在隐藏 iframe 打开 ai-workspace 内容页，做真实阅读/播放。 */
+function findContentNode(doc) {
+  if (!doc) return null;
+  const direct = doc.querySelector('.article-content,.rich-text,.markdown-body,video,audio');
+  if (direct) return direct;
+  const main = doc.querySelector('.content-main');
+  // 有 .leaf-item 的 content-main 是课程目录，不是文章
+  if (main && !main.querySelector('.leaf-item') && (main.innerText || '').trim().length > 80) return main;
+  const embed = [...doc.querySelectorAll('iframe')].find((f) => /(?:\.pdf|qn1-next|xuetangonline|weboffice)/i.test(f.src || ''));
+  if (embed) return embed;
+  for (const f of doc.querySelectorAll('iframe')) {
+    try {
+      const cd = f.contentDocument;
+      if (cd) {
+        const hit = findContentNode(cd);
+        if (hit) return hit;
+      }
+    } catch { /* cross-origin */ }
+  }
+  return null;
+}
+
+function findLeafByTitle(doc, title) {
+  const needle = String(title || '').replace(/\s+/g, '');
+  if (!needle) return null;
+  return [...doc.querySelectorAll('.leaf-item')]
+    .find((el) => (el.textContent || '').replace(/\s+/g, '').includes(needle)) || null;
+}
+
+/** 等内容真正出现；只有目录时点开对应 leaf，避免把目录当文章。 */
+async function waitContentReady(viewer, title, timeout = 25000) {
+  const end = Date.now() + timeout;
+  let clicked = false;
+  while (Date.now() < end) {
+    let d = null;
+    try { d = viewer.contentDocument; } catch { /* loading */ }
+    if (d) {
+      const hit = findContentNode(d);
+      if (hit) return { d, content: hit };
+      if (!clicked) {
+        const leaf = findLeafByTitle(d, title);
+        if (leaf) { clicked = true; try { leaf.click(); } catch { /* ignore */ } }
+      }
+    }
+    await sleep(500);
+  }
+  return null;
+}
+
 async function processContentLeaf(it) {
   updateItemState(it, 'run');
   const viewer = $('#ykt-brush-viewer');
@@ -449,33 +532,39 @@ async function processContentLeaf(it) {
     updateItemState(it, 'pending');
     return false;
   }
+  const close = () => { viewer.src = 'about:blank'; viewer.style.display = 'none'; };
   logLine(`打开${it.typeLabel}：${it.title}`);
   viewer.style.display = 'block';
   viewer.src = url;
-  const d = await waitViewerReady(viewer, 18000, '.leaf-item,.content-main,.article-content,.rich-text,video,audio');
-  if (!d) {
-    updateItemState(it, 'pending');
-    logLine(`内容页加载未确认：${it.title}`, 'warn');
-    viewer.src = 'about:blank';
-    viewer.style.display = 'none';
-    return false;
-  }
-  let ended = false;
   try {
+    const ready = await waitContentReady(viewer, it.title, 25000);
+    if (!ready) {
+      updateItemState(it, 'pending');
+      logLine(`内容未加载/未识别：${it.title}`, 'warn');
+      return false;
+    }
+    const { d, content } = ready;
     if (it.type === 3) {
-      const area = d.querySelector('.content-main,.article-content,.rich-text,.markdown-body') || d.scrollingElement || d.body;
-      for (let i = 0; i < 18 && !stopped; i++) {
-        try {
-          area.scrollBy ? area.scrollBy(0, 260) : (area.scrollTop += 260);
-        } catch { /* ignore */ }
-        await sleep(450);
+      if (content.tagName === 'IFRAME') {
+        // PDF/嵌入文档（常为跨域）：滚不动，保持打开让官方记录，随后待确认
+        logLine(`已打开图文：${it.title}（嵌入文档，保持打开）`);
+        await sleep(15000);
+      } else {
+        const area = content.matches?.('.article-content,.rich-text,.markdown-body')
+          ? content
+          : (content.closest?.('.article-content,.rich-text,.markdown-body') || content);
+        for (let i = 0; i < 18 && !stopped; i++) {
+          try { area.scrollBy ? area.scrollBy(0, 260) : (area.scrollTop += 260); } catch { /* ignore */ }
+          await sleep(450);
+        }
+        // 只在内容区域里点明确的完成/已读按钮，不碰课程目录
+        const root = area.closest?.('.content-main,.article-content,.rich-text,.markdown-body') || area;
+        const btn = root.querySelector?.('.btn-complete,.finish-btn,.mark-read,button[class*="complete"],button[class*="finish"]');
+        if (btn) { try { btn.click(); } catch { /* ignore */ } }
+        await sleep(1800);
       }
-      // 有些图文需要点“完成/已读”；只点明确的完成按钮，不碰题目提交
-      const btn = d.querySelector('.btn-complete,.finish-btn,.mark-read,button[class*="complete"],button[class*="finish"]');
-      if (btn) { try { btn.click(); } catch { /* ignore */ } }
-      await sleep(1800);
     } else {
-      const media = d.querySelector('video,audio');
+      const media = content.matches?.('video,audio') ? content : d.querySelector('video,audio');
       if (!media) {
         updateItemState(it, 'pending');
         logLine(`未找到${it.typeLabel}播放器：${it.title}`, 'warn');
@@ -486,8 +575,20 @@ async function processContentLeaf(it) {
       if (mute) { media.muted = true; media.volume = 0; }
       try { media.playbackRate = rate; } catch { /* ignore */ }
       if ($('#ykt-brush-from-start')?.checked) { try { media.currentTime = 0; } catch { /* ignore */ } }
+      let ended = false;
       media.addEventListener('ended', () => { ended = true; }, { once: true });
-      try { await media.play(); } catch { /* autoplay may be blocked */ }
+      try {
+        await media.play();
+      } catch {
+        try {
+          media.muted = true;
+          await media.play();
+        } catch {
+          updateItemState(it, 'pending');
+          logLine(`播放被浏览器拦截，已标记未确认：${it.title}`, 'warn');
+          return false;
+        }
+      }
       const maxWait = 30 * 60 * 1000;
       const start = Date.now();
       while (!stopped && !ended && Date.now() - start < maxWait) {
@@ -500,14 +601,12 @@ async function processContentLeaf(it) {
       logLine(`${it.typeLabel}播放${ended ? '完成' : '已停止'}：${it.title}`);
     }
   } finally {
-    viewer.src = 'about:blank';
-    viewer.style.display = 'none';
+    close();
   }
-  // 图文/视频没有和 cards/view_depth 等价的单接口进度，先标记“已执行待确认”，
-  // 不伪造完成；用户可重新扫描看官方目录状态。
+  // 图文/视频没有和 cards/view_depth 等价的单接口进度，只标记“已执行待确认”，不伪造完成
   updateItemState(it, 'pending');
   renderQueue();
-  return ended || it.type === 3;
+  return true;
 }
 
 async function processClassCard(it) {
@@ -521,66 +620,67 @@ async function processClassCard(it) {
   const cid = current?.id || currentClassId();
   const viewer = $('#ykt-brush-viewer');
   if (!viewer) return false;
+  const close = () => { viewer.src = 'about:blank'; viewer.style.display = 'none'; };
   logLine(`打开班级课件：${it.title}`);
   viewer.style.display = 'block';
   viewer.src = url;
-  const d = await waitViewerReady(viewer);
-  if (!d) {
-    updateItemState(it, 'fail');
-    logLine(`课件加载失败：${it.title}`, 'bad');
-    viewer.src = 'about:blank';
-    viewer.style.display = 'none';
-    return false;
-  }
+  try {
+    const d = await waitViewerReady(viewer);
+    if (!d) {
+      updateItemState(it, 'fail');
+      logLine(`课件加载失败：${it.title}`, 'bad');
+      return false;
+    }
 
-  let before = null;
-  try { before = await fetchClassCardProgress(cid, it.cardsId); } catch { /* ignore */ }
-  const read = new Set((before?.depthDetail || []).map((x) => Number(x)));
-  const thumbs = [...d.querySelectorAll('.swiper-slide')]
-    .map((el) => {
-      const page = Number(el.querySelector('.page')?.textContent?.trim());
-      return Number.isFinite(page) && page > 0 ? { el, page } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.page - b.page);
-  const total = Math.max(it.total || 0, thumbs.length, before?.depth || 0);
-  let processed = 0;
-  for (const t of thumbs) {
-    if (stopped) break;
-    while (paused && !stopped) await sleep(500);
-    if (stopped) break;
-    if (read.has(t.page - 1)) continue;
-    try {
-      (t.el.querySelector('.page') || t.el).click();
-      processed++;
-      await sleep(2200);
-    } catch { /* continue */ }
-    if (processed % 4 === 0) logLine(`「${it.title}」已翻 ${processed} 页`);
-  }
-  // 没有缩略图时按下一页/键盘兜底
-  if (!thumbs.length) {
-    const next = d.querySelector('.swiper-button-next,.ppt-next,.next-page,[class*="next"][class*="page"]');
-    for (let i = 0; i < Math.min(200, total || 100); i++) {
+    let before = null;
+    try { before = await fetchClassCardProgress(cid, it.cardsId); } catch { /* ignore */ }
+    const read = new Set((before?.depthDetail || []).map((x) => Number(x)));
+    const thumbs = [...d.querySelectorAll('.swiper-slide')]
+      .map((el) => {
+        const page = Number(el.querySelector('.page')?.textContent?.trim());
+        return Number.isFinite(page) && page > 0 ? { el, page } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.page - b.page);
+    const total = Math.max(it.total || 0, thumbs.length, before?.depth || 0);
+    let processed = 0;
+    for (const t of thumbs) {
       if (stopped) break;
       while (paused && !stopped) await sleep(500);
-      if (next) next.click();
-      else {
-        d.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }));
-      }
-      await sleep(1800);
+      if (stopped) break;
+      if (read.has(t.page - 1)) continue;
+      try {
+        (t.el.querySelector('.page') || t.el).click();
+        processed++;
+        await sleep(2200);
+      } catch { /* continue */ }
+      if (processed % 4 === 0) logLine(`「${it.title}」已翻 ${processed} 页`);
     }
+    // 没有缩略图时按下一页/键盘兜底
+    if (!thumbs.length) {
+      const next = d.querySelector('.swiper-button-next,.ppt-next,.next-page,[class*="next"][class*="page"]');
+      for (let i = 0; i < Math.min(200, total || 100); i++) {
+        if (stopped) break;
+        while (paused && !stopped) await sleep(500);
+        if (next) next.click();
+        else {
+          d.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }));
+        }
+        await sleep(1800);
+      }
+    }
+    await sleep(1800);
+    let after = null;
+    try { after = await fetchClassCardProgress(cid, it.cardsId); } catch { /* ignore */ }
+    const ok = (after?.depth || 0) > (before?.depth || 0);
+    it.schedule = { done: after?.depth || 0, total: total || after?.depth || 0 };
+    it.total = it.schedule.total;
+    it.completed = it.total > 0 && it.schedule.done >= it.total;
+    updateItemState(it, ok || it.completed ? 'ok' : 'fail');
+    logLine(`${it.completed ? '已完成' : '未确认'}：${it.title}（${it.schedule.done}/${it.total}）`, ok || it.completed ? 'info' : 'warn');
+    renderQueue();
+    return ok || it.completed;
+  } finally {
+    close();
   }
-  await sleep(1800);
-  let after = null;
-  try { after = await fetchClassCardProgress(cid, it.cardsId); } catch { /* ignore */ }
-  viewer.src = 'about:blank';
-  viewer.style.display = 'none';
-  const ok = (after?.depth || 0) > (before?.depth || 0);
-  it.schedule = { done: after?.depth || 0, total: total || after?.depth || 0 };
-  it.total = it.schedule.total;
-  it.completed = it.total > 0 && it.schedule.done >= it.total;
-  updateItemState(it, ok || it.completed ? 'ok' : 'fail');
-  logLine(`${it.completed ? '已完成' : '未确认'}：${it.title}（${it.schedule.done}/${it.total}）`, ok || it.completed ? 'info' : 'warn');
-  renderQueue();
-  return ok || it.completed;
 }

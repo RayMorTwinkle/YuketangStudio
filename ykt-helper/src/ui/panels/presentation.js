@@ -508,7 +508,8 @@ async function loadClassCards() {
             detail,
           });
           if (!pres) { failed++; continue; }
-          repo.setPresentation(pres.id, pres);
+          // 班级课件只放内存，不挤占课堂课件的持久化槽位
+          repo.setPresentation(pres.id, pres, { persist: false });
           added++;
         } catch (e) {
           failed++;
@@ -517,7 +518,8 @@ async function loadClassCards() {
       }
     });
     await Promise.all(workers);
-    classCardLoadedKey = String(cid);
+    // 有失败时不要把本课程标记为“已加载”，否则按钮会拒绝重试
+    if (!failed) classCardLoadedKey = String(cid);
     updatePresentationList();
     const suffix = failed ? `，失败 ${failed} 个` : '';
     ui.toast(`班级课件：已加载 ${added} 个${suffix}`, 3000);

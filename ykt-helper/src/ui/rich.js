@@ -127,12 +127,40 @@ export function sanitizeHtml(html) {
   try {
     const doc = new DOMParser().parseFromString(String(html), 'text/html');
     doc.querySelectorAll('script, style, iframe, object, embed, link, meta, base, form').forEach(n => n.remove());
-    doc.querySelectorAll('*').forEach(n => {
+    const schemeOf = (value) => Array.from(String(value || ''))
+      .filter((ch) => ch.charCodeAt(0) > 32)
+      .join('')
+      .toLowerCase();
+    const isDangerous = (value, { allowDataImage = false } = {}) => {
+      const s = schemeOf(value);
+      if (/^(javascript|vbscript):/.test(s)) return true;
+      if (/^data:/.test(s)) return !(allowDataImage && /^data:image\//.test(s));
+      return false;
+    };
+    doc.querySelectorAll('*').forEach((n) => {
       for (const a of [...n.attributes]) {
         const name = a.name.toLowerCase();
-        if (name.startsWith('on') || (['href', 'src', 'xlink:href'].includes(name) && /^\s*javascript:/i.test(String(a.value || '')))) {
+        const value = String(a.value || '');
+        if (name.startsWith('on') || name === 'srcdoc') {
+          n.removeAttribute(a.name);
+          continue;
+        }
+        if (name === 'style' && /(?:url\s*\(|expression\s*\(|behavior\s*:)/i.test(value)) {
+          n.removeAttribute(a.name);
+          continue;
+        }
+        if (['href', 'xlink:href', 'action', 'formaction'].includes(name) && isDangerous(value)) {
+          n.removeAttribute(a.name);
+        } else if (['src', 'poster', 'background'].includes(name) && isDangerous(value, { allowDataImage: true })) {
+          n.removeAttribute(a.name);
+        } else if (name === 'srcset' && /(?:javascript|vbscript|data:text\/html)/i.test(schemeOf(value))) {
           n.removeAttribute(a.name);
         }
+      }
+      if (n.tagName === 'A' && n.getAttribute('target') === '_blank') {
+        const rel = String(n.getAttribute('rel') || '').split(/\s+/).filter(Boolean);
+        for (const token of ['noopener', 'noreferrer']) if (!rel.includes(token)) rel.push(token);
+        n.setAttribute('rel', rel.join(' '));
       }
     });
     return doc.body.innerHTML;

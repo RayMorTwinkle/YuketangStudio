@@ -250,6 +250,7 @@ class YktBridge(private val activity: MainActivity) {
     // ---------- 原生网络兜底 ----------
     @JavascriptInterface
     fun fetchBinary(url: String, callbackId: String) {
+        if (!Regex("^[A-Za-z0-9_]{1,64}$").matches(callbackId)) return
         io.execute {
             var conn: HttpURLConnection? = null
             try {
@@ -285,8 +286,22 @@ class YktBridge(private val activity: MainActivity) {
      * 307/308 保留方法与 body），每跳重新附加目标域 Cookie，并把响应的
      * Set-Cookie 写回 CookieManager，让原生会话与 WebView 共享。
      */
+    /** 只有这些 https 域允许自动附带 WebView Cookie；其它域一律不附带。 */
+    private fun isYktAuthHost(raw: String): Boolean = runCatching {
+        val u = URL(raw)
+        u.protocol == "https" && u.host in setOf(
+            "changjiang.yuketang.cn",
+            "www.yuketang.cn",
+            "pro.yuketang.cn",
+            "changjiang-exam.yuketang.cn",
+            "tsinghua-exam.yuketang.cn",
+            "examination.xuetangx.com",
+        )
+    }.getOrDefault(false)
+
     @JavascriptInterface
     fun fetchRequest(method: String, url: String, headersJson: String, body: String, binary: Boolean, callbackId: String) {
+        if (!Regex("^[A-Za-z0-9_]{1,64}$").matches(callbackId)) return
         io.execute {
             var currentUrl = url
             var currentMethod = method.uppercase()
@@ -299,6 +314,13 @@ class YktBridge(private val activity: MainActivity) {
                     val headers = JSONObject(headersJson)
                     for (k in headers.keys()) baseHeaders[k] = headers.optString(k)
                 }
+                val initialHost = runCatching { URL(url).host }.getOrDefault("")
+                val initialAuth = isYktAuthHost(url)
+                val sensitiveHeaders = setOf(
+                    "authorization", "cookie", "proxy-authorization",
+                    "x-api-key", "x-auth-token", "x-csrftoken",
+                )
+                val hasSensitive = baseHeaders.keys.any { it.lowercase() in sensitiveHeaders }
                 var code = 0
                 var bytes = ByteArray(0)
                 var hops = 0
@@ -311,18 +333,30 @@ class YktBridge(private val activity: MainActivity) {
                         doInput = true
                     }
                     conn = c
+                    val sameHost = runCatching { URL(currentUrl).host == initialHost }.getOrDefault(false)
+                    // 只允许初始域和当前域都属于 Yuketang 登录域时才带 Cookie，
+                    // 防止任意第三方 URL 借原生桥读取登录态。
+                    val authHop = initialAuth && isYktAuthHost(currentUrl)
                     runCatching {
-                        val cookie = CookieManager.getInstance().getCookie(currentUrl)
-                        if (!cookie.isNullOrBlank()) c.setRequestProperty("Cookie", cookie)
+                        if (authHop) {
+                            val cookie = CookieManager.getInstance().getCookie(currentUrl)
+                            if (!cookie.isNullOrBlank()) c.setRequestProperty("Cookie", cookie)
+                        }
                     }
-                    for ((k, v) in baseHeaders) c.setRequestProperty(k, v)
+                    for ((k, v) in baseHeaders) {
+                        val lk = k.lowercase()
+                        // 跨域重定向不携带敏感头；非登录域不发送显式 Cookie
+                        if (!sameHost && lk in sensitiveHeaders) continue
+                        if (lk == "cookie" && !authHop) continue
+                        c.setRequestProperty(k, v)
+                    }
                     if (currentBody.isNotEmpty() && currentMethod != "GET" && currentMethod != "HEAD") {
                         c.doOutput = true
                         c.outputStream.use { it.write(currentBody.toByteArray(Charsets.UTF_8)) }
                     }
                     code = c.responseCode
-                    // Set-Cookie → CookieManager（原生与 WebView 会话互通）
-                    runCatching {
+                    // Set-Cookie → CookieManager（只写回 Yuketang 登录域）
+                    if (authHop) runCatching {
                         val cm = CookieManager.getInstance()
                         c.headerFields.forEach { (k, values) ->
                             if (k != null && k.equals("set-cookie", ignoreCase = true)) {
@@ -336,8 +370,15 @@ class YktBridge(private val activity: MainActivity) {
                         bytes = (if (code in 200..399) c.inputStream else c.errorStream)?.readBytes() ?: ByteArray(0)
                         break
                     }
+                    val nextUrl = URL(URL(currentUrl), location).toString()
+                    val nextHost = runCatching { URL(nextUrl).host }.getOrDefault("")
+                    // 带 Authorization/Cookie 等敏感头的请求，拒绝跨到其它域
+                    if (hasSensitive && nextHost != initialHost) {
+                        bytes = (if (code in 200..399) c.inputStream else c.errorStream)?.readBytes() ?: ByteArray(0)
+                        break
+                    }
                     hops++
-                    currentUrl = URL(URL(currentUrl), location).toString()
+                    currentUrl = nextUrl
                     if (code == 301 || code == 302 || code == 303) {
                         currentMethod = "GET"
                         currentBody = ""

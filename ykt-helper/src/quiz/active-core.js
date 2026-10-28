@@ -107,7 +107,7 @@ export function reviewAnswer(value) {
 }
 
 /** uv_id → university_id → '2598' 兜底（与官网前端行为一致）。 */
-export function uvIdFromCookie(cookieString) {
+export function uvIdFromCookie(cookieString, fallback = '2598') {
   const raw = typeof cookieString === 'string' ? cookieString : '';
   const jar = new Map();
   for (const part of raw.split(';')) {
@@ -116,7 +116,7 @@ export function uvIdFromCookie(cookieString) {
     const name = part.slice(0, eq).trim();
     if (!jar.has(name)) jar.set(name, part.slice(eq + 1).trim());
   }
-  return jar.get('uv_id') || jar.get('university_id') || '2598';
+  return jar.get('uv_id') || jar.get('university_id') || fallback;
 }
 
 /**
@@ -197,10 +197,11 @@ export function parseExamProgress(data) {
       : null;
   const score = nonnegativeNumber(result.score);
   const totalScore = nonnegativeNumber(cover.total_score);
+  // 实测：score_finish=null 的考试在官方结果页是空白；必须显式 true 才算已出分。
   const graded =
     submitted &&
     !invalid &&
-    result.score_finish !== false &&
+    result.score_finish === true &&
     score !== null &&
     totalScore !== null;
   return {
@@ -235,7 +236,8 @@ export function canReviewExam(data, now) {
     progress.graded === true &&
     cover.show_perm === true &&
     cover.show_score === true &&
-    (release === null || release <= (number(cover.server_time) ?? now))
+    release !== null &&
+    release <= (number(cover.server_time) ?? now)
   );
 }
 
@@ -526,7 +528,7 @@ export function joinExamPaper(paper, results, reviewCover) {
   };
 }
 
-const EXAM_HOSTS = ['tsinghua-exam.yuketang.cn', 'examination.xuetangx.com'];
+const EXAM_HOSTS = ['tsinghua-exam.yuketang.cn', 'changjiang-exam.yuketang.cn', 'examination.xuetangx.com'];
 
 /**
  * gen_token 返回的 exam_host 白名单校验：仅 https、无凭据/端口、域名在白名单内。

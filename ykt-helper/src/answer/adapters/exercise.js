@@ -30,7 +30,7 @@ export function stripTags(html) {
  * @param {object} [args.assignment] 作业列表行（id/leafTypeId/title/type）
  * @returns {object|null} AnswerTask（display-only）
  */
-export function buildExerciseTask({ problem, assignment = null } = {}) {
+export function buildExerciseTask({ problem, assignment = null, imageDataUrl = '' } = {}) {
   if (!problem || !problem.id) return null;
   const options = normalizeOptions(
     (Array.isArray(problem.options) ? problem.options : [])
@@ -53,14 +53,14 @@ export function buildExerciseTask({ problem, assignment = null } = {}) {
       optionLabels: options.map((o) => o.key),
       // 新版填空无显式空位结构，无法强校验空数（AI 按题面作答）
       blanks: 0,
-      image: {},
+      image: imageDataUrl ? { dataUrl: imageDataUrl } : {},
       rawType,
     },
     target: {
       kind: 'display',
       allowSubmit: false,
       submitLabel: '仅展示',
-      answered: false,
+      answered: ['answered', 'submitted', 'graded'].includes(problem.status),
     },
     meta: {
       assignmentId: assignment?.id != null ? String(assignment.id) : null,

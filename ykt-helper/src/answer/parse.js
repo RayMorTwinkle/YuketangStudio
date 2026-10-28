@@ -167,7 +167,7 @@ export function normalizeConfidence(value) {
   if (raw === '') return null;
   const percent = typeof raw === 'string' && raw.endsWith('%');
   const numeric = percent ? Number(raw.replace(/%$/, '')) : Number(raw);
-  if (!Number.isFinite(numeric)) return null;
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
   const normalized = percent || (numeric > 1 && numeric <= 100) ? numeric / 100 : numeric;
   return Math.max(0, Math.min(1, normalized));
 }

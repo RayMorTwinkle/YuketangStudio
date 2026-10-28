@@ -11,7 +11,7 @@ import {
 import { fetchExerciseDetail } from '../../quiz/exercise.js';
 import { fetchExamReview } from '../../quiz/exam.js';
 import { uvIdFromCookie } from '../../quiz/active-core.js';
-import { fetchAsDataURL } from '../../core/env.js';
+import { fetchAsDataURL, ensureHtml2Canvas } from '../../core/env.js';
 import { sanitizeHtml } from '../rich.js';
 import {
   isQuizPage, readQuizData, quizMeta, composeSlide, canvasBlob, saveBlob, zipStore, quizQuestionDataUrl,
@@ -32,6 +32,7 @@ let loaded = false;
 let viewData = null;
 let viewTitle = '';
 let viewAssignment = null;
+let loadSeq = 0;   // 课程切换请求序号：旧请求/旧 enrich 返回后直接丢弃
 
 function $(sel) { return root?.querySelector(sel); }
 
@@ -246,7 +247,13 @@ function renderActiveQuestions() {
 /** 加密字体：GM_xhr 拉 dataURL 注入 @font-face；失败保持原字符（降级）。 */
 let activeFontUrl = '';
 async function injectActiveFont(fontUrl) {
-  if (!fontUrl || fontUrl === activeFontUrl) return;
+  if (!fontUrl) {
+    // 新详情没有字体：清掉上一份，避免旧字套到新题
+    if (activeFontUrl) document.getElementById('ykt-active-font')?.remove();
+    activeFontUrl = '';
+    return;
+  }
+  if (fontUrl === activeFontUrl) return;
   activeFontUrl = fontUrl;
   try {
     const dataUrl = (await fetchAsDataURL(fontUrl, 20000)).replace(/'/g, '%27');
@@ -258,6 +265,7 @@ async function injectActiveFont(fontUrl) {
       + ` #ykt-assign-tab .xuetangx-com-encrypted-font{font-family:'ykt-encrypted' !important;}`;
     document.head.appendChild(style);
   } catch (e) {
+    if (activeFontUrl === fontUrl) activeFontUrl = '';   // 失败后允许下次重试
     log.warn('[assign] font inject failed', e);
   }
 }
@@ -293,12 +301,40 @@ async function openActiveDetail(a) {
   }
 }
 
+/** 加密字体题目：把题干+选项渲染成图，避免 AI 只看到私用区乱码。 */
+async function captureActiveProblem(index) {
+  try {
+    const el = document.querySelectorAll('#ykt-ap-questions .ap-active-item')[index];
+    if (!el || !el.querySelector('.xuetangx-com-encrypted-font')) return '';
+    const body = el.querySelector('.ap-problem-body');
+    if (!body) return '';
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:-99999px;top:0;width:720px;background:#fff;padding:12px;font-size:13px;line-height:1.6;';
+    box.appendChild(body.cloneNode(true));
+    for (const option of el.querySelectorAll('.ap-option')) box.appendChild(option.cloneNode(true));
+    document.body.appendChild(box);
+    try {
+      try { await document.fonts?.ready; } catch { /* ignore */ }
+      const html2canvas = await ensureHtml2Canvas();
+      if (!html2canvas) return '';
+      const canvas = await html2canvas(box, { backgroundColor: '#fff', useCORS: true, scale: 2 });
+      return canvas.toDataURL('image/jpeg', 0.9);
+    } finally {
+      box.remove();
+    }
+  } catch (e) {
+    log.warn('[assign] encrypted font capture failed', e);
+    return '';
+  }
+}
+
 /** 新版作业/考试题目的 AI 解答（仅展示，不提交）。 */
 async function aiForActiveProblem(index) {
   try {
     const q = viewData?.problems?.[index];
     if (!q) return;
-    const task = buildExerciseTask({ problem: q, assignment: viewAssignment });
+    const imageDataUrl = await captureActiveProblem(index);
+    const task = buildExerciseTask({ problem: q, assignment: viewAssignment, imageDataUrl });
     if (!task) throw new Error('题目信息不完整');
     ui.showAIPanel?.(true);
     await askAnswer(task);
@@ -308,16 +344,23 @@ async function aiForActiveProblem(index) {
 }
 
 /** 列表里的 19/20 行补作答状态：不阻塞首屏，完成后重渲染。 */
-async function enrichIfNeeded() {
+async function enrichIfNeeded(seq = loadSeq) {
   if (!list.some((r) => r.type === 19 || r.type === 20)) return;
+  const snapshot = list;
+  const myCid = cid;
   setStatus('正在获取新版作业/考试状态…');
+  let enriched;
   try {
-    list = await enrichAssignments(list);
+    enriched = await enrichAssignments(snapshot);
   } catch (e) {
+    if (seq !== loadSeq || cid !== myCid || list !== snapshot) return;
     log.warn('[assign] enrich failed', e);
     setStatus('状态获取失败：' + (e?.message || e));
     return;
   }
+  // 等待期间用户切了课程：旧的 enrich 结果不能覆盖新列表
+  if (seq !== loadSeq || cid !== myCid || list !== snapshot) return;
+  list = enriched;
   renderList();
   setStatus(list.length ? `共 ${list.length} 项` : '没有找到作业');
 }
@@ -370,21 +413,26 @@ function renderList() {
 }
 
 async function loadList(courseId) {
+  const seq = ++loadSeq;
   cid = courseId;
   selected.clear();
   setStatus('正在读取作业列表…');
+  let fetched;
   try {
-    list = await fetchAssignments(cid);
+    fetched = await fetchAssignments(cid);
   } catch (e) {
+    if (seq !== loadSeq) return;
     log.warn('[assign] load failed', e);
     list = [];
     renderList();
     setStatus('读取失败：' + (e?.message || e));
     return;
   }
+  if (seq !== loadSeq) return;   // 切课程了，丢弃旧响应
+  list = fetched;
   renderList();
   setStatus(list.length ? `共 ${list.length} 项` : '没有找到作业');
-  await enrichIfNeeded();
+  await enrichIfNeeded(seq);
 }
 
 async function loadCourses() {
@@ -398,16 +446,18 @@ async function loadCourses() {
     if (!courses.length) { setStatus('没有读取到课程'); return; }
     const quizId = String(window.quizID || '');
     if (quizId) {
+      const scanSeq = loadSeq;
       setStatus('正在定位当前作业所属课程…');
       const found = await findCourseByQuiz(courses, quizId);
-      if (found) {
+      if (found && scanSeq === loadSeq) {   // 扫描期间用户没切课程
+        const seq = ++loadSeq;
         if (sel) sel.value = found.cid;
         list = found.list;
         cid = found.cid;
         selected.clear();
         renderList();
         setStatus(`共 ${list.length} 项`);
-        await enrichIfNeeded();
+        await enrichIfNeeded(seq);
         return;
       }
     }

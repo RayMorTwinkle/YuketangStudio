@@ -694,6 +694,7 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
   margin: 0 16px 8px; padding: 8px 10px; font-size: 12px;
   border: 1px solid var(--ykt-border); border-radius: 8px; background: #f7f9fc;
 }
+#ykt-assign-tab .ap-desc img{ max-width: 100%; }
 #ykt-assign-tab .ap-desc:empty{ display: none; }
 #ykt-assign-tab .ap-active-list{ padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; }
 #ykt-assign-tab .ap-active-item{

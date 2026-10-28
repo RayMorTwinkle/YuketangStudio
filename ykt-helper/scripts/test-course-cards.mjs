@@ -65,7 +65,7 @@ console.log('== 课程列表 skuId ==');
 ok('free_sku_id 优先，保留 classroomId/name', () => {
   const c = normalizeCourse({ classroom_id: 25398489, course_name: 'Java程序设计', free_sku_id: 12532145, course_id: 3115397 });
   assert.deepEqual(c, {
-    id: '25398489', name: 'Java程序设计', role: undefined, skuId: '12532145', courseId: '3115397', teacher: '',
+    id: '25398489', name: 'Java程序设计', role: undefined, skuId: '12532145', courseId: '3115397', universityId: '', teacher: '',
   });
 });
 

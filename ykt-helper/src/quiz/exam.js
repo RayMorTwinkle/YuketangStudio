@@ -37,7 +37,8 @@ export async function openExamReview(row) {
     'classroom-id': String(row.classroomId || ''),
     'university-id': '0',
     'uv-id': '0',
-    referer: `https://pro.yuketang.cn/v2/web/trans/${enc(String(row.classroomId || ''))}/${enc(String(row.leafTypeId || ''))}?status=4&isFrom=2`,
+    // 注意：fetch 无法设置 Referer（forbidden header），这里不再传无效值；
+    // 实测 gen_token 依赖 xtbz/xt-agent/classroom-id/university-id/uv-id + 浏览器自动 Referer 即可。
   }));
   const token = typeof tokenData.token === 'string' ? tokenData.token : '';
   const userIdOk =
