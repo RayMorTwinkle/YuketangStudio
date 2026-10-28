@@ -188,11 +188,14 @@ export async function fetchCourseScores(cid, skuId) {
     },
     items: (Array.isArray(detail?.leaf_level_infos) ? detail.leaf_level_infos : []).map((x) => ({
       id: String(x?.id ?? ''),
+      leafTypeId: String(x?.leaf_type_id ?? ''),
+      lessonId: String(x?.lesson_id ?? ''),
       title: String(x?.leaf_level_title || x?.leaf_chapter_title || ''),
       leafType: Number(x?.leaf_type) || 0,
       evaluationId: x?.evaluation_id == null ? null : String(x.evaluation_id),
       userScore: toNumber(x?.user_score),
       leafScore: toNumber(x?.leaf_score),
+      schedule: x?.schedule ?? null,
       isExpired: x?.is_expired === true,
     })),
   };

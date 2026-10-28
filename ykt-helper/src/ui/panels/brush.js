@@ -196,7 +196,13 @@ function scoreNum(v) {
 
 function makeItems(outline, classCards, score, extraItems = []) {
   const evalById = new Map((score?.summary?.evaluation || []).map((e) => [String(e.id), e]));
-  const scoreById = new Map((score?.items || []).map((x) => [String(x.id), x]));
+  const scoreById = new Map();
+  for (const x of (score?.items || [])) {
+    for (const k of [x?.id, x?.leafTypeId, x?.lessonId]) {
+      const key = k == null ? '' : String(k);
+      if (key && !scoreById.has(key)) scoreById.set(key, x);
+    }
+  }
   const cardByTitle = new Map();
   for (const c of classCards) {
     if (!cardByTitle.has(c.title)) cardByTitle.set(c.title, c);
@@ -376,7 +382,10 @@ function renderQueue() {
     const scoreText = it.hasScore
       ? `成绩 ${fmt(it.score)}${it.maxScore != null ? `/${fmt(it.maxScore)}` : ''}`
       : '';
-    meta.textContent = [it.typeLabel, weightText, progressText, scoreText, it.statusMessage]
+    const rawText = it.rawScore != null
+      ? `原始 ${fmt(it.rawScore)}${it.rawMaxScore != null ? `/${fmt(it.rawMaxScore)}` : ''}`
+      : '';
+    meta.textContent = [it.typeLabel, weightText, progressText, scoreText, rawText, it.statusMessage]
       .filter(Boolean).join(' · ');
     title.appendChild(b);
     title.appendChild(meta);

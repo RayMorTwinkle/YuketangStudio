@@ -65,6 +65,7 @@ export async function fetchAssignments(cid) {
       title: a.title || (type === 20 ? '考试' : '作业'),
       deadline: Number(a.deadline || c.score_d || 0) || 0,
       totalScore: a.total_score ?? null,
+      score: a.score ?? null,
       problemCount: a.problem_count ?? null,
       status: a.status ?? null,
       oldId,

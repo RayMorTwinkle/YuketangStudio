@@ -12,6 +12,7 @@ import { resolveProblemListTask } from '../answer/context.js';
 import { getAnswerLog } from '../answer/debug.js';
 import { actions } from '../state/actions.js';
 import { collectExamQuestions, fillExamAnswers } from '../quiz/exam-fill.js';
+import * as Shell from '../ui/panels/shell.js';
 import * as telemetry from './telemetry.js';
 
 const L = (...a) => log.info('[test]', ...a);
@@ -249,6 +250,11 @@ export function installTestHooks() {
     },
 
     getHistory: getAIHistory,
+
+    /** 打开主面板指定 tab（测试模式）。 */
+    openShell(tab) {
+      Shell.openTab(tab);
+    },
 
     /** 考试页 DOM 适配器（测试模式）：收集/填入，不提交。 */
     examCollect() {

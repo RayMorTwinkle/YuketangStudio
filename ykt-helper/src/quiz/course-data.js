@@ -51,7 +51,10 @@ function weightFor(score, evaluationId, isScore) {
 export function scoreRows(score) {
   const rows = [];
   for (const it of (score?.items || [])) {
-    const id = str(it?.id);
+    const scoreId = str(it?.id);
+    const leafTypeId = str(it?.leafTypeId || '');
+    const lessonId = str(it?.lessonId || '');
+    const id = leafTypeId || lessonId || scoreId;
     if (!id) continue;
     const type = num(it?.leafType);
     // 班级课件单独由 cards/view_depth 提供，避免生成没有 cardsId 的假条目。
@@ -61,6 +64,7 @@ export function scoreRows(score) {
     const leafScore = scoreNum(it?.leafScore);
     rows.push({
       id,
+      aliases: [scoreId, leafTypeId, lessonId].filter(Boolean),
       title: str(it?.title || `内容 ${id}`),
       type,
       typeLabel: TYPE_LABEL[type] || `类型${type}`,
@@ -76,6 +80,8 @@ export function scoreRows(score) {
       score: userScore,
       maxScore: leafScore,
       hasScore: true,
+      leafTypeId,
+      scoreId,
       isExpired: it?.isExpired === true,
       total: 0,
       state: 'idle',
@@ -129,9 +135,11 @@ export function assignmentRows(assignments) {
       const exam = type === 20;
       const completed = exam
         ? a.examStatus === 'submitted'
-        : a.status === 'graded' || a.status === 'submitted';
+        : (a.graded === true || a.status === 'graded' || a.status === 'submitted' || Number(a.status) >= 2 || scoreNum(a.score) != null);
+      const scoreKey = String(a.leafTypeId || a.oldId || a.newId || a.id || '');
       return {
-        id: `assignment:${type}:${str(a.id)}`,
+        id: scoreKey || `assignment:${type}:${str(a.id)}`,
+        aliases: [scoreKey, `assignment:${type}:${str(a.id)}`, str(a.leafTypeId), str(a.oldId), str(a.newId), str(a.id)].filter(Boolean),
         assignmentId: str(a.id),
         title: str(a.title || (exam ? '考试' : '作业')),
         type,
@@ -144,9 +152,11 @@ export function assignmentRows(assignments) {
         weight: 0,
         weightUnknown: true,
         isScore: false,
-        score: scoreNum(a.score),
-        maxScore: scoreNum(a.totalScore),
-        hasScore: a.score != null,
+        score: null,
+        maxScore: null,
+        hasScore: false,
+        rawScore: scoreNum(a.score),
+        rawMaxScore: scoreNum(a.totalScore),
         statusMessage: str(a.statusMessage),
         deadline: num(a.deadline),
         total: num(a.problemCount),
@@ -159,15 +169,28 @@ export function assignmentRows(assignments) {
  * 合并“目录行”和“API 补充行”。
  * 目录行提供准确的 done/total/顺序；API 行提供成绩、班级课件、作业状态。
  */
+function aliasesOf(row) {
+  return [String(row?.id || ''), ...(Array.isArray(row?.aliases) ? row.aliases.map(String) : [])]
+    .filter(Boolean);
+}
+
 export function mergeBrushItems(baseItems, extraItems) {
   const byId = new Map();
-  for (const it of baseItems || []) byId.set(String(it.id), it);
+  const byAlias = new Map();
+  for (const it of baseItems || []) {
+    const id = String(it.id);
+    byId.set(id, it);
+    for (const alias of aliasesOf(it)) if (!byAlias.has(alias)) byAlias.set(alias, it);
+  }
   for (const e of extraItems || []) {
     const id = String(e?.id || '');
     if (!id) continue;
-    const it = byId.get(id);
+    let it = byId.get(id);
+    if (!it) for (const alias of aliasesOf(e)) { if (byAlias.has(alias)) { it = byAlias.get(alias); break; } }
     if (!it) {
-      byId.set(id, { ...e, id });
+      const copy = { ...e, id, aliases: aliasesOf(e) };
+      byId.set(id, copy);
+      for (const alias of copy.aliases) if (!byAlias.has(alias)) byAlias.set(alias, copy);
       continue;
     }
     const existingTotal = Number(it.schedule?.total) || 0;
@@ -177,13 +200,16 @@ export function mergeBrushItems(baseItems, extraItems) {
       : (extraTotal > 0 ? e.schedule : (it.schedule || e.schedule || { done: 0, total: 0 }));
     const completed = existingTotal > 0
       ? !!it.completed
-      : (e.completed != null ? !!e.completed : !!it.completed);
+      : !!(it.completed || e.completed);
+    const hasBaseScore = !!it.hasScore;
     Object.assign(it, {
       schedule,
       completed,
       completionSource: it.completionSource || e.completionSource || '',
-      score: e.score != null ? e.score : it.score,
-      maxScore: e.maxScore != null ? e.maxScore : it.maxScore,
+      score: hasBaseScore ? it.score : (e.score != null ? e.score : it.score),
+      maxScore: hasBaseScore ? it.maxScore : (e.maxScore != null ? e.maxScore : it.maxScore),
+      rawScore: e.rawScore != null ? e.rawScore : it.rawScore,
+      rawMaxScore: e.rawMaxScore != null ? e.rawMaxScore : it.rawMaxScore,
       hasScore: !!(it.hasScore || e.hasScore),
       weight: e.hasScore ? (Number(e.weight) || 0) : (Number(it.weight) || 0),
       scored: !!(it.scored || e.scored),
@@ -195,6 +221,8 @@ export function mergeBrushItems(baseItems, extraItems) {
       statusMessage: it.statusMessage || e.statusMessage || '',
       total: existingTotal > 0 ? it.total : (e.total || it.total || 0),
     });
+    it.aliases = [...new Set([...aliasesOf(it), ...aliasesOf(e)])];
+    for (const alias of it.aliases) if (!byAlias.has(alias)) byAlias.set(alias, it);
   }
   return [...byId.values()];
 }
