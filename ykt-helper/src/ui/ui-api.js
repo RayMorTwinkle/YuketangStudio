@@ -19,6 +19,15 @@ const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
 if (typeof _config.ai !== 'object' || !_config.ai) _config.ai = {};
 _config.ai = Object.assign({}, DEFAULT_CONFIG.ai, _config.ai);
 _config.ai.kimiApiKey = storage.get('kimiApiKey', _config.ai.kimiApiKey);
+// 作答延迟/随机延迟：缺失或非法值回落到默认 3s / 2s；合法用户值（含 0 随机）保留
+_config.autoAnswerDelay = Number(_config.autoAnswerDelay);
+if (!Number.isFinite(_config.autoAnswerDelay) || _config.autoAnswerDelay <= 0) {
+  _config.autoAnswerDelay = DEFAULT_CONFIG.autoAnswerDelay;
+}
+_config.autoAnswerRandomDelay = Number(_config.autoAnswerRandomDelay);
+if (!Number.isFinite(_config.autoAnswerRandomDelay) || _config.autoAnswerRandomDelay < 0) {
+  _config.autoAnswerRandomDelay = DEFAULT_CONFIG.autoAnswerRandomDelay;
+}
 _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
 if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = false;
 if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;

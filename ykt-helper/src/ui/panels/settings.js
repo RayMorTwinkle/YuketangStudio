@@ -531,8 +531,12 @@ export function mountSettingsPanel() {
     if ($fallbackAns) $fallbackAns.checked = !!ui.config.autoAnswerFallbackDefault;
     $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
     $iftex.checked = !!ui.config.iftex;
-    $delay.value = Math.floor((ui.config.autoAnswerDelay || 3000) / 1000);
-    $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1000);
+    const delayMs = Number.isFinite(Number(ui.config.autoAnswerDelay)) && Number(ui.config.autoAnswerDelay) > 0
+      ? Number(ui.config.autoAnswerDelay) : 3000;
+    const randMs = Number.isFinite(Number(ui.config.autoAnswerRandomDelay))
+      ? Number(ui.config.autoAnswerRandomDelay) : 2000;
+    $delay.value = Math.floor(delayMs / 1000);
+    $rand.value = Math.floor(randMs / 1000);
     $priority.checked = (ui.config.aiSlidePickPriority !== false);
     if ($regex) $regex.checked = !!ui.config.regexToolCall;
     $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
