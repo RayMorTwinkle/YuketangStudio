@@ -137,6 +137,24 @@ export function normalizeCourse(c = {}) {
   };
 }
 
+/** 单个课程班级：成绩接口需要的 skuId 在这里返回（列表接口不一定带）。 */
+export function normalizeClassroom(c = {}) {
+  return {
+    id: String(c.classroom_id || c.id || ''),
+    name: c.name || c.course_name || c.course_short_name || '课程',
+    skuId: String(c.free_sku_id || c.sku_id || ''),
+    courseId: String(c.course_id || ''),
+    teacher: c.teacher_name || '',
+    universityId: String(c.uv_id || c.university_id || ''),
+  };
+}
+
+export async function fetchClassroomInfo(cid) {
+  if (!cid) return normalizeClassroom({});
+  const data = dataOf(await proGet(`/v2/api/web/classrooms/${enc(cid)}?role=5`));
+  return normalizeClassroom(data);
+}
+
 /** 我的成绩 + 班级统计（只读；接口未公开时返回 null 字段）。 */
 export async function fetchCourseScores(cid, skuId) {
   if (!cid || !skuId) return { summary: null, statistic: null, items: [] };

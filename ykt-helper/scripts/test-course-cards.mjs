@@ -2,7 +2,7 @@
 // 班级上传课件（logs/learn type=2）与课堂课件（type=14）映射单测。
 import assert from 'node:assert/strict';
 import {
-  pickClassCards, buildClassCardPresentation, normalizeCourse,
+  pickClassCards, buildClassCardPresentation, normalizeCourse, normalizeClassroom,
 } from '../src/quiz/course-cards.js';
 
 let pass = 0;
@@ -66,6 +66,16 @@ ok('free_sku_id 优先，保留 classroomId/name', () => {
   const c = normalizeCourse({ classroom_id: 25398489, course_name: 'Java程序设计', free_sku_id: 12532145, course_id: 3115397 });
   assert.deepEqual(c, {
     id: '25398489', name: 'Java程序设计', role: undefined, skuId: '12532145', courseId: '3115397', universityId: '', teacher: '',
+  });
+});
+
+console.log('== 班级信息 skuId ==');
+ok('classroom 接口带 free_sku_id', () => {
+  const c = normalizeClassroom({
+    id: 26739809, name: '物理实验绪论2026秋-1', course_id: '3697615', free_sku_id: 13224417, teacher_name: '编号47', uv_id: 3195,
+  });
+  assert.deepEqual(c, {
+    id: '26739809', name: '物理实验绪论2026秋-1', skuId: '13224417', courseId: '3697615', teacher: '编号47', universityId: '3195',
   });
 });
 

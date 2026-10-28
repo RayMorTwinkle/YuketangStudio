@@ -11,7 +11,7 @@
 
 import {
   fetchCourseScores, fetchLearnActivities, pickClassCards,
-  fetchClassCardProgress,
+  fetchClassCardProgress, fetchClassroomInfo,
 } from './course-cards.js';
 import { fetchAssignments } from './assignments.js';
 
@@ -205,6 +205,14 @@ export function mergeBrushItems(baseItems, extraItems) {
  */
 export async function loadCourseSnapshot(cid, skuId) {
   const errors = [];
+  if (!skuId) {
+    try {
+      const info = await fetchClassroomInfo(cid);
+      skuId = info?.skuId || '';
+    } catch (e) {
+      errors.push('班级信息：' + (e?.message || e));
+    }
+  }
   const [scoreRes, actsRes, assignmentsRes] = await Promise.allSettled([
     skuId ? fetchCourseScores(cid, skuId) : Promise.resolve(null),
     fetchLearnActivities(cid),
