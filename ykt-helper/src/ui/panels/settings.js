@@ -102,7 +102,6 @@ export function mountSettingsPanel() {
   const $autoAnalyze = root.querySelector('#ykt-input-ai-auto-analyze');
   const $delay = root.querySelector('#ykt-input-answer-delay');
   const $rand = root.querySelector('#ykt-input-random-delay');
-  const $priority = root.querySelector('#ykt-ai-pick-main-first');
   const $notifyDur = root.querySelector('#ykt-input-notify-duration');
   const $notifyVol = root.querySelector('#ykt-input-notify-volume');
   const $iftex = root.querySelector('#ykt-ui-tex');
@@ -491,7 +490,6 @@ export function mountSettingsPanel() {
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
     ui.config.iftex = !!$iftex.checked;
-    ui.config.aiSlidePickPriority = !!$priority.checked;
     ui.config.regexToolCall = !!$regex?.checked;
     ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
     ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
@@ -537,7 +535,6 @@ export function mountSettingsPanel() {
       ? Number(ui.config.autoAnswerRandomDelay) : 2000;
     $delay.value = Math.floor(delayMs / 1000);
     $rand.value = Math.floor(randMs / 1000);
-    $priority.checked = (ui.config.aiSlidePickPriority !== false);
     if ($regex) $regex.checked = !!ui.config.regexToolCall;
     $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
     $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));

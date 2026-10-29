@@ -256,6 +256,24 @@ export function installTestHooks() {
       Shell.openTab(tab);
     },
 
+    /** 注入测试课件并刷新课件面板。 */
+    injectPresentation(pres) {
+      const slides = (pres.slides || []).map((s, i) => ({
+        id: String(s.id ?? `test-slide-${i + 1}`),
+        index: s.index ?? i + 1,
+        page: s.page ?? s.index ?? i + 1,
+        thumbnail: s.thumbnail || '',
+        image: s.image || s.thumbnail || '',
+        problem: s.problem ? { problemId: s.problem.problemId ?? s.problem.id, ...s.problem } : null,
+      }));
+      const data = { ...pres, slides };
+      actions.onPresentationLoaded(data.id, data);
+      repo.currentPresentationId = String(data.id);
+      repo.selectedPresentationId = String(data.id);
+      ui.updatePresentationList?.();
+      return slides.map(s => s.id);
+    },
+
     /** 考试页 DOM 适配器（测试模式）：收集/填入，不提交。 */
     examCollect() {
       return collectExamQuestions(document);

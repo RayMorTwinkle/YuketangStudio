@@ -192,58 +192,37 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 /* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */
 #ykt-presentation-panel{ width: 900px; }
 #ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-#ykt-presentation-panel .panel-body{
-  display: grid; grid-template-columns: 300px 1fr; gap: 10px;
-}
-#ykt-presentation-panel .panel-left,
-#ykt-presentation-panel .panel-right{
-  display: flex;
-  flex-direction: column;
-}
 #ykt-presentation-panel .presentation-list{
   border: 1px solid var(--ykt-border);
   border-radius: 8px;
   background: #fff;
   padding: 10px;
   box-sizing: border-box;
+  outline: none;
 }
-#ykt-presentation-panel .presentation-title{
-  font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);
+#ykt-presentation-panel .cw-slide {
+  padding: 8px 0 12px; border-bottom: 1px solid var(--ykt-border);
 }
-#ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
-#ykt-presentation-panel .slide-thumb{
-  position: relative; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;
-  min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;
+#ykt-presentation-panel .cw-slide:last-child { border-bottom: 0; }
+#ykt-presentation-panel .cw-slide-head {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 6px; flex-wrap: wrap;
 }
-#ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }
-#ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }
-#ykt-presentation-panel .slide-index {
-  position: absolute; top: 4px; left: 4px; z-index: 2;               
-  padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 1;
-  background: rgba(0, 0, 0, 0.6); color: #fff; pointer-events: none;
+#ykt-presentation-panel .cw-slide-page {
+  padding: 2px 7px; border-radius: 10px; background: #1d63df; color:#fff; font-size:11px; font-weight:700;
 }
-#ykt-presentation-panel .slide-view{
-  position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;
+#ykt-presentation-panel .cw-slide-source { flex:0 0 auto; padding:1px 6px; border-radius:8px; background:#f1f5f9; color:#64748b; font-size:10px; }
+#ykt-presentation-panel .cw-slide-title { flex:1; min-width:120px; font-size:12px; color:var(--ykt-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#ykt-presentation-panel .cw-slide-actions { display:flex; gap:5px; }
+#ykt-presentation-panel .cw-slide-actions button {
+  padding: 2px 8px; border: 1px solid var(--ykt-border-strong); border-radius: 5px; background:#fff; font-size:11px; cursor:pointer;
 }
-#ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }
-#ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-#ykt-presentation-panel .problem-box{
-  position: absolute; left: 12px; right: 12px; bottom: 12px;
-  background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);
-  border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);
+#ykt-presentation-panel .cw-slide-actions button:hover { color:var(--ykt-accent); border-color:var(--ykt-accent); }
+#ykt-presentation-panel .cw-slide-image {
+  width:100%; min-height:120px; background:#f8fafc; border:1px solid var(--ykt-border); border-radius:6px;
+  display:flex; align-items:center; justify-content:center; overflow:hidden;
 }
-#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; padding-right: 28px; }
-#ykt-presentation-panel .problem-box-close{
-  position: absolute; top: 6px; right: 6px;
-  width: 22px; height: 22px; border-radius: 999px;
-  border: 1px solid var(--ykt-border-strong);
-  background: #fff; color: #555;
-  cursor: pointer; font-size: 16px; line-height: 18px;
-  padding: 0;
-}
-#ykt-presentation-panel .problem-box-close:hover{ color: #111; border-color: var(--ykt-accent); }
-#ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }
-#ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }
+#ykt-presentation-panel .cw-slide-image img { width:100%; max-height:72vh; object-fit:contain; display:block; cursor:zoom-in; }
+#ykt-presentation-panel .cw-empty { color:var(--ykt-muted); padding:20px; text-align:center; }
 
 
 
@@ -334,53 +313,23 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 .auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }
 .auto-answer-popup .content{ white-space: normal; word-break: break-word; }
 
-/* ===== 1.16.6: 课件浏览面板：固定右侧详细视图，左侧独立滚动 ===== */
+/* ===== 课件浏览面板：单列滚动 + 右侧页面导航轨 ===== */
 #ykt-presentation-panel {
-  --ykt-panel-max-h: 72vh;           /* 与 .ykt-panel 的最大高度保持一致 */
+  --ykt-panel-max-h: 72vh;
 }
-
-/* 两列布局：左列表 + 右详细视图 */
-#ykt-presentation-panel .panel-body{
-  display: grid;
-  grid-template-columns: minmax(200px, 300px) 1fr;
-  gap: 12px;
-  overflow: hidden;
-  align-items: start;
+#ykt-presentation-panel .cw-single-column-body{
+  height: 100%; min-height: 0; overflow: hidden;
 }
-
-/* 左侧：只让左列滚动，限制在面板可视高度内 */
-#ykt-presentation-panel .panel-left{
+#ykt-presentation-panel .cw-list{
   max-height: var(--ykt-panel-max-h);
   overflow: auto;
-  min-width: 0;
-  align-self: stretch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
-
-/* 右侧：粘性定位为“固定”，始终在面板可视区内 */
-#ykt-presentation-panel .panel-right{
-  position: sticky;
-  top: 0;                            
-  align-self: start;
-  gap: 12px;
-}
-
-/* 右侧详细视图自身也限制高度并允许内部滚动 */
-#ykt-presentation-panel .slide-view{
-  max-height: var(--ykt-panel-max-h);
-  overflow: auto;
-  border: 1px solid var(--ykt-border);
-  border-radius: 8px;
-  background: #fff;
-}
-
-/* 小屏自适配：堆叠布局时取消 sticky，避免遮挡 */
-@media (max-width: 900px){
-  #ykt-presentation-panel .panel-body{
-    grid-template-columns: 1fr;
-  }
-  #ykt-presentation-panel .panel-right{
-    position: static;
-  }
+@media (max-width: 600px){
+  #ykt-presentation-panel .cw-single-column-body{ grid-template-columns: minmax(0, 1fr) 24px; gap:5px; }
+  #ykt-presentation-panel .cw-rail{ width:24px; }
+  #ykt-presentation-panel .cw-slide-image img{ max-height:52vh; }
 }
 
 
@@ -744,3 +693,51 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
   background: #eef3ff; color: #1f4fd8;
 }
 .ykt-tool-confidence.ykt-conf-low{ background: #fff3cd; color: #8a6d00; }
+
+/* ===== 共享题目卡（课件页 + 题目列表） ===== */
+.ykt-problem-card {
+  margin-top: 8px; padding: 10px 12px; border: 1px solid #cfe0ff;
+  border-radius: 8px; background: #f7faff; color: var(--ykt-fg);
+}
+.ykt-problem-card.problem-done { border-color: #b7e4c7; background: #f5fbf7; }
+.ykt-problem-card.problem-expired { border-color: #f0c9c9; background: #fff8f8; }
+.ykt-problem-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; margin-bottom: 6px; }
+.ykt-problem-type { font-size: 13px; }
+.ykt-problem-score, .ykt-problem-state, .ykt-problem-page { color: var(--ykt-muted); }
+.ykt-problem-state { padding: 1px 7px; border-radius: 10px; background: #eef2ff; color: #345176; }
+.problem-done .ykt-problem-state { background: #e6f6ec; color: #1a7f37; }
+.problem-expired .ykt-problem-state { background: #ffebe9; color: #b42318; }
+.ykt-problem-body { font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ykt-problem-options-static {
+  margin-top: 6px; font-size: 12px; color: #475569; white-space: pre-wrap;
+}
+.ykt-problem-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
+.ykt-problem-actions button {
+  padding: 4px 10px; border: 1px solid var(--ykt-border-strong); border-radius: 6px;
+  background: #fff; color: var(--ykt-fg); cursor: pointer; font-size: 12px;
+}
+.ykt-problem-actions button:hover { border-color: var(--ykt-accent); color: var(--ykt-accent); }
+.ykt-problem-actions button.primary { border-color: var(--ykt-accent); background: var(--ykt-accent); color: #fff; }
+.ykt-problem-answered {
+  margin-top: 6px; padding: 5px 8px; border-left: 3px solid var(--ykt-accent);
+  background: #fff; font-size: 12px; color: #475569; white-space: pre-wrap;
+}
+.ykt-problem-editor { margin-top: 9px; padding: 9px; border: 1px solid var(--ykt-border); border-radius: 7px; background: #fff; }
+.ykt-problem-choice { display: flex; align-items: flex-start; gap: 7px; padding: 5px 4px; border-radius: 5px; cursor: pointer; }
+.ykt-problem-choice:hover { background: #f1f5ff; }
+.ykt-problem-choice input { margin-top: 3px; }
+.ykt-problem-choice .choice-key { font-weight: 700; }
+.ykt-problem-blank { display: block; margin: 7px 0; font-size: 12px; color: #475569; }
+.ykt-problem-blank input { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; height: 31px; padding: 0 8px; border: 1px solid var(--ykt-border-strong); border-radius: 5px; }
+.ykt-problem-editor textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--ykt-border-strong); border-radius: 6px; padding: 7px; resize: vertical; font: inherit; }
+.ykt-problem-hint { margin: 6px 0; font-size: 11px; color: #8a5a00; }
+.ykt-problem-editor-actions { display: flex; gap: 7px; margin-top: 8px; }
+.ykt-problem-editor-actions button { padding: 4px 10px; border: 1px solid var(--ykt-border-strong); border-radius: 6px; background: #f8fafc; cursor: pointer; font-size: 12px; }
+.ykt-problem-editor-actions button.primary { border-color: var(--ykt-accent); background: var(--ykt-accent); color: #fff; }
+.ykt-problem-editor-actions button.danger { border-color: #f0b4b4; background: #fff5f5; color: #b42318; }
+.ykt-problem-editor-actions button.muted { color: var(--ykt-muted); }
+.ykt-problem-confirm-mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 100000020; display: flex; align-items: center; justify-content: center; padding: 14px; }
+.ykt-problem-confirm-box { max-width: 420px; background: #fff; border-radius: 10px; padding: 16px; box-shadow: var(--ykt-shadow); font-size: 13px; }
+.ykt-problem-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.ykt-problem-confirm-actions button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #fff; cursor: pointer; }
+.ykt-problem-confirm-actions .btn-ok { border-color: #d64545; background: #d64545; color: #fff; }

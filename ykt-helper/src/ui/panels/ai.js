@@ -99,10 +99,25 @@ export function mountAIPanel() {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); renderCtxStatus({ force: true }); }
     });
   }
+  function syncSlideSourceButtons() {
+    const current = ui.config.aiSlideSource || 'teacher';
+    root.querySelectorAll('#ykt-ai-ctx [data-slide-source]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.slideSource === current);
+    });
+  }
+  root.querySelectorAll('#ykt-ai-ctx [data-slide-source]').forEach((b) => {
+    b.addEventListener('click', () => {
+      ui.config.aiSlideSource = b.dataset.slideSource === 'selected' ? 'selected' : 'teacher';
+      ui.saveConfig();
+      syncSlideSourceButtons();
+      renderCtxStatus({ force: true });
+    });
+  });
+  syncSlideSourceButtons();
   window.addEventListener('ykt:problem:parsed', () => renderCtxStatus());
   window.addEventListener('ykt:presentation:slide-selected', () => {
     // 题目列表/课件面板选页：只刷新状态；真正的任务由 askAnswer(task) 显式传入
-    renderCtxStatus();
+    renderCtxStatus({ force: true });
   });
 
   warmupRichAssets();

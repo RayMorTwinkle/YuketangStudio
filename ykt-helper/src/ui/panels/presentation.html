@@ -1,9 +1,30 @@
 <div id="ykt-presentation-panel" class="ykt-panel">
   <style>
-    #ykt-presentation-panel .slide-thumb.active {
+    #ykt-presentation-panel .cw-slide.active {
       outline: 2px solid #3b82f6;
       outline-offset: 2px;
     }
+    #ykt-presentation-panel #ykt-presentation-picker {
+      max-width: 260px; min-width: 120px; height: 30px;
+      border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; background: #fff;
+    }
+    #ykt-presentation-panel .cw-single-column-body {
+      display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 8px;
+      height: 100%; min-height: 0; overflow: hidden;
+    }
+    #ykt-presentation-panel .cw-rail {
+      position: relative; width: 30px; min-height: 180px; background: #f8fafc;
+      border: 1px solid var(--ykt-border, #ddd); border-radius: 8px; overflow: hidden;
+    }
+    #ykt-presentation-panel .cw-rail-track { position:absolute; left:13px; top:8px; bottom:8px; width:3px; background:#dbe3ef; border-radius:3px; }
+    #ykt-presentation-panel .cw-marker {
+      position:absolute; left:5px; width:19px; height:7px; border:0; border-radius:4px; padding:0;
+      cursor:pointer; background:#c8d2e2;
+    }
+    #ykt-presentation-panel .cw-marker.problem { background:#f59e0b; }
+    #ykt-presentation-panel .cw-marker.teacher { background:#1d63df; }
+    #ykt-presentation-panel .cw-marker.selected { background:#059669; }
+    #ykt-presentation-panel .cw-marker:hover { filter:brightness(1.1); }
     .pdf-progress {
       display: flex;
       align-items: center;
@@ -64,14 +85,13 @@
     }
   </style>
   <div class="panel-header">
-    <h3>课件查看</h3>
+    <h3>课件</h3>
     <div class="panel-controls">
-      <button id="ykt-follow-current" title="选中项自动跟随课堂翻页；手动选择页面会脱离跟随">🎯 跟随当前页</button>
+      <select id="ykt-presentation-picker" title="切换课件"></select>
+      <button id="ykt-follow-current" title="自动跟随老师正在讲的 PPT">🎯 跟随老师</button>
       <button id="ykt-filter-problems" title="只显示带题目的页面，再次点击恢复全部">📝 只看题目页</button>
-      <button id="ykt-download-pdf">整册下载(PDF)</button>
-      <button id="ykt-import-history" title="从历史课堂报告导入课件并导出 PDF">📥 历史课件</button>
-      <button id="ykt-load-class-cards" title="读取老师直接上传到班级的课件（type=2）">📚 班级课件</button>
-      
+      <button id="ykt-download-pdf" title="下载当前课件；多份课件时可选择">⬇️ 下载</button>
+      <button id="ykt-download-history" title="下载历史课堂课件或老师上传的班级课件">📥 下载历史课件</button>
     </div>
     <div id="ykt-pdf-progress" class="pdf-progress" style="display:none">
       <div class="pdf-progress-bar">
@@ -82,17 +102,10 @@
     </div>
   </div>
 
-  <div class="panel-body">
-    <div class="panel-left">
-      <div id="ykt-presentation-list" class="presentation-list"></div>
-    </div>
-    <div class="panel-right">
-      <div id="ykt-slide-view" class="slide-view">
-        <div class="slide-cover">
-          <div class="empty-message">选择左侧的幻灯片查看详情</div>
-        </div>
-        <div id="ykt-problem-view" class="problem-view"></div>
-      </div>
+  <div class="panel-body cw-single-column-body">
+    <div id="ykt-presentation-list" class="presentation-list cw-list" tabindex="0"></div>
+    <div id="ykt-slide-rail" class="cw-rail" aria-label="课件快速导航">
+      <div class="cw-rail-track"></div>
     </div>
   </div>
 </div>

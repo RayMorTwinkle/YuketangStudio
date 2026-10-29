@@ -46,6 +46,14 @@ export function mountBrushPanel() {
   document.body.appendChild(wrap.firstElementChild);
   root = document.getElementById('ykt-brush-panel');
 
+  // 让复选框/倍速的当前状态在视觉上明确可见（原生 checkbox 在部分 WebView 太淡）
+  for (const label of root.querySelectorAll('.brush-controls label')) {
+    const input = label.querySelector('input[type="checkbox"]');
+    if (!input) continue;
+    const sync = () => label.classList.toggle('active', input.checked);
+    input.addEventListener('change', sync);
+    sync();
+  }
   $('#ykt-brush-scan')?.addEventListener('click', () => scanCourse());
   $('#ykt-brush-start')?.addEventListener('click', () => start());
   $('#ykt-brush-pause')?.addEventListener('click', () => togglePause());

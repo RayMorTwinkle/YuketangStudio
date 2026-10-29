@@ -53,20 +53,18 @@
     #ykt-shell-content #ykt-ai-log { flex: 1 1 auto; max-height: none; min-height: 0; }
     #ykt-shell-content #ykt-chat-panel .panel-body,
     #ykt-shell-content #ykt-ai-answer-panel .panel-body { flex: 1; min-height: 0; }
-    /* 课件面板在 shell 内填满：两列各自滚动，不再受独立弹窗的 72vh 限制 */
-    #ykt-shell-content #ykt-presentation-panel .panel-body { height: 100%; min-height: 0; grid-template-columns: minmax(220px, 300px) 1fr; }
-    #ykt-shell-content #ykt-presentation-panel .panel-left,
-    #ykt-shell-content #ykt-presentation-panel .panel-right { max-height: none; height: 100%; overflow: auto; position: static; }
-    #ykt-shell-content #ykt-presentation-panel .slide-view { max-height: none; height: auto; min-height: 240px; }
+    /* 课件面板在 shell 内填满：单列课件 + 导航轨独立滚动 */
+    #ykt-shell-content #ykt-presentation-panel .cw-single-column-body { height: 100%; min-height: 0; }
+    #ykt-shell-content #ykt-presentation-panel .cw-list { max-height: none; height: 100%; }
+    #ykt-shell-content #ykt-presentation-panel .cw-rail { min-height: 100%; }
     /* 设置面板在 shell 内整体滚动 */
     #ykt-shell-content #ykt-settings-panel,
     #ykt-shell-content #ykt-about-panel,
     #ykt-shell-content #ykt-problem-list-panel { overflow: auto; }
     /* 窄屏（手机）：课件面板单列堆叠、工具栏按钮换行、输入区自适应 */
     @media (max-width: 560px) {
-      #ykt-shell-content #ykt-presentation-panel .panel-body { grid-template-columns: 1fr; height: 100%; min-height: 0; overflow: auto; }
-      #ykt-shell-content #ykt-presentation-panel .panel-left,
-      #ykt-shell-content #ykt-presentation-panel .panel-right { height: auto; max-height: none; }
+      #ykt-shell-content #ykt-presentation-panel .cw-single-column-body { height: 100%; min-height: 0; overflow: auto; }
+      #ykt-shell-content #ykt-presentation-panel .cw-list { height: auto; max-height: none; }
       #ykt-presentation-panel .panel-controls { flex-wrap: wrap; gap: 6px; }
       #ykt-presentation-panel .panel-header { flex-wrap: wrap; }
       .ykt-chat-inputbar, .ykt-ai-inputbar { flex-wrap: nowrap; }

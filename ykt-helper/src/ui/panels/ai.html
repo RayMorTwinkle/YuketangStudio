@@ -30,6 +30,9 @@
     #ykt-ai-ctx .ctx-status.st-idle { color: #64748b; }
     #ykt-ai-ctx .ctx-status.st-err { color: #b42318; }
     #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }
+    #ykt-ai-ctx .ykt-slide-source-toggle { display:flex; gap:4px; flex:0 0 auto; }
+    #ykt-ai-ctx .ykt-slide-source-toggle button { padding:3px 8px;font-size:11px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer; }
+    #ykt-ai-ctx .ykt-slide-source-toggle button.active { border-color:#1d63df;background:#1d63df;color:#fff; }
     #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }
     .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }
     #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }
@@ -57,7 +60,11 @@
   <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">
     <div id="ykt-ai-log"></div>
     <div id="ykt-ai-ctx">
-      <label><input type="checkbox" id="ykt-ai-attach" checked> 附带当前页</label>
+      <div class="ykt-slide-source-toggle" role="group" aria-label="PPT 附图来源">
+        <button type="button" data-slide-source="teacher">老师当前页</button>
+        <button type="button" data-slide-source="selected">课件选中页</button>
+      </div>
+      <label><input type="checkbox" id="ykt-ai-attach" checked> 附图</label>
       <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>
       <span id="ykt-ai-ctx-thumb"></span>
     </div>

@@ -39,6 +39,10 @@ if (typeof _config.customNotifyAudioSrc === 'undefined') _config.customNotifyAud
 if (typeof _config.customNotifyAudioName === 'undefined') _config.customNotifyAudioName = ''; 
 _config.autoJoinEnabled = !!_config.autoJoinEnabled;
 _config.autoAnswerOnAutoJoin = !!_config.autoAnswerOnAutoJoin;
+// AI 图来源。旧配置 aiSlidePickPriority=false（课件浏览优先）迁移成 selected。
+if (_config.aiSlideSource !== 'selected' && _config.aiSlideSource !== 'teacher') {
+  _config.aiSlideSource = _config.aiSlidePickPriority === false ? 'selected' : 'teacher';
+}
 
 function saveConfig() { 
   try {

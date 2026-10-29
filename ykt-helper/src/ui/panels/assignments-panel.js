@@ -40,6 +40,7 @@ let viewAssignment = null;
 let loadSeq = 0;   // 课程切换请求序号：旧请求/旧 enrich 返回后直接丢弃
 let lastFocusedRoute = '';
 let autoOpening = false;
+let lastCourseContextKey = '';
 
 function $(sel) { return root?.querySelector(sel); }
 
@@ -485,8 +486,24 @@ async function loadList(courseId) {
   syncExamFillButton();
 }
 
+function courseContextKey(ctx = getCourseContext()) {
+  return `${ctx.classId || ''}|${ctx.courseId || ''}`;
+}
+
 function routeKey(ctx) {
   return `${ctx.classId || ''}|${ctx.newId || ''}|${ctx.oldQuizId || ''}`;
+}
+
+/** 手机版从首页切进课程时，作业面板已加载过也不会换课；这里按课程上下文重载。 */
+function syncCourseContextIfNeeded() {
+  const ctx = getCourseContext();
+  const key = courseContextKey(ctx);
+  if (!key || !loaded || autoOpening) return false;
+  if (key === lastCourseContextKey) return false;
+  showListView();
+  lastFocusedRoute = '';
+  void loadCourses();
+  return true;
 }
 
 /** 找到当前 URL 指向的作业/考试行。 */
@@ -544,6 +561,7 @@ async function loadCourses() {
     if (!courses.length) { setStatus('没有读取到课程'); return; }
 
     const ctx = getCourseContext();
+    lastCourseContextKey = courseContextKey(ctx);
     const oldQuizId = String(ctx.oldQuizId || window.quizID || '');
     if (oldQuizId) {
       const scanSeq = loadSeq;
@@ -982,12 +1000,17 @@ export function mountAssignmentsPanel() {
       loadCourses();
       return;
     }
+    if (syncCourseContextIfNeeded()) return;
     if (ctx.newId || ctx.oldQuizId) void focusRouteTarget();
     else renderCurrentCard();
   };
   subscribeCourseRoute(() => {
     const ctx = getCourseContext();
-    if (!ctx.newId && !ctx.oldQuizId) return;
+    const switched = syncCourseContextIfNeeded();
+    if (!ctx.newId && !ctx.oldQuizId) {
+      if (switched && root?.classList.contains('visible')) renderCurrentCard();
+      return;
+    }
     // 直接进入新版/老版作业或考试页：自动切到「作业/考试」。
     setTimeout(() => {
       try { ui.showAssignmentsPanel?.(true); } catch { /* ignore */ }
