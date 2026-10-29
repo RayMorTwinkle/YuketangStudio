@@ -5,15 +5,19 @@ import { actions } from '../../state/actions.js';
 import { exportImagesToPdf } from '../../core/pdf-export.js';
 import { importHistoryLesson, fetchClassActivities, currentClassId } from '../../core/history-capture.js';
 import { fetchClassCards, fetchClassCardDetail, buildClassCardPresentation } from '../../quiz/course-cards.js';
+import { fetchAsDataURL } from '../../core/env.js';
+import { saveBlob } from '../../quiz/quiz-paper.js';
+import { renderProblemCard } from '../problem-card.js';
 import { log } from '../../core/log.js';
 import { waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 
 let mounted = false;
 let host;
 let staticReportReady = false; //已结束课程
-let followCurrent = true;      // 跟随课堂翻页：true=选中项自动跟随当前页；用户手动点缩略图后脱离
+let followCurrent = true;
 let classCardLoading = false;
 let classCardLoadedKey = '';
+const expandedProblemEditors = new Set();
 
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
@@ -202,7 +206,14 @@ export function mountPresentationPanel() {
 
   // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
 
-  // 题目页筛选开关（原「题目列表」功能的替代：点一下只看题目页，再点恢复全部）
+  const picker = $('#ykt-presentation-picker');
+  picker?.addEventListener('change', () => {
+    repo.currentPresentationId = picker.value;
+    followCurrent = false;
+    $('#ykt-follow-current')?.classList.remove('active');
+    updatePresentationList();
+  });
+
   const filterBtn = $('#ykt-filter-problems');
   const syncFilterBtn = () => filterBtn?.classList.toggle('active', !!ui.config.filterProblemsOnly);
   syncFilterBtn();
@@ -211,50 +222,47 @@ export function mountPresentationPanel() {
     ui.saveConfig();
     syncFilterBtn();
     ui.toast(ui.config.filterProblemsOnly ? '只显示带题目的页面' : '显示全部页面', 1500);
-    L('切换 filterProblemsOnly =', ui.config.filterProblemsOnly);
     updatePresentationList();
   });
 
-  // 跟随当前页开关：开启时选中项自动跟随课堂翻页；手动点缩略图会脱离
   const followBtn = $('#ykt-follow-current');
   const syncFollowBtn = () => followBtn?.classList.toggle('active', followCurrent);
   syncFollowBtn();
   followBtn?.addEventListener('click', () => {
     followCurrent = !followCurrent;
     syncFollowBtn();
-    ui.toast(followCurrent ? '已跟随课堂翻页' : '已脱离跟随（点「回到当前页」恢复）', 1500);
-    if (followCurrent) {
-      updateFollowHighlight();
-      updateSlideView();
+    ui.toast(followCurrent ? '已开始跟随老师翻页' : '已停止跟随老师翻页', 1500);
+    if (followCurrent && repo.teacherSlideId) {
+      selectSlide(null, String(repo.teacherSlideId), null, { navigate: true });
+    } else {
+      updatePresentationList();
     }
   });
 
-  // 课堂翻页时（Vue watcher）：跟随模式把 repo 当前页推进到老师展示的页，再联动高亮与大图
   waitForVueReady().then(() => {
     watchMainPageChange((slideId) => {
       const sid = slideId == null ? null : String(slideId);
       L('课堂翻页事件', { slideId: sid, followCurrent });
       if (!sid) return;
-      if (followCurrent) {
-        repo.currentSlideId = sid;
-        // 同步所属课件——跨课件翻页时右侧大图/选中态才不会指错课件
-        for (const [pid, pres] of repo.presentations) {
-          if ((pres?.slides || []).some(s => String(s.id) === sid)) {
-            repo.currentPresentationId = String(pid);
-            break;
-          }
+      repo.teacherSlideId = sid;
+      if (!followCurrent) { updatePresentationList(); return; }
+      for (const [pid, pres] of repo.presentations) {
+        if ((pres?.slides || []).some(s => String(s.id) === sid)) {
+          repo.currentPresentationId = String(pid);
+          break;
         }
-        updateFollowHighlight();
-        updateSlideView();
-      } else {
-        renderFollowBadge();
       }
+      selectSlide(null, sid, null, { navigate: false, user: false });
     });
   }).catch(e => W('Vue 初始化失败，跟随功能降级:', e));
 
-  $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
-  $('#ykt-import-history')?.addEventListener('click', openHistoryImporter);
-  $('#ykt-load-class-cards')?.addEventListener('click', () => loadClassCards());
+  $('#ykt-download-pdf')?.addEventListener('click', chooseAndDownloadPresentation);
+  $('#ykt-download-history')?.addEventListener('click', openCoursewareDownloadEntry);
+  window.addEventListener('ykt:presentation:go-slide', (ev) => {
+    const { presentationId, slideId } = ev.detail || {};
+    if (presentationId) repo.currentPresentationId = String(presentationId);
+    if (slideId) selectSlide(presentationId, slideId, null, { navigate: false });
+  });
 
   mounted = true;
   L('mountPresentationPanel 完成');
@@ -265,29 +273,6 @@ export function mountPresentationPanel() {
   return host;
 }
 
-/** 跟随高亮：把 active 标到当前页缩略图上并滚动到可见 */
-function updateFollowHighlight() {
-  const listEl = document.getElementById('ykt-presentation-list');
-  if (!listEl) return;
-  const currentIdStr = getCurrentSlideId();
-  if (!currentIdStr) return;
-  let active = null;
-  for (const t of listEl.querySelectorAll('.slide-thumb')) {
-    const isActive = t.dataset.slideId === currentIdStr;
-    t.classList.toggle('active', isActive);
-    if (isActive) active = t;
-  }
-  active?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  L('跟随高亮', { currentIdStr });
-}
-
-/** 面板顶部的小徽标：非跟随模式下提示当前课堂页码 */
-function renderFollowBadge() {
-  const btn = document.getElementById('ykt-follow-current');
-  if (!btn) return;
-  // 按钮文案由 CSS/结构固定，这里不做额外渲染（跟随状态在按钮 active 类上）
-}
-
 export function showPresentationPanel(visible = true) {
   mountPresentationPanel();
   host.classList.toggle('visible', !!visible);
@@ -296,13 +281,98 @@ export function showPresentationPanel(visible = true) {
   L('showPresentationPanel', { visible });
 }
 
+function resolveCurrentPresentation() {
+  const first = repo.presentations.entries().next();
+  if (first.done) return null;
+  const pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : String(first.value[0]);
+  const pres = repo.presentations.get(pid) || first.value[1];
+  repo.currentPresentationId = String(pres.id ?? pid);
+  return pres;
+}
+
+function renderPresentationPicker() {
+  const sel = $('#ykt-presentation-picker');
+  if (!sel) return;
+  const current = resolveCurrentPresentation();
+  sel.innerHTML = '';
+  for (const [id, pres] of repo.presentations) {
+    const opt = document.createElement('option');
+    opt.value = String(id);
+    const source = pres.source === 'class-card' ? '班级' : '课堂';
+    opt.textContent = `[${source}] ${pres.title || id}（${(pres.slides || []).length} 页）`;
+    sel.appendChild(opt);
+  }
+  if (current) sel.value = String(current.id);
+  sel.disabled = repo.presentations.size <= 1;
+}
+
+function updateRailMarkers() {
+  const rail = $('#ykt-slide-rail');
+  const listEl = $('#ykt-presentation-list');
+  if (!rail || !listEl) return;
+  rail.innerHTML = '<div class="cw-rail-track"></div>';
+  const total = Math.max(1, listEl.scrollHeight);
+  const listRect = listEl.getBoundingClientRect();
+  for (const card of listEl.querySelectorAll('.cw-slide')) {
+    const relTop = card.getBoundingClientRect().top - listRect.top + listEl.scrollTop;
+    const problem = card.dataset.problem === '1';
+    const teacher = card.dataset.teacher === '1';
+    const selected = card.dataset.selected === '1';
+    if (!problem && !teacher && !selected) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `cw-marker${problem ? ' problem' : ''}${teacher ? ' teacher' : ''}${selected ? ' selected' : ''}`;
+    btn.style.top = `${Math.min(92, Math.max(2, (relTop / total) * 100))}%`;
+    const page = card.dataset.page || '?';
+    btn.title = `第 ${page} 页${problem ? '（题目）' : ''}${teacher ? '（老师当前）' : ''}${selected ? '（已选中）' : ''}`;
+    btn.setAttribute('aria-label', btn.title);
+    btn.addEventListener('click', () => {
+      const slideId = card.dataset.slideId;
+      const slide = getSlideByAny(slideId).slide;
+      selectSlide(card.dataset.presentationId || repo.currentPresentationId, slideId, slide);
+    });
+    rail.appendChild(btn);
+  }
+}
+
+function scrollToSlide(slideId) {
+  const card = $(`#ykt-presentation-list [data-slide-id="${cssEscape(String(slideId || ''))}"]`);
+  card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function cssEscape(value) {
+  if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(value);
+  return String(value).replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
+}
+
+function selectSlide(presentationId, slideId, slide = null, { navigate = false, user = true } = {}) {
+  const pid = String(presentationId || repo.currentPresentationId || '');
+  const sid = String(slideId || '');
+  if (!sid) return;
+  if (user && followCurrent && !navigate) {
+    followCurrent = false;
+    $('#ykt-follow-current')?.classList.remove('active');
+  }
+  const hit = slide || getSlideByAny(sid).slide;
+  if (hit && !repo.slides.has(sid)) repo.slides.set(sid, hit);
+  const pres = hit?.problem ? repo.presentations.get(pid) : repo.presentations.get(pid);
+  if (pres) {
+    repo.currentPresentationId = pid;
+    repo.selectedPresentationId = pid;
+  }
+  repo.currentSlideId = sid;
+  repo.selectedSlideId = sid;
+  updatePresentationList();
+  requestAnimationFrame(() => scrollToSlide(sid));
+  window.dispatchEvent(new CustomEvent('ykt:presentation:slide-selected', { detail: { presentationId: pid, slideId: sid } }));
+  if (navigate && pres && pres.source !== 'class-card') actions.navigateTo(pid, sid);
+}
+
 export function updatePresentationList() {
   mountPresentationPanel();
 
   try {
-    if (isStudentLessonReportPage()) {
-      ensureStaticReportPresentation();
-    }
+    if (isStudentLessonReportPage()) ensureStaticReportPresentation();
   } catch (e) {
     W('[static-report] 检测/注入失败：', e);
   }
@@ -310,170 +380,97 @@ export function updatePresentationList() {
   if (!window.__ykt_static_dom_mo) {
     window.__ykt_static_dom_mo = true;
     let times = 0;
-
     const mo = new MutationObserver(() => {
       if (!isStudentLessonReportPage()) { try { mo.disconnect(); } catch {} return; }
-      if (++times > 20) { try { mo.disconnect(); } catch {} return; }   // 20 次未命中就放弃——不再让 observer 永久空转
-
-      log.dbg('[presentation][static-report] DOM 变更，尝试重新收集 slide URL (times =', times, ')');
+      if (++times > 20) { try { mo.disconnect(); } catch {} return; }
       const injected = ensureStaticReportPresentation();
       if (injected) {
-        log.dbg('[presentation][static-report] DOM 中已找到 slide，停止监听并刷新面板');
-        try { mo.disconnect(); } catch (e) {}
+        try { mo.disconnect(); } catch {}
         updatePresentationList();
       }
     });
-
-    const rootSelector = "#content-page-wrap > div > aside > div.left-panel-scroll > div.left-panel-tab-content > div > section.slides-list";
-    let target = document.querySelector(rootSelector) || document.querySelector('section.slides-list') || document.body;
-
-    log.dbg('[presentation][static-report] MutationObserver 监听目标：', {
-      useBody: target === document.body,
-      hasSlidesList: target !== document.body
-    });
-
+    const target = document.querySelector('#content-page-wrap section.slides-list')
+      || document.querySelector('section.slides-list') || document.body;
     mo.observe(target, { childList: true, subtree: true });
   }
 
-  const listEl = document.getElementById('ykt-presentation-list');
+  const listEl = $('#ykt-presentation-list');
   if (!listEl) { W('updatePresentationList: 缺少容器'); return; }
-
+  renderPresentationPicker();
   listEl.innerHTML = '';
-
-  if (repo.presentations.size === 0) {
-    listEl.innerHTML = '<p class="no-presentations">暂无课件记录</p>';
-    W('无 presentations');
+  const presentation = resolveCurrentPresentation();
+  if (!presentation) {
+    listEl.innerHTML = '<div class="cw-empty">暂无课件记录</div>';
+    updateRailMarkers();
     return;
   }
-
-  // 课件按 presentation_id 收集、无法可靠归属到课堂——此前按 URL lessonId 过滤是无效逻辑（恒等于全量），删掉
-  const presentationsToShow = repo.presentations;
-  L('展示课件数量=', presentationsToShow.size);
-
-  try {
-    let filled = 0, total = 0;
-    for (const [, pres] of presentationsToShow) {
-      const arr = pres?.slides || [];
-      total += arr.length;
-      for (const s of arr) {
-        const sid = String(s.id);
-        if (!repo.slides.has(sid)) { repo.slides.set(sid, s); filled++; }
-      }
-    }
-    const sample = Array.from(repo.slides.keys()).slice(0, 8);
-    L('[hydrate slides → repo.slides]', { filled, totalVisibleSlides: total, sampleKeys: sample });
-  } catch (e) {
-    W('hydrate repo.slides 失败：', e);
+  const allSlides = presentation.slides || [];
+  for (const s of allSlides) {
+    const sid = String(s.id);
+    if (!repo.slides.has(sid)) repo.slides.set(sid, s);
   }
+  const filter = !!ui.config.filterProblemsOnly;
+  const slides = filter ? allSlides.filter(s => s.problem) : allSlides;
+  const teacherId = String(repo.teacherSlideId || repo.currentSlideId || '');
+  const selectedId = String(repo.selectedSlideId || repo.currentSlideId || '');
+  const pid = String(presentation.id);
 
-  for (const [id, presentation] of presentationsToShow) {
-    const cont = document.createElement('div');
-    cont.className = 'presentation-container';
+  for (const s of slides) {
+    const card = document.createElement('article');
+    card.className = 'cw-slide';
+    const sid = String(s.id);
+    card.dataset.slideId = sid;
+    card.dataset.presentationId = pid;
+    card.dataset.page = String(s.index ?? s.page ?? '');
+    if (s.problem) card.dataset.problem = '1';
+    if (sid === teacherId) card.dataset.teacher = '1';
+    if (sid === selectedId) { card.dataset.selected = '1'; card.classList.add('active'); }
 
-    const titleEl = document.createElement('div');
-    titleEl.className = 'presentation-title';
-    // 课件标题来自服务端——不用 innerHTML 注入
-    const titleSpan = document.createElement('span');
-    titleSpan.textContent = presentation.title || `课件 ${id}`;
-    const sourceSpan = document.createElement('span');
-    sourceSpan.className = 'presentation-source';
-    sourceSpan.textContent = presentation.source === 'class-card' ? '班级上传' : '课堂';
-    titleEl.appendChild(sourceSpan);
-    const dlIcon = document.createElement('i');
-    dlIcon.className = 'fas fa-download download-btn';
-    dlIcon.title = '下载课件';
-    titleEl.appendChild(titleSpan);
-    titleEl.appendChild(dlIcon);
-    cont.appendChild(titleEl);
+    const head = document.createElement('div'); head.className = 'cw-slide-head';
+    const page = document.createElement('span'); page.className = 'cw-slide-page'; page.textContent = `PPT ${s.index ?? s.page ?? '?'}`;
+    const sourceTag = document.createElement('span');
+    sourceTag.className = 'cw-slide-source';
+    sourceTag.textContent = presentation.source === 'class-card' ? '班级上传' : '课堂';
+    const title = document.createElement('span'); title.className = 'cw-slide-title'; title.textContent = s.title || `第 ${s.index ?? ''} 页`;
+    const acts = document.createElement('div'); acts.className = 'cw-slide-actions';
+    const dl = document.createElement('button'); dl.type = 'button'; dl.textContent = '下载本页'; dl.addEventListener('click', (e) => { e.stopPropagation(); saveSlideImage(s, `${presentation.title || '课件'}_第${s.index ?? sid}.jpg`); });
+    const ask = document.createElement('button'); ask.type = 'button'; ask.textContent = '问 AI'; ask.addEventListener('click', (e) => { e.stopPropagation(); askChatAboutSlide(s); });
+    acts.appendChild(dl); acts.appendChild(ask);
+    head.appendChild(page); head.appendChild(sourceTag); head.appendChild(title); head.appendChild(acts); card.appendChild(head);
 
-    titleEl.querySelector('.download-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      L('点击下载课件', { presId: String(presentation.id) });
-      downloadPresentation(presentation);
+    const imgWrap = document.createElement('div'); imgWrap.className = 'cw-slide-image';
+    const img = document.createElement('img'); img.loading = 'lazy'; img.decoding = 'async';
+    img.src = getSlideImageUrl(s); img.alt = s.title || `第 ${s.index ?? ''} 页`;
+    img.addEventListener('load', () => updateRailMarkers(), { once: true });
+    img.addEventListener('error', () => { imgWrap.textContent = '图片加载失败'; updateRailMarkers(); }, { once: true });
+    img.addEventListener('dblclick', () => { window.open(img.src, '_blank', 'noopener,noreferrer'); });
+    imgWrap.appendChild(img); card.appendChild(imgWrap);
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('button, input, textarea, .ykt-problem-card')) return;
+      selectSlide(pid, sid, s, { navigate: presentation.source !== 'class-card' });
     });
 
-    const slidesWrap = document.createElement('div');
-    slidesWrap.className = 'slide-thumb-list';
-
-    const slides = (presentation.slides || []);
-    const showProblemsOnly = !!ui.config.filterProblemsOnly;
-    const slidesToShow = showProblemsOnly ? slides.filter(s => s.problem) : slides;
-
-    const currentIdStr = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
-    L('渲染课件缩略图', {
-      presId: String(presentation.id),
-      slidesTotal: slides.length,
-      slidesShown: slidesToShow.length,
-      currentSlideId: currentIdStr
-    });
-
-    for (const s of slidesToShow) {
-      const presIdStr = String(presentation.id);
-      const slideIdStr = String(s.id);
-
-      const thumb = document.createElement('div');
-      thumb.className = 'slide-thumb';
-      thumb.dataset.slideId = slideIdStr;
-
-      if (currentIdStr && slideIdStr === currentIdStr) thumb.classList.add('active');
-
-      if (s.problem) {
-        const pid = String(s.problem.problemId);
-        const status = repo.problemStatus.get(pid);
-        if (status) thumb.classList.add('unlocked');
-        if (s.problem.result) thumb.classList.add('answered');
-      }
-
-      thumb.addEventListener('click', () => {
-        // 用户手动选择 → 脱离跟随模式
-        if (followCurrent) {
-          followCurrent = false;
-          document.getElementById('ykt-follow-current')?.classList.remove('active');
-        }
-        repo.currentPresentationId = presIdStr;
-        repo.currentSlideId = slideIdStr;
-
-        slidesWrap.querySelectorAll('.slide-thumb.active').forEach(el => el.classList.remove('active'));
-        thumb.classList.add('active');
-
-        updateSlideView();
-
-        if (!repo.slides.has(slideIdStr)) {
-          const cross = findSlideAcrossPresentations(slideIdStr); if (cross) { repo.slides.set(slideIdStr, cross); L('click-fill repo.slides <- cross', { slideIdStr }); }
-        }
-
-        const detail = { slideId: slideIdStr, presentationId: presIdStr };
-        window.dispatchEvent(new CustomEvent('ykt:presentation:slide-selected', { detail }));
-
-        // 班级上传课件不是课堂 route，只做预览/下载，不调用课堂导航
-        if (presentation.source !== 'class-card') {
-          actions.navigateTo(presIdStr, slideIdStr);
-        }
-      });
-
-      const img = document.createElement('img');
-      if (presentation.width && presentation.height) {
-        img.style.aspectRatio = `${presentation.width}/${presentation.height}`;
-      }
-      img.src = s.thumbnail || '';
-      img.alt = s.title || `第 ${s.page ?? ''} 页`;
-      img.onerror = function () {
-        W('缩略图加载失败，移除该项', { slideIdStr, src: img.src });
-        if (thumb.parentNode) thumb.parentNode.removeChild(thumb);
-      };
-
-      const idx = document.createElement('span');
-      idx.className = 'slide-index';
-      idx.textContent = s.index ?? '';
-
-      thumb.appendChild(img);
-      thumb.appendChild(idx);
-      slidesWrap.appendChild(thumb);
+    if (s.problem) {
+      const prob = s.problem;
+      const pidProblem = String(prob.problemId ?? prob.id ?? '');
+      card.appendChild(renderProblemCard({
+        problem: prob,
+        slide: s,
+        expanded: expandedProblemEditors.has(pidProblem),
+        onAI: () => ui.askProblem?.(prob.problemId ?? prob.id),
+        onChange: () => {
+          if (expandedProblemEditors.has(pidProblem)) expandedProblemEditors.delete(pidProblem);
+          else expandedProblemEditors.add(pidProblem);
+          updatePresentationList();
+        },
+      }));
     }
-
-    cont.appendChild(slidesWrap);
-    listEl.appendChild(cont);
+    listEl.appendChild(card);
   }
+
+  if (!slides.length) listEl.innerHTML = `<div class="cw-empty">${filter ? '当前课件没有识别到题目页' : '当前课件没有页面'}</div>`;
+  listEl.onscroll = updateRailMarkers;
+  updateRailMarkers();
 }
 
 /** 读取当前班级的 type=2 班级上传课件，并加入课件列表。 */
@@ -483,8 +480,6 @@ async function loadClassCards() {
   if (classCardLoading) return ui.toast('正在读取班级课件…', 1500);
   if (classCardLoadedKey === String(cid)) return ui.toast('本课程的班级课件已加载', 1500);
   classCardLoading = true;
-  const btn = $('#ykt-load-class-cards');
-  if (btn) btn.disabled = true;
   try {
     const cards = await fetchClassCards(cid);
     if (!cards.length) {
@@ -528,92 +523,93 @@ async function loadClassCards() {
     log.warn('[presentation] loadClassCards failed', e);
   } finally {
     classCardLoading = false;
-    if (btn) btn.disabled = false;
   }
 }
 
 function downloadPresentation(presentation) {
   repo.currentPresentationId = String(presentation.id);
-  L('downloadPresentation -> 设置 currentPresentationId', repo.currentPresentationId);
   downloadPresentationPDF();
 }
 
+async function saveSlideImage(slide, filename) {
+  const url = getSlideImageUrl(slide);
+  if (!url) return ui.toast('该页没有可下载图片', 2000);
+  try {
+    const dataUrl = await fetchAsDataURL(url);
+    const blob = await (await fetch(dataUrl)).blob();
+    await saveBlob(blob, filename || 'slide.jpg');
+    ui.toast('本页已下载', 2000);
+  } catch (e) {
+    ui.toast('本页下载失败：' + (e?.message || e), 3000);
+  }
+}
+
+function askChatAboutSlide(slide) {
+  const sid = String(slide.id);
+  repo.selectedSlideId = sid;
+  repo.selectedPresentationId = String(repo.currentPresentationId || slide.presentationId || '');
+  window.dispatchEvent(new CustomEvent('ykt:chat:use-slide', {
+    detail: { slideId: sid, prompt: '请讲解这一页课件。' },
+  }));
+}
+
+/** 旧兼容入口：外部只调用 updateSlideView，语义变成「定位到当前页」。 */
 export function updateSlideView() {
   mountPresentationPanel();
-  const slideView = $('#ykt-slide-view');
-  const problemView = $('#ykt-problem-view');
-  slideView.querySelector('.slide-cover')?.classList.add('hidden');
-  problemView.innerHTML = '';
+  updatePresentationList();
+  const sid = getCurrentSlideId();
+  if (sid) requestAnimationFrame(() => scrollToSlide(sid));
+}
 
-  const curId = getCurrentSlideId();
-  const lookup = getSlideByAny(curId);
-  L('updateSlideView', { curId, lookupHit: lookup.hit, hasInMap: !!lookup.slide });
+function openCoursewareDownloadEntry() {
+  const mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000020;display:flex;align-items:center;justify-content:center;padding:14px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'width:430px;max-width:100%;background:#fff;border-radius:11px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);font:13px/1.6 system-ui,sans-serif;';
+  box.innerHTML = '<div style="font-weight:700;font-size:15px;margin-bottom:4px">下载历史课件</div><div style="color:#64748b;margin-bottom:10px">选择课件来源；课堂回放导出 PDF，班级上传可加载到当前课件页。</div>';
+  const mk = (tag, title, desc, action) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.cssText = 'display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;margin-top:8px;';
+    b.innerHTML = `<span style="flex:0 0 auto;padding:1px 7px;border-radius:10px;background:#eef3ff;color:#1d63df;font-size:11px">${tag}</span><span style="flex:1;min-width:0"><b style="display:block;color:#111827">${title}</b><span style="color:#64748b;font-size:12px">${desc}</span></span>`;
+    b.addEventListener('click', () => { mask.remove(); action(); });
+    return b;
+  };
+  box.appendChild(mk('课堂回放', '历史课堂课件', '从已结束课堂报告收集全部页面并导出 PDF', openHistoryImporter));
+  box.appendChild(mk('班级上传', '班级课件', '读取老师直接上传到班级的课件，加载后可逐页查看/下载', () => loadClassCards()));
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = '取消';
+  close.style.cssText = 'width:100%;margin-top:12px;padding:8px;border:0;border-radius:7px;background:#f1f5f9;cursor:pointer';
+  close.addEventListener('click', () => mask.remove());
+  box.appendChild(close); mask.appendChild(box); document.body.appendChild(mask);
+  mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove(); });
+}
 
-  if (!curId || !lookup.slide) {
-    // 无选中页（或 slide 数据未到达）：重建空态，避免残留上一次渲染的封面图
-    if (!curId) W('updateSlideView: 无当前页');
-    else W('updateSlideView: 根据 curId 未取到 slide', { curId });
-    slideView.innerHTML = '';
-    const emptyCover = document.createElement('div');
-    emptyCover.className = 'slide-cover';
-    const em = document.createElement('div');
-    em.className = 'empty-message';
-    em.textContent = '选择左侧的幻灯片查看详情';
-    emptyCover.appendChild(em);
-    slideView.appendChild(emptyCover);
-    slideView.appendChild(problemView);
-    return;
+function chooseAndDownloadPresentation() {
+  const presentations = [...repo.presentations.values()].filter((p) => (p?.slides || []).length);
+  if (!presentations.length) return ui.toast('当前没有可下载的课件', 2500);
+  if (presentations.length === 1) return downloadPresentation(presentations[0]);
+  const mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000020;display:flex;align-items:center;justify-content:center;padding:12px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'width:560px;max-width:100%;max-height:70vh;background:#fff;border-radius:10px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);font:13px/1.6 system-ui,sans-serif;';
+  box.innerHTML = '<div style="font-weight:600;font-size:15px;margin-bottom:10px">下载哪份课件？</div>';
+  const list = document.createElement('div');
+  list.style.cssText = 'display:grid;gap:7px;overflow:auto';
+  for (const pres of presentations) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = `${pres.source === 'class-card' ? '班级课件' : '课堂课件'} · ${pres.title}（${pres.slides.length} 页）`;
+    b.style.cssText = 'padding:9px;border:1px solid #d1d5db;border-radius:7px;background:#fff;text-align:left;cursor:pointer';
+    b.addEventListener('click', () => { mask.remove(); downloadPresentation(pres); });
+    list.appendChild(b);
   }
-  const slide = lookup.slide;
-
-  const cover = document.createElement('div');
-  cover.className = 'slide-cover';
-  const img = document.createElement('img');
-  // 不要设 crossOrigin=anonymous：OSS 无 CORS 头时图片直接拒绝加载；
-  // 展示场景不需要读像素，污染问题只在 PDF 导出时由 GM_xhr 绕开
-  img.src = getSlideImageUrl(slide);
-  img.alt = slide.title || '';
-  cover.appendChild(img);
-
-  if (slide.problem) {
-    const prob = slide.problem;
-    const box = document.createElement('div');
-    box.className = 'problem-box';
-
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'problem-box-close';
-    closeBtn.title = '关闭题干浮框';
-    closeBtn.setAttribute('aria-label', '关闭题干浮框');
-    closeBtn.textContent = '×';
-    closeBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      box.remove();
-    });
-    box.appendChild(closeBtn);
-
-    const head = document.createElement('div');
-    head.className = 'problem-head';
-    head.textContent = prob.body || `题目 ${prob.problemId}`;
-    box.appendChild(head);
-
-    if (Array.isArray(prob.options) && prob.options.length) {
-      const opts = document.createElement('div');
-      opts.className = 'problem-options';
-      prob.options.forEach((o) => {
-        const li = document.createElement('div');
-        li.className = 'problem-option';
-        li.textContent = `${o.key}. ${o.value}`;
-        opts.appendChild(li);
-      });
-      box.appendChild(opts);
-    }
-    problemView.appendChild(box);
-  }
-
-  slideView.innerHTML = '';
-  slideView.appendChild(cover);
-  slideView.appendChild(problemView);
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = '取消';
+  close.style.cssText = 'width:100%;margin-top:12px;padding:9px;border:0;border-radius:7px;background:#f1f5f9;cursor:pointer';
+  close.addEventListener('click', () => mask.remove());
+  box.appendChild(list); box.appendChild(close); mask.appendChild(box); document.body.appendChild(mask);
+  mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove(); });
 }
 
 /** 历史课件导入：列出该班级全部课堂 → 多选 → 逐个自动收集导出 PDF */

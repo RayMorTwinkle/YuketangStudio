@@ -30,23 +30,23 @@ function findSlideForProblem(problemId) {
   return null;
 }
 
-/** 当前应分析的 slide：显式指定 > 主界面 > 课件浏览选中 > 最近题目关联页 */
+/** 当前应分析的 slide：显式指定 > 用户配置的图源（老师/课件选中） > 最近题目关联页 */
 export function pickCurrentSlide({ preferredSlideId = null } = {}) {
   const preferred = asIdStr(preferredSlideId);
   if (preferred) {
     const hit = repo.slides.get(preferred) || findSlideAcrossPresentations(preferred);
     if (hit) return { slide: hit, source: `指定页（第 ${hit.index ?? hit.page ?? '?'} 页）` };
   }
-  const prio = ui?.config?.aiSlidePickPriority !== false;
+  const source = ui?.config?.aiSlideSource === 'selected' ? 'selected' : 'teacher';
   const mainSid = asIdStr(getCurrentMainPageSlideId());
-  if (prio && mainSid) {
-    const hit = repo.slides.get(mainSid) || findSlideAcrossPresentations(mainSid);
-    if (hit) return { slide: hit, source: `主界面当前页（第 ${hit.index ?? hit.page ?? '?'} 页）` };
-  }
-  if (repo.currentSlideId != null) {
-    const sid = asIdStr(repo.currentSlideId);
-    const hit = repo.slides.get(sid) || findSlideAcrossPresentations(sid);
-    if (hit) return { slide: hit, source: `课件浏览选中（第 ${hit.index ?? hit.page ?? '?'} 页）` };
+  const selectedSid = asIdStr(repo.selectedSlideId || repo.currentSlideId);
+  const candidates = source === 'selected'
+    ? [{ sid: selectedSid, label: '课件选中页' }, { sid: mainSid, label: '老师当前页' }]
+    : [{ sid: mainSid || asIdStr(repo.teacherSlideId), label: '老师当前页' }, { sid: selectedSid, label: '课件选中页' }];
+  for (const c of candidates) {
+    if (!c.sid) continue;
+    const hit = repo.slides.get(c.sid) || findSlideAcrossPresentations(c.sid);
+    if (hit) return { slide: hit, source: `${c.label}（第 ${hit.index ?? hit.page ?? '?'} 页）` };
   }
   try {
     if (repo.encounteredProblems?.length > 0) {

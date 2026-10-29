@@ -2,13 +2,19 @@
 // 「当前 PPT 页图片」解析的共享模块：chat 与 AI 解答面板都用它。
 // 三级来源：repo slide 数据 → 页面 DOM → 明确失败（绝不悄悄截整页当 PPT）。
 import { repo } from '../state/repo.js';
+import { storage } from '../core/storage.js';
+import { resolveSlideForSource } from './slide-source.js';
 import { fetchAsDataURL } from '../core/env.js';
 import { log } from '../core/log.js';
 
 /** 在 repo 中定位当前 slide（课堂内主路径） */
-export function findCurrentSlide() {
+export function findCurrentSlide(source = null) {
   try {
-    const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
+    const configured = (storage.get('config', {})?.aiSlideSource) || 'teacher';
+    const resolved = resolveSlideForSource(source || configured, { fallback: false });
+    const slide = resolved.slide;
+    if (slide) return slide;
+    const sid = resolved.requestedSlideId || (repo.currentSlideId != null ? String(repo.currentSlideId) : null);
     if (sid && repo.slides.has(sid)) return repo.slides.get(sid);
     for (const [, pres] of repo.presentations) {
       const hit = (pres?.slides || []).find(s => String(s.id) === sid);
@@ -48,13 +54,14 @@ function findSlideUrlInDom() {
 
 /**
  * 解析当前 PPT 页图片。
+ * @param {string|null} [source] 'teacher' | 'selected'；缺省读配置。
  * @returns {Promise<{dataUrl:string|null, source:'repo'|'dom'|'failed', reason?:string}>}
  *   source: 'repo' = 命中课件数据（最可信）；'dom' = 页面 DOM；'failed' = 拿不到
  * 注意：不做整页 html2canvas 兜底——那会把整页截图当 PPT 发给 AI 且用户毫不知情。
  */
-export async function resolveCurrentSlideImage() {
+export async function resolveCurrentSlideImage(source = null) {
   // 1) repo 中的 slide（课堂内正常路径）
-  const slide = findCurrentSlide();
+  const slide = findCurrentSlide(source);
   const url = slideImageUrl(slide);
   if (url) {
     try {

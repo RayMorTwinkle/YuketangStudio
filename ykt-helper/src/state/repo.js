@@ -12,6 +12,11 @@ export const repo = {
 
   currentPresentationId: null,
   currentSlideId: null,
+  // teacherSlideId 跟老师实际翻页；selectedSlideId 跟用户在课件面板的选择。
+  // 两者分开后，AI 面板才能明确选择「正在讲的页」还是「课件页选中的页」。
+  teacherSlideId: null,
+  selectedSlideId: null,
+  selectedPresentationId: null,
   currentLessonId: null,
   currentSelectedUrl: null,
 

@@ -25,6 +25,7 @@ export function mountAboutPanel() {
   const $actions = root.querySelector('#ykt-about-actions');
   const $dl = root.querySelector('#ykt-about-download');
 
+  const isShell = !!(window.YktBridge && typeof window.YktBridge.openAboutAndUpdate === 'function');
   let checking = false;
   let lastResult = null;
 
@@ -87,7 +88,19 @@ export function mountAboutPanel() {
   });
   refreshChannel();
 
-  $btn.addEventListener('click', runCheck);
+  if (isShell) {
+    // 手机壳自带原生更新流程；脚本不再展示会误导的 Web 更新渠道。
+    root.querySelector('#ykt-about-channel')?.style.setProperty('display', 'none');
+    $btn.textContent = '打开手机端关于与更新';
+    $btn.addEventListener('click', () => {
+      try { window.YktBridge.openAboutAndUpdate(); }
+      catch (e) { ui.toast?.('打开手机端关于失败：' + (e?.message || e), 2500); }
+    });
+    setStatus('手机端更新由 YuketangStudio App 负责；这里只展示注入脚本版本。', 'muted');
+    $actions.style.display = 'none';
+  } else {
+    $btn.addEventListener('click', runCheck);
+  }
   $dl.addEventListener('click', () => {
     // 直接导向当前渠道的脚本下载链接（测试渠道不会再跳到只有稳定版的官网）
     const url = lastResult?.userscript || 'https://app.raymor.top/yuketangstudio/';

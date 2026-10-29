@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -83,6 +84,9 @@ class MainActivity : AppCompatActivity() {
     private val uiHandler = Handler(Looper.getMainLooper())
     private var updateSheet: BottomSheetDialog? = null
     private var updatePoll: Runnable? = null
+    // 未授权“安装未知应用”时暂存安装目标，授权返回后自动继续
+    private var pendingInstallUri: Uri? = null
+    private var pendingInstallPath: String? = null
 
     private var desktopMode
         get() = prefs.getBoolean("desktopMode", false)
@@ -793,6 +797,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------- 关于与更新 ----------
+    fun openAboutAndUpdate() {
+        runOnUiThread { showAboutSheet() }
+    }
+
     private fun showAboutSheet() {
         val site = "https://app.raymor.top/yuketangstudio/"
         val github = "https://github.com/RayMorTwinkle/YuketangStudio"
@@ -1059,7 +1067,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun canInstallPackages(): Boolean {
+        return Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls()
+    }
+
+    private fun openUnknownSourcesSettings() {
+        try {
+            startActivity(Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:$packageName"),
+            ))
+        } catch (e: Throwable) {
+            Log.w(TAG, "打开未知来源设置失败", e)
+            runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+            toast("请手动允许本应用安装未知应用")
+        }
+    }
+
     private fun launchInstaller(uri: Uri, path: String) {
+        if (!canInstallPackages()) {
+            pendingInstallUri = uri
+            pendingInstallPath = path
+            toast("请先允许 YuketangStudio 安装未知应用，返回后会自动继续")
+            openUnknownSourcesSettings()
+            return
+        }
         try {
             startActivity(Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
@@ -1070,6 +1102,16 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "启动安装器失败", e)
             toast("没有可用的安装器，安装包位置：$path")
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val uri = pendingInstallUri ?: return
+        if (!canInstallPackages()) return
+        val path = pendingInstallPath ?: ""
+        pendingInstallUri = null
+        pendingInstallPath = null
+        launchInstaller(uri, path)
     }
 
     // ============================================================
@@ -1903,6 +1945,10 @@ class MainActivity : AppCompatActivity() {
     private fun openDownloadedFile(f: java.io.File) {
         try {
             val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", f)
+            if (f.name.endsWith(".apk", ignoreCase = true)) {
+                launchInstaller(uri, f.absolutePath)
+                return
+            }
             startActivity(Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, guessMime(f.name))
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

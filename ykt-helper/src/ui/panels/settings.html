@@ -1,241 +1,420 @@
 <div id="ykt-settings-panel" class="ykt-panel">
-  <div class="panel-header">
-    <h3>YuketangStudio 设置</h3>
-    <div class="setting-actions">
-        <button id="ykt-btn-settings-save">保存设置</button>
-        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>
+  <div class="panel-header settings-header">
+    <div class="settings-heading">
+      <h3><i class="fas fa-sliders"></i> 设置</h3>
+      <p class="settings-subtitle">AI、自动作答、提醒与隐私</p>
     </div>
-    
+    <div class="setting-actions">
+      <span id="ykt-settings-save-state" class="settings-save-state">修改自动保存</span>
+      <button id="ykt-btn-settings-save" class="settings-btn-primary" type="button">保存</button>
+      <button id="ykt-btn-settings-reset" class="settings-btn-danger" type="button">重置</button>
+    </div>
   </div>
 
   <div class="panel-body">
+    <nav id="ykt-settings-nav" class="settings-nav" aria-label="设置分类">
+      <a href="#ykt-settings-ai" data-settings-target="ai"><i class="fas fa-robot"></i><span>AI</span></a>
+      <a href="#ykt-settings-auto" data-settings-target="auto"><i class="fas fa-wand-magic-sparkles"></i><span>自动作答</span></a>
+      <a href="#ykt-settings-notify" data-settings-target="notify"><i class="fas fa-bell"></i><span>提醒</span></a>
+      <a href="#ykt-settings-prompt" data-settings-target="prompt"><i class="fas fa-message"></i><span>提示词</span></a>
+      <a href="#ykt-settings-privacy" data-settings-target="privacy"><i class="fas fa-shield-halved"></i><span>隐私</span></a>
+    </nav>
+
     <div class="settings-content">
-      <div class="setting-group">
-      <h4>AI配置</h4>
-
-        <!-- 当前 profile 选择 -->
-        <div class="setting-item">
-          <label for="ykt-ai-profile-select">当前配置：</label>
-          <select id="ykt-ai-profile-select"></select>
-          <button id="ykt-ai-profile-add">新增配置</button>
-          <button id="ykt-ai-profile-del" color="red">删除当前</button>
-        </div>
-
-        <!-- 具体配置字段：针对当前 profile -->
-        <div class="setting-item">
-          <label for="ykt-ai-profile-name">名称:</label>
-          <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">
-        </div>
-
-        <div class="setting-item">
-          <label for="ykt-ai-base-url">URL:</label>
-          <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">
-          <small>兼容 OpenAI 协议的服务端，例如 api.deepseek.com / api.openai.com / 火山方舟 api/v3 或 api/plan/v3；填到 /v1、/api/v3、/api/plan/v3 即可，脚本会自动补 /chat/completions。火山方舟不提供模型列表，请手动填写模型 ID。</small>
-        </div>
-
-        <div class="setting-item">
-          <label for="kimi-api-key">API Key:</label>
-          <div class="apikey-row">
-            <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">
-            <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>
-            <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>
+      <section id="ykt-settings-ai" class="settings-section" data-settings-section="ai">
+        <div class="settings-section-head">
+          <span class="settings-section-icon"><i class="fas fa-robot"></i></span>
+          <div>
+            <h4>AI 配置</h4>
+            <p>选择当前使用的模型配置；支持多个配置随时切换。</p>
           </div>
-          <small id="ykt-apikey-test-result" class="apikey-test-result"></small>
         </div>
 
-        <div class="setting-item">
-          <label for="ykt-ai-model">模型 ID:</label>
-          <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-chat / gpt-4o-mini">
-          <button id="ykt-ai-model-fetch" type="button" style="padding:3px 10px">获取模型列表</button>
-        </div>
-        <div id="ykt-ai-model-options" class="ykt-model-options" style="display:none"></div>
-        <small id="ykt-ai-model-hint" style="display:none;opacity:.6">云端模型由服务端按渠道自动分配，无需填写</small>
-
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-ai-thinking">
-            <span class="checkmark"></span>
-            启用思考（推理模型深度思考）
-          </label>
-          <small>关闭后不发送 reasoning_effort 参数——适合不支持该参数的端点；注意 DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>
-        </div>
-
-        <div class="setting-item">
-          <label for="ykt-ai-effort">思考强度:</label>
-          <select id="ykt-ai-effort">
-            <option value="low">低</option>
-            <option value="medium" selected>中</option>
-            <option value="high">高</option>
-            <option value="max">超高（max）</option>
-          </select>
-          <small>仅「启用思考」开启时生效；强度越高推理越充分但首字越慢、流式间隔可能越大</small>
-        </div>
-
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-ai-regex-tool">
-            <span class="checkmark"></span>
-            正则化工具调用（兼容不支持 tools 的端点）
-          </label>
-          <small>开启后不再发送 tools 参数；模型在回答结尾用 &lt;answer&gt;...&lt;/answer&gt; 交答案（按题型自动解析）。适合只支持纯文本、或 tools 调用不稳定的端点。</small>
-        </div>
-
-        <details class="setting-advanced">
-          <summary>高级选项</summary>
-          <div class="setting-item">
-            <label for="ykt-ai-vision-model">图像模型 ID:</label>
-            <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与模型相同">
-            <small>仅当图像识别需用与文本不同的模型时填写；留空则与上方模型相同。</small>
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-ai-profile-select">当前配置</label>
+            <small class="settings-hint">切换配置不会丢失已保存的 Key。</small>
           </div>
-        </details>
-      </div>
+          <div class="settings-control settings-control-wide">
+            <select id="ykt-ai-profile-select"></select>
+            <button id="ykt-ai-profile-add" type="button">新增</button>
+            <button id="ykt-ai-profile-del" type="button" class="settings-btn-subtle-danger">删除</button>
+          </div>
+        </div>
 
-      <div class="setting-group">
-        <h4>UI设置</h4>
-          <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-ui-tex">
-            <span class="checkmark"></span>
-            渲染LaTeX格式的公式
-          </label>
+        <div class="settings-row settings-row-stack">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-ai-profile-name">配置名称</label>
+          </div>
+          <div class="settings-control settings-control-full">
+            <input type="text" id="ykt-ai-profile-name" placeholder="例如：DeepSeek / OpenAI GPT-4o">
+          </div>
         </div>
-      </div>
 
-      <div class="setting-group">
-        <h4>自动作答设置</h4>
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-input-auto-join">
-            <span class="checkmark"></span>
-            自动进入课堂
-          </label>
-          <small>默认自动进入“正在上课”的课堂。</small>
+        <div class="settings-row settings-row-stack">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-ai-base-url">接口 URL</label>
+            <small class="settings-hint">兼容 OpenAI 协议。填到 /v1、/api/v3 或 /api/plan/v3 即可，脚本会自动补 /chat/completions。火山方舟不提供模型列表，请手动填写模型 ID。</small>
+          </div>
+          <div class="settings-control settings-control-full">
+            <input type="text" id="ykt-ai-base-url" placeholder="https://api.deepseek.com">
+          </div>
         </div>
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-input-auto-join-auto-answer">
-            <span class="checkmark"></span>
-            对于自动进入的课堂，默认使用自动答题
-          </label>
-          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>
-        </div>
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-input-auto-answer">
-            <span class="checkmark"></span>
-            启用自动作答
-          </label>
-        </div>
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-input-fallback-answer">
-            <span class="checkmark"></span>
-            无 API Key 时提交兜底答案
-          </label>
-          <small>未配置 AI 时提交占位答案（选择题为 A）；开启自动作答且模型两次都未调用「提交答案」工具时，也会解析正文并提交。默认关闭，宁缺答不误答。</small>
-        </div>
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-input-ai-auto-analyze">
-            <span class="checkmark"></span>
-            打开 AI 页面时自动分析
-          </label>
-          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>
-        </div>
-        <div class="setting-item">
-          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>
-          <input type="number" id="ykt-input-answer-delay" min="1" max="60">
-          <small>题目出现后等待多长时间开始作答</small>
-        </div>
-        <div class="setting-item">
-          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>
-          <input type="number" id="ykt-input-random-delay" min="0" max="30">
-          <small>在基础延迟基础上随机增加的时间范围</small>
-        </div><div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-ai-pick-main-first">
-            <span class="checkmark"></span>
-            主界面优先（未勾选则课件浏览优先）
-          </label>
-          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>
-        </div>
-      </div>
 
-      <div class="setting-group">
-        <h4>习题提醒</h4>
-        <div class="setting-item">
-          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>
-          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />
-          <small>习题出现时，弹窗在屏幕上的停留时长</small>
-        </div>
-        <div class="setting-item">
-          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>
-          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />
-          <small>用于提示音的音量大小；建议 30~80</small>
-        </div>
-        <div class="setting-item">
-          <button id="ykt-btn-test-notify">测试习题提醒</button>
-        </div>
-        <details class="setting-advanced">
-          <summary>自定义提示音</summary>
-          <div class="setting-item">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />
-              <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>
-              <button id="ykt-btn-apply-audio-url">应用URL</button>
-              <button id="ykt-btn-preview-audio">预览</button>
-              <button id="ykt-btn-clear-audio">清除自定义音频</button>
+        <div class="settings-row settings-row-stack">
+          <div class="settings-copy">
+            <label class="settings-label" for="kimi-api-key">API Key</label>
+            <small class="settings-hint">只保存在本机，不会随遥测上传。</small>
+          </div>
+          <div class="settings-control settings-control-full">
+            <div class="apikey-row">
+              <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key" class="apikey-input">
+              <button id="ykt-apikey-eye" type="button" title="显示/隐藏 Key" class="apikey-eye"><i class="fas fa-eye"></i></button>
+              <button id="ykt-apikey-test" type="button" class="apikey-test">测试连接</button>
             </div>
-            <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>
-            <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>
+            <small id="ykt-apikey-test-result" class="apikey-test-result"></small>
+          </div>
+        </div>
+
+        <div class="settings-row settings-row-stack">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-ai-model">模型 ID</label>
+            <small class="settings-hint" id="ykt-ai-model-hint">云端模型由服务端按渠道自动分配，无需填写。</small>
+          </div>
+          <div class="settings-control settings-control-full">
+            <div class="settings-inline">
+              <input type="text" id="ykt-ai-model" placeholder="例如：deepseek-chat / gpt-4o-mini">
+              <button id="ykt-ai-model-fetch" type="button">获取模型</button>
+            </div>
+            <div id="ykt-ai-model-options" class="ykt-model-options" style="display:none"></div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-ai-thinking">思考模式</label>
+            <small class="settings-hint">关闭后不发送 reasoning_effort；DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-ai-thinking">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">启用</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-ai-effort">思考强度</label>
+            <small class="settings-hint">越高推理越充分，但首字更慢。</small>
+          </div>
+          <div class="settings-control">
+            <select id="ykt-ai-effort">
+              <option value="low">低</option>
+              <option value="medium" selected>中</option>
+              <option value="high">高</option>
+              <option value="max">超高</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-ai-regex-tool">正则化工具调用</label>
+            <small class="settings-hint">适合不支持 tools 的端点。开启后用 &lt;answer&gt;...&lt;/answer&gt; 交答案。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-ai-regex-tool">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">启用</span>
+            </label>
+          </div>
+        </div>
+
+        <details class="settings-advanced">
+          <summary>高级：图像模型</summary>
+          <div class="settings-advanced-body">
+            <div class="settings-row settings-row-stack">
+              <div class="settings-copy">
+                <label class="settings-label" for="ykt-ai-vision-model">图像模型 ID</label>
+                <small class="settings-hint">留空则与上方模型相同；只有图像识别需要单独模型时才填写。</small>
+              </div>
+              <div class="settings-control settings-control-full">
+                <input type="text" id="ykt-ai-vision-model" placeholder="默认与模型相同">
+              </div>
+            </div>
           </div>
         </details>
-      </div>
+      </section>
 
-      <div class="setting-group">
-        <h4>提示词设置</h4>
-        <div class="setting-item" style="flex-direction:column;align-items:stretch">
-          <label>PPT对话提示词（鼓励生动形象与可视化）：</label>
-          <textarea id="ykt-prompt-chat" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>
-          <button id="ykt-prompt-chat-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>
+      <section id="ykt-settings-auto" class="settings-section" data-settings-section="auto">
+        <div class="settings-section-head">
+          <span class="settings-section-icon"><i class="fas fa-wand-magic-sparkles"></i></span>
+          <div>
+            <h4>自动作答</h4>
+            <p>控制进入课堂、自动答题和 AI 分析的默认行为。</p>
+          </div>
         </div>
-        <div class="setting-item" style="flex-direction:column;align-items:stretch">
-          <label>AI解答提示词（优先快速、准确给答案）：</label>
-          <textarea id="ykt-prompt-ai" rows="6" style="font-size:12px;line-height:1.5;border:1px solid var(--ykt-border-strong);border-radius:6px;padding:6px;font-family:inherit;"></textarea>
-          <button id="ykt-prompt-ai-reset" style="align-self:flex-start;margin-top:4px">恢复默认</button>
-        </div>
-        <small>留空 = 使用内置默认提示词；修改后自动保存并立即生效（下一次对话使用）。</small>
-      </div>
 
-      <div class="setting-group">
-        <div class="setting-item" style="display:flex;align-items:center;gap:8px">
-          <input type="password" id="ykt-devmode-pass" placeholder="解锁码" style="width:120px">
-          <button id="ykt-devmode-btn" style="padding:3px 10px">解锁</button>
-          <small id="ykt-devmode-hint" style="opacity:.55"></small>
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-auto-join">自动进入课堂</label>
+            <small class="settings-hint">只进入状态为“正在上课”的课堂。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-input-auto-join">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
         </div>
-        <small style="display:block;margin-top:6px;opacity:.55">
-          没有解锁码？加讨论群 <strong>901466023</strong> 获取
-          <button id="ykt-devmode-qq" type="button" style="margin-left:4px;padding:1px 6px;font-size:11px;cursor:pointer">复制群号</button>
-        </small>
-      </div>
 
-      <div class="setting-group">
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-telemetry">
-            <span class="checkmark"></span>
-            匿名统计使用情况
-          </label>
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-auto-join-auto-answer">自动进入后自动作答</label>
+            <small class="settings-hint">只影响自动进入的课堂，不影响手动进入。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-input-auto-join-auto-answer">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
         </div>
-        <div class="setting-item" style="margin-top:8px">
-          <label class="checkbox-label">
-            <input type="checkbox" id="ykt-telemetry-enhanced">
-            <span class="checkmark"></span>
-            强化遥测（上传答题/工具/提交/错误数据）
-          </label>
-          <small>答题链路（含工具调用、提交/暂存、解析错误）全量记录，失败立即上传；会上传发送给模型的消息、模型回复、题目/答案/工具参数和错误详情；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭，需先开启「匿名统计使用情况」。</small>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-auto-answer">启用自动作答</label>
+            <small class="settings-hint">题目出现后由 AI 自动作答并提交；有风险，请谨慎开启。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-input-auto-answer">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
         </div>
-      </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-fallback-answer">无 Key 时提交兜底答案</label>
+            <small class="settings-hint">未配置 AI 时提交占位答案；默认关闭，宁缺答不误答。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-input-fallback-answer">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-ai-auto-analyze">打开 AI 页自动分析</label>
+            <small class="settings-hint">进入 AI 解答面板时自动询问当前题目。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-input-ai-auto-analyze">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-answer-delay">作答延迟</label>
+            <small class="settings-hint">题目出现后等待多久开始作答。</small>
+          </div>
+          <div class="settings-control settings-control-inline">
+            <input type="number" id="ykt-input-answer-delay" min="1" max="60">
+            <span class="settings-unit">秒</span>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-random-delay">随机延迟</label>
+            <small class="settings-hint">在基础延迟上随机增加的时间。</small>
+          </div>
+          <div class="settings-control settings-control-inline">
+            <input type="number" id="ykt-input-random-delay" min="0" max="30">
+            <span class="settings-unit">秒</span>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-ui-tex">渲染 LaTeX 公式</label>
+            <small class="settings-hint">关闭后题目中的公式按纯文本显示。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-ui-tex">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section id="ykt-settings-notify" class="settings-section" data-settings-section="notify">
+        <div class="settings-section-head">
+          <span class="settings-section-icon"><i class="fas fa-bell"></i></span>
+          <div>
+            <h4>习题提醒</h4>
+            <p>手机端提醒会避开工具栏，并支持收起为小卡片。</p>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-notify-duration">弹窗停留时间</label>
+            <small class="settings-hint">不收起时，提醒自动消失的时长。</small>
+          </div>
+          <div class="settings-control settings-control-inline">
+            <input type="number" id="ykt-input-notify-duration" min="2" max="60">
+            <span class="settings-unit">秒</span>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-notify-volume">提醒音量</label>
+            <small class="settings-hint">建议 30~80；0 为静音。</small>
+          </div>
+          <div class="settings-control settings-control-range">
+            <input type="range" id="ykt-input-notify-volume" min="0" max="100" step="1">
+            <output id="ykt-notify-volume-out" class="settings-range-out">60</output>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label">测试提醒</label>
+            <small class="settings-hint">弹出一次测试提醒，用于确认声音和位置。</small>
+          </div>
+          <div class="settings-control">
+            <button id="ykt-btn-test-notify" type="button">试一下</button>
+          </div>
+        </div>
+
+        <details class="settings-advanced">
+          <summary>自定义提示音</summary>
+          <div class="settings-advanced-body">
+            <div class="settings-row settings-row-stack">
+              <div class="settings-copy">
+                <label class="settings-label">选择音频</label>
+                <small class="settings-hint">支持上传（≤2MB）或在线 URL；跨域音频可能被浏览器拦截，先点“预览”授权播放。</small>
+              </div>
+              <div class="settings-control settings-control-full">
+                <div class="settings-file-row">
+                  <input type="file" id="ykt-input-notify-audio-file" accept="audio/*">
+                  <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL">
+                  <button id="ykt-btn-apply-audio-url" type="button">应用</button>
+                  <button id="ykt-btn-preview-audio" type="button">预览</button>
+                  <button id="ykt-btn-clear-audio" type="button">清除</button>
+                </div>
+                <small id="ykt-tip-audio-name" class="settings-audio-name"></small>
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section id="ykt-settings-prompt" class="settings-section" data-settings-section="prompt">
+        <div class="settings-section-head">
+          <span class="settings-section-icon"><i class="fas fa-message"></i></span>
+          <div>
+            <h4>提示词</h4>
+            <p>留空使用内置默认；修改后下一次对话立即生效。</p>
+          </div>
+        </div>
+
+        <div class="settings-row settings-row-stack">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-prompt-chat">PPT 对话提示词</label>
+            <small class="settings-hint">鼓励生动、形象和可视化表达。</small>
+          </div>
+          <div class="settings-control settings-control-full">
+            <textarea id="ykt-prompt-chat" rows="6"></textarea>
+            <button id="ykt-prompt-chat-reset" type="button" class="settings-btn-inline">恢复默认</button>
+          </div>
+        </div>
+
+        <div class="settings-row settings-row-stack">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-prompt-ai">AI 解答提示词</label>
+            <small class="settings-hint">优先快速、准确地给答案。</small>
+          </div>
+          <div class="settings-control settings-control-full">
+            <textarea id="ykt-prompt-ai" rows="6"></textarea>
+            <button id="ykt-prompt-ai-reset" type="button" class="settings-btn-inline">恢复默认</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="ykt-settings-privacy" class="settings-section" data-settings-section="privacy">
+        <div class="settings-section-head">
+          <span class="settings-section-icon"><i class="fas fa-shield-halved"></i></span>
+          <div>
+            <h4>隐私与高级</h4>
+            <p>匿名统计、诊断和解锁入口。</p>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-telemetry">匿名统计</label>
+            <small class="settings-hint">默认开启，只上传匿名使用元数据，不含题目、答案、成绩、姓名、学号或 Cookie。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-telemetry">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-telemetry-enhanced">强化遥测</label>
+            <small class="settings-hint">会上传发送给模型的消息、模型回复、解析/提交结果和错误；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-telemetry-enhanced">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-devmode-pass">解锁码</label>
+            <small class="settings-hint">没有解锁码？加讨论群 <strong>901466023</strong> 获取。</small>
+          </div>
+          <div class="settings-control settings-control-full">
+            <div class="settings-inline">
+              <input type="password" id="ykt-devmode-pass" placeholder="输入解锁码">
+              <button id="ykt-devmode-btn" type="button">解锁</button>
+              <button id="ykt-devmode-qq" type="button" class="settings-btn-inline">复制群号</button>
+            </div>
+            <small id="ykt-devmode-hint" class="settings-hint"></small>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 </div>

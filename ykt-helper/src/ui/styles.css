@@ -80,6 +80,33 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
   pointer-events: none;
 }
 
+/* ===== 习题提醒浮层 ===== */
+.ykt-problem-notify{
+  transition: max-width .18s ease, padding .18s ease, border-radius .18s ease;
+}
+.ykt-problem-notify.collapsed{
+  padding: 10px 12px !important;
+  max-width: 260px !important;
+  align-items: center !important;
+}
+.ykt-problem-notify.collapsed .ykt-notify-head{
+  margin-bottom: 0 !important;
+}
+.ykt-problem-notify.collapsed .ykt-notify-title{
+  font-size: 13px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ykt-problem-notify.collapsed .ykt-notify-countdown{
+  margin-top: 2px !important;
+  font-size: 11px !important;
+  white-space: nowrap;
+}
+.ykt-problem-notify.collapsed .ykt-notify-body{
+  cursor: pointer;
+}
+
 /* ===== 面板通用样式 ===== */
 .ykt-panel{
   position: fixed; right: 20px; bottom: 60px;
@@ -122,69 +149,161 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 }
 
 /* ===== 设置面板 (#ykt-settings-panel) ===== */
+#ykt-settings-panel{
+  --settings-border: #e5e9f2;
+  --settings-muted: #64748b;
+  --settings-soft: #f6f8fc;
+  width: min(640px, calc(100vw - 48px));
+}
+#ykt-settings-panel .settings-header{ align-items: flex-start; gap: 14px; }
+#ykt-settings-panel .settings-heading{ min-width: 0; }
+#ykt-settings-panel .settings-heading h3{ display: flex; align-items: center; gap: 8px; font-size: 18px; }
+#ykt-settings-panel .settings-subtitle{ margin: 3px 0 0; color: var(--settings-muted); font-size: 12px; }
+#ykt-settings-panel .setting-actions{ display: flex; align-items: center; gap: 8px; margin: 0; flex-wrap: wrap; }
+#ykt-settings-panel .settings-save-state{ color: var(--settings-muted); font-size: 11px; white-space: nowrap; }
+#ykt-settings-panel .settings-save-state[data-kind="ok"]{ color: #0f766e; }
+#ykt-settings-panel button{
+  height: 32px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--settings-border); background: #fff; color: #334155;
+  cursor: pointer; font-size: 12px; transition: background .15s, border-color .15s, color .15s;
+}
+#ykt-settings-panel button:hover{ background: #eef4ff; border-color: #9db8ed; color: var(--ykt-accent); }
+#ykt-settings-panel button:disabled{ opacity: .5; cursor: default; }
+#ykt-settings-panel .settings-btn-primary{ background: var(--ykt-accent); border-color: var(--ykt-accent); color: #fff; }
+#ykt-settings-panel .settings-btn-primary:hover{ background: #1554c0; border-color: #1554c0; color: #fff; }
+#ykt-settings-panel .settings-btn-danger{ color: #b42318; border-color: #f3c1bb; background: #fff8f7; }
+#ykt-settings-panel .settings-btn-danger:hover{ background: #ffebe9; border-color: #e88b81; color: #b42318; }
+#ykt-settings-panel .settings-btn-subtle-danger{ color: #b42318; }
+#ykt-settings-panel .settings-btn-inline{ height: 28px; padding: 0 9px; margin-top: 6px; font-size: 11px; }
+#ykt-settings-panel .panel-body{ padding: 0 16px 18px; }
+#ykt-settings-panel .settings-nav{
+  position: sticky; top: 0; z-index: 3;
+  display: flex; gap: 6px; overflow-x: auto; margin: 0 -2px 12px; padding: 10px 2px 8px;
+  background: linear-gradient(#fff 75%, rgba(255,255,255,.92));
+  border-bottom: 1px solid var(--settings-border);
+  scrollbar-width: none;
+}
+#ykt-settings-panel .settings-nav::-webkit-scrollbar{ display: none; }
+#ykt-settings-panel .settings-nav a{
+  display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+  padding: 6px 9px; border-radius: 999px; border: 1px solid var(--settings-border);
+  color: #475569; background: #fff; text-decoration: none; font-size: 11px;
+}
+#ykt-settings-panel .settings-nav a:hover,
+#ykt-settings-panel .settings-nav a.active{ background: #eef4ff; border-color: #b9cdf2; color: var(--ykt-accent); }
 #ykt-settings-panel .settings-content{ display: flex; flex-direction: column; gap: 14px; }
-#ykt-settings-panel .setting-group{ border: 1px dashed var(--ykt-border); border-radius: 6px; padding: 10px; }
-#ykt-settings-panel .setting-group h4{ margin: 0 0 8px 0; font-size: 14px; }
-#ykt-settings-panel .setting-item{ display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
-#ykt-settings-panel label{ font-size: 13px; }
+#ykt-settings-panel .settings-section{
+  border: 1px solid var(--settings-border); border-radius: 12px; padding: 16px;
+  background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.03);
+  scroll-margin-top: 54px;
+}
+#ykt-settings-panel .settings-section-head{ display: flex; gap: 10px; align-items: flex-start; margin-bottom: 4px; }
+#ykt-settings-panel .settings-section-icon{
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #eef4ff; color: var(--ykt-accent); font-size: 13px;
+}
+#ykt-settings-panel .settings-section-head h4{ margin: 1px 0 2px; font-size: 14px; color: #0f172a; }
+#ykt-settings-panel .settings-section-head p{ margin: 0; color: var(--settings-muted); font-size: 11px; line-height: 1.5; }
+#ykt-settings-panel .settings-row{
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 13px 0; border-top: 1px solid #edf0f6;
+}
+#ykt-settings-panel .settings-section-head + .settings-row,
+#ykt-settings-panel .settings-divider + .settings-row{ border-top: 0; }
+#ykt-settings-panel .settings-row-stack{ flex-direction: column; gap: 7px; }
+#ykt-settings-panel .settings-copy{ min-width: 0; flex: 1 1 auto; }
+#ykt-settings-panel .settings-label{ display: block; color: #1e293b; font-size: 13px; font-weight: 600; line-height: 1.4; cursor: pointer; }
+#ykt-settings-panel .settings-hint{ display: block; margin-top: 3px; color: var(--settings-muted); font-size: 11px; line-height: 1.55; }
+#ykt-settings-panel .settings-hint strong{ color: #334155; }
+#ykt-settings-panel .settings-control{ display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex: 0 0 auto; max-width: 100%; }
+#ykt-settings-panel .settings-control-wide{ flex: 1 1 300px; min-width: 0; flex-wrap: wrap; justify-content: flex-start; }
+#ykt-settings-panel .settings-control-full{ width: 100%; justify-content: flex-start; flex-direction: column; align-items: stretch; }
+#ykt-settings-panel .settings-control-inline{ flex: 0 0 auto; }
+#ykt-settings-panel .settings-control-range{ flex: 1 1 220px; min-width: 0; }
+#ykt-settings-panel .settings-inline{ display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; }
+#ykt-settings-panel .settings-inline input{ flex: 1 1 auto; min-width: 0; }
+#ykt-settings-panel .settings-unit{ color: var(--settings-muted); font-size: 11px; }
+#ykt-settings-panel .settings-divider{ height: 1px; background: #edf0f6; margin: 4px 0; }
 #ykt-settings-panel input[type="text"],
 #ykt-settings-panel input[type="password"],
-#ykt-settings-panel input[type="number"]{
-  height: 30px; border: 1px solid var(--ykt-border-strong);
-  border-radius: 4px; padding: 0 8px; min-width: 160px; max-width: 100%;
-  box-sizing: border-box; flex: 1 1 160px;
+#ykt-settings-panel input[type="number"],
+#ykt-settings-panel select,
+#ykt-settings-panel textarea{
+  border: 1px solid var(--settings-border); border-radius: 8px; background: #fff; color: #1e293b;
+  font: inherit; font-size: 13px; box-sizing: border-box; outline: none;
+  transition: border-color .15s, box-shadow .15s;
 }
+#ykt-settings-panel input[type="text"],
+#ykt-settings-panel input[type="password"],
+#ykt-settings-panel input[type="number"],
+#ykt-settings-panel select{ height: 34px; padding: 0 9px; min-width: 0; }
+#ykt-settings-panel input[type="number"]{ width: 88px; }
+#ykt-settings-panel textarea{ width: 100%; padding: 8px 9px; resize: vertical; line-height: 1.55; font-size: 12px; }
+#ykt-settings-panel input:focus,
+#ykt-settings-panel select:focus,
+#ykt-settings-panel textarea:focus{ border-color: #8fb2ee; box-shadow: 0 0 0 3px rgba(29,99,223,.10); }
+#ykt-settings-panel select{ min-width: 150px; cursor: pointer; }
+#ykt-settings-panel .settings-row-stack .settings-control-full > input{ width: 100%; }
+#ykt-settings-panel .settings-control-full > select{ width: 100%; }
 
 /* API Key 行：输入框 + 眼睛 + 测试按钮 */
-#ykt-settings-panel .apikey-row{
-  display: flex; align-items: center; gap: 6px; flex: 1 1 160px; min-width: 0;
-}
+#ykt-settings-panel .apikey-row{ display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
 #ykt-settings-panel .apikey-input{ flex: 1 1 auto; min-width: 0; }
 #ykt-settings-panel .apikey-eye,
-#ykt-settings-panel .apikey-test{
-  flex: 0 0 auto; height: 30px; padding: 0 10px;
-  border: 1px solid var(--ykt-border-strong); border-radius: 4px;
-  background: #f7f8fa; cursor: pointer; font-size: 12px; white-space: nowrap;
+#ykt-settings-panel .apikey-test{ flex: 0 0 auto; height: 34px; padding: 0 10px; white-space: nowrap; }
+#ykt-settings-panel .apikey-test-result{ display: block; margin-top: 5px; min-height: 16px; font-size: 11px; }
+
+/* 开关 */
+#ykt-settings-panel .settings-switch{ display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+#ykt-settings-panel .settings-switch input{ position: absolute; opacity: 0; width: 1px; height: 1px; }
+#ykt-settings-panel .switch-track{
+  position: relative; width: 38px; height: 22px; border-radius: 999px;
+  background: #cbd5e1; transition: background .18s; flex: 0 0 auto;
 }
-#ykt-settings-panel .apikey-eye:hover,
-#ykt-settings-panel .apikey-test:hover{
-  background: #eef3ff; border-color: var(--ykt-accent);
+#ykt-settings-panel .switch-thumb{
+  position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.2); transition: transform .18s;
 }
-#ykt-settings-panel .apikey-test-result{ display: block; margin-top: 4px; font-size: 12px; }
+#ykt-settings-panel .settings-switch input:checked + .switch-track{ background: var(--ykt-accent); }
+#ykt-settings-panel .settings-switch input:checked + .switch-track .switch-thumb{ transform: translateX(16px); }
+#ykt-settings-panel .settings-switch input:focus-visible + .switch-track{ box-shadow: 0 0 0 3px rgba(29,99,223,.18); }
+#ykt-settings-panel .switch-text{ color: #64748b; font-size: 12px; }
+#ykt-settings-panel .settings-switch input:checked ~ .switch-text{ color: var(--ykt-accent); }
+
+/* 音量滑杆 */
+#ykt-settings-panel input[type="range"]{ flex: 1 1 auto; width: 100%; accent-color: var(--ykt-accent); cursor: pointer; }
+#ykt-settings-panel .settings-range-out{ flex: 0 0 auto; min-width: 28px; text-align: right; color: #334155; font-size: 12px; font-variant-numeric: tabular-nums; }
 
 /* 高级选项折叠 */
-#ykt-settings-panel .setting-advanced{ margin: 6px 0; }
-#ykt-settings-panel .setting-advanced summary{
-  cursor: pointer; font-size: 12px; color: #607190; user-select: none;
+#ykt-settings-panel .settings-advanced{ margin-top: 10px; border-top: 1px solid #edf0f6; padding-top: 8px; }
+#ykt-settings-panel .settings-advanced summary{
+  cursor: pointer; font-size: 12px; color: #64748b; user-select: none;
   padding: 4px 0; list-style: none;
 }
-#ykt-settings-panel .setting-advanced summary::-webkit-details-marker{ display: none; }
-#ykt-settings-panel .setting-advanced summary::before{ content: "▸ "; font-size: 10px; }
-#ykt-settings-panel .setting-advanced[open] summary::before{ content: "▾ "; }
-#ykt-settings-panel .setting-advanced summary:hover{ color: var(--ykt-accent); }
-#ykt-settings-panel small{ color: #666; }
-#ykt-settings-panel .setting-actions{ display: flex; gap: 8px; margin-top: 6px; }
-#ykt-settings-panel button{
-  height: 30px; padding: 0 12px; border-radius: 6px;
-  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;
-}
-#ykt-settings-panel button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }
+#ykt-settings-panel .settings-advanced summary::-webkit-details-marker{ display: none; }
+#ykt-settings-panel .settings-advanced summary::before{ content: "▸ "; font-size: 10px; }
+#ykt-settings-panel .settings-advanced[open] summary::before{ content: "▾ "; }
+#ykt-settings-panel .settings-advanced summary:hover{ color: var(--ykt-accent); }
+#ykt-settings-panel .settings-advanced-body{ padding: 4px 0 0 12px; }
+#ykt-settings-panel .settings-file-row{ display: flex; flex-wrap: wrap; align-items: center; gap: 7px; width: 100%; }
+#ykt-settings-panel .settings-file-row input[type="file"]{ max-width: 100%; font-size: 11px; }
+#ykt-settings-panel .settings-file-row input[type="text"]{ flex: 1 1 220px; min-width: 0; }
+#ykt-settings-panel .settings-audio-name{ display: block; margin-top: 5px; color: var(--settings-muted); font-size: 11px; }
 
-/* 自定义复选框（与手写脚本一致的视觉语义） */
-#ykt-settings-panel .checkbox-label{ position: relative; padding-left: 26px; cursor: pointer; user-select: none; }
-#ykt-settings-panel .checkbox-label input{ position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
-#ykt-settings-panel .checkbox-label .checkmark{
-  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  height: 16px; width: 16px; border:1px solid var(--ykt-border-strong); border-radius: 3px; background: #fff;
+/* 模型列表下拉（替代 datalist：Android WebView 里 datalist 打不开） */
+#ykt-settings-panel .ykt-model-options{
+  margin: 4px 0 0; border: 1px solid var(--settings-border); border-radius: 9px;
+  max-height: 220px; overflow: auto; background: #fff; width: 100%;
 }
-#ykt-settings-panel .checkbox-label input:checked ~ .checkmark{
-  background: var(--ykt-accent); border-color: var(--ykt-accent);
+#ykt-settings-panel .ykt-model-options .opt{
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #edf0f6;
 }
-#ykt-settings-panel .checkbox-label .checkmark:after{
-  content: ""; position: absolute; display: none;
-  left: 5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
-}
-#ykt-settings-panel .checkbox-label input:checked ~ .checkmark:after{ display: block; }
+#ykt-settings-panel .ykt-model-options .opt:last-child{ border-bottom: none; }
+#ykt-settings-panel .ykt-model-options .opt:hover,
+#ykt-settings-panel .ykt-model-options .opt:active{ background: #eef4ff; }
+#ykt-settings-panel .ykt-model-options .opt .provider{ color: var(--settings-muted); font-size: 10px; flex: 0 0 auto; }
 
 /* ===== AI 解答面板 (#ykt-ai-answer-panel) =====
    气泡的 markdown 排版样式见文件底部（作用于 .ykt-ai-msg.ai / .ykt-chat-msg.ai） */
@@ -192,58 +311,37 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 /* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */
 #ykt-presentation-panel{ width: 900px; }
 #ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-#ykt-presentation-panel .panel-body{
-  display: grid; grid-template-columns: 300px 1fr; gap: 10px;
-}
-#ykt-presentation-panel .panel-left,
-#ykt-presentation-panel .panel-right{
-  display: flex;
-  flex-direction: column;
-}
 #ykt-presentation-panel .presentation-list{
   border: 1px solid var(--ykt-border);
   border-radius: 8px;
   background: #fff;
   padding: 10px;
   box-sizing: border-box;
+  outline: none;
 }
-#ykt-presentation-panel .presentation-title{
-  font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);
+#ykt-presentation-panel .cw-slide {
+  padding: 8px 0 12px; border-bottom: 1px solid var(--ykt-border);
 }
-#ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
-#ykt-presentation-panel .slide-thumb{
-  position: relative; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;
-  min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;
+#ykt-presentation-panel .cw-slide:last-child { border-bottom: 0; }
+#ykt-presentation-panel .cw-slide-head {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 6px; flex-wrap: wrap;
 }
-#ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }
-#ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }
-#ykt-presentation-panel .slide-index {
-  position: absolute; top: 4px; left: 4px; z-index: 2;               
-  padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 1;
-  background: rgba(0, 0, 0, 0.6); color: #fff; pointer-events: none;
+#ykt-presentation-panel .cw-slide-page {
+  padding: 2px 7px; border-radius: 10px; background: #1d63df; color:#fff; font-size:11px; font-weight:700;
 }
-#ykt-presentation-panel .slide-view{
-  position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;
+#ykt-presentation-panel .cw-slide-source { flex:0 0 auto; padding:1px 6px; border-radius:8px; background:#f1f5f9; color:#64748b; font-size:10px; }
+#ykt-presentation-panel .cw-slide-title { flex:1; min-width:120px; font-size:12px; color:var(--ykt-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#ykt-presentation-panel .cw-slide-actions { display:flex; gap:5px; }
+#ykt-presentation-panel .cw-slide-actions button {
+  padding: 2px 8px; border: 1px solid var(--ykt-border-strong); border-radius: 5px; background:#fff; font-size:11px; cursor:pointer;
 }
-#ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }
-#ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-#ykt-presentation-panel .problem-box{
-  position: absolute; left: 12px; right: 12px; bottom: 12px;
-  background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);
-  border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);
+#ykt-presentation-panel .cw-slide-actions button:hover { color:var(--ykt-accent); border-color:var(--ykt-accent); }
+#ykt-presentation-panel .cw-slide-image {
+  width:100%; min-height:120px; background:#f8fafc; border:1px solid var(--ykt-border); border-radius:6px;
+  display:flex; align-items:center; justify-content:center; overflow:hidden;
 }
-#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; padding-right: 28px; }
-#ykt-presentation-panel .problem-box-close{
-  position: absolute; top: 6px; right: 6px;
-  width: 22px; height: 22px; border-radius: 999px;
-  border: 1px solid var(--ykt-border-strong);
-  background: #fff; color: #555;
-  cursor: pointer; font-size: 16px; line-height: 18px;
-  padding: 0;
-}
-#ykt-presentation-panel .problem-box-close:hover{ color: #111; border-color: var(--ykt-accent); }
-#ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }
-#ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }
+#ykt-presentation-panel .cw-slide-image img { width:100%; max-height:72vh; object-fit:contain; display:block; cursor:zoom-in; }
+#ykt-presentation-panel .cw-empty { color:var(--ykt-muted); padding:20px; text-align:center; }
 
 
 
@@ -334,53 +432,23 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 .auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }
 .auto-answer-popup .content{ white-space: normal; word-break: break-word; }
 
-/* ===== 1.16.6: 课件浏览面板：固定右侧详细视图，左侧独立滚动 ===== */
+/* ===== 课件浏览面板：单列滚动 + 右侧页面导航轨 ===== */
 #ykt-presentation-panel {
-  --ykt-panel-max-h: 72vh;           /* 与 .ykt-panel 的最大高度保持一致 */
+  --ykt-panel-max-h: 72vh;
 }
-
-/* 两列布局：左列表 + 右详细视图 */
-#ykt-presentation-panel .panel-body{
-  display: grid;
-  grid-template-columns: minmax(200px, 300px) 1fr;
-  gap: 12px;
-  overflow: hidden;
-  align-items: start;
+#ykt-presentation-panel .cw-single-column-body{
+  height: 100%; min-height: 0; overflow: hidden;
 }
-
-/* 左侧：只让左列滚动，限制在面板可视高度内 */
-#ykt-presentation-panel .panel-left{
+#ykt-presentation-panel .cw-list{
   max-height: var(--ykt-panel-max-h);
   overflow: auto;
-  min-width: 0;
-  align-self: stretch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
-
-/* 右侧：粘性定位为“固定”，始终在面板可视区内 */
-#ykt-presentation-panel .panel-right{
-  position: sticky;
-  top: 0;                            
-  align-self: start;
-  gap: 12px;
-}
-
-/* 右侧详细视图自身也限制高度并允许内部滚动 */
-#ykt-presentation-panel .slide-view{
-  max-height: var(--ykt-panel-max-h);
-  overflow: auto;
-  border: 1px solid var(--ykt-border);
-  border-radius: 8px;
-  background: #fff;
-}
-
-/* 小屏自适配：堆叠布局时取消 sticky，避免遮挡 */
-@media (max-width: 900px){
-  #ykt-presentation-panel .panel-body{
-    grid-template-columns: 1fr;
-  }
-  #ykt-presentation-panel .panel-right{
-    position: static;
-  }
+@media (max-width: 600px){
+  #ykt-presentation-panel .cw-single-column-body{ grid-template-columns: minmax(0, 1fr) 24px; gap:5px; }
+  #ykt-presentation-panel .cw-rail{ width:24px; }
+  #ykt-presentation-panel .cw-slide-image img{ max-height:52vh; }
 }
 
 
@@ -652,20 +720,24 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
 .ykt-model-options .opt:hover, .ykt-model-options .opt:active{ background: #eef3ff; }
 .ykt-model-options .opt .provider{ color: var(--ykt-muted); font-size: 11px; flex: 0 0 auto; }
 
-/* 窄屏：设置项纵向堆叠，按钮不再溢出屏幕 */
+/* 窄屏：设置项纵向堆叠，控件占满可用宽度 */
 @media (max-width: 560px){
-  #ykt-settings-panel .setting-item{ align-items: stretch; }
-  #ykt-settings-panel .setting-item > label{ flex: 0 0 100%; }
-  #ykt-settings-panel .setting-item > input[type="text"],
-  #ykt-settings-panel .setting-item > input[type="password"],
-  #ykt-settings-panel .setting-item > input[type="number"],
-  #ykt-settings-panel .setting-item > select{ flex: 1 1 100%; width: 100%; min-width: 0; }
-  #ykt-settings-panel .setting-item > button{
-    flex: 1 1 auto; min-width: 0; height: auto; min-height: 30px;
-    padding: 6px 10px; white-space: normal;
-  }
-  #ykt-settings-panel .apikey-row{ flex: 1 1 100%; min-width: 0; }
+  #ykt-settings-panel .panel-body{ padding: 0 10px 14px; }
+  #ykt-settings-panel .settings-section{ padding: 12px; border-radius: 10px; }
+  #ykt-settings-panel .settings-row{ flex-direction: column; align-items: stretch; gap: 8px; padding: 11px 0; }
+  #ykt-settings-panel .settings-control,
+  #ykt-settings-panel .settings-control-wide,
+  #ykt-settings-panel .settings-control-range{ width: 100%; flex: 1 1 auto; justify-content: flex-start; }
+  #ykt-settings-panel .settings-control-inline{ width: auto; flex: 0 0 auto; }
+  #ykt-settings-panel .settings-switch{ align-self: flex-start; }
+  #ykt-settings-panel .settings-heading h3{ font-size: 16px; }
+  #ykt-settings-panel .setting-actions{ width: 100%; flex: 1 1 100%; }
+  #ykt-settings-panel .setting-actions button{ flex: 1; white-space: nowrap; }
+  #ykt-settings-panel .apikey-row{ width: 100%; min-width: 0; }
   #ykt-settings-panel .apikey-row .apikey-input{ min-width: 0; flex: 1 1 auto; }
+  #ykt-settings-panel .settings-inline{ flex-wrap: wrap; }
+  #ykt-settings-panel .settings-inline input{ flex: 1 1 100%; }
+  #ykt-settings-panel .settings-file-row input[type="text"]{ flex: 1 1 100%; }
 }
 
 
@@ -744,3 +816,51 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
   background: #eef3ff; color: #1f4fd8;
 }
 .ykt-tool-confidence.ykt-conf-low{ background: #fff3cd; color: #8a6d00; }
+
+/* ===== 共享题目卡（课件页 + 题目列表） ===== */
+.ykt-problem-card {
+  margin-top: 8px; padding: 10px 12px; border: 1px solid #cfe0ff;
+  border-radius: 8px; background: #f7faff; color: var(--ykt-fg);
+}
+.ykt-problem-card.problem-done { border-color: #b7e4c7; background: #f5fbf7; }
+.ykt-problem-card.problem-expired { border-color: #f0c9c9; background: #fff8f8; }
+.ykt-problem-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; margin-bottom: 6px; }
+.ykt-problem-type { font-size: 13px; }
+.ykt-problem-score, .ykt-problem-state, .ykt-problem-page { color: var(--ykt-muted); }
+.ykt-problem-state { padding: 1px 7px; border-radius: 10px; background: #eef2ff; color: #345176; }
+.problem-done .ykt-problem-state { background: #e6f6ec; color: #1a7f37; }
+.problem-expired .ykt-problem-state { background: #ffebe9; color: #b42318; }
+.ykt-problem-body { font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ykt-problem-options-static {
+  margin-top: 6px; font-size: 12px; color: #475569; white-space: pre-wrap;
+}
+.ykt-problem-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
+.ykt-problem-actions button {
+  padding: 4px 10px; border: 1px solid var(--ykt-border-strong); border-radius: 6px;
+  background: #fff; color: var(--ykt-fg); cursor: pointer; font-size: 12px;
+}
+.ykt-problem-actions button:hover { border-color: var(--ykt-accent); color: var(--ykt-accent); }
+.ykt-problem-actions button.primary { border-color: var(--ykt-accent); background: var(--ykt-accent); color: #fff; }
+.ykt-problem-answered {
+  margin-top: 6px; padding: 5px 8px; border-left: 3px solid var(--ykt-accent);
+  background: #fff; font-size: 12px; color: #475569; white-space: pre-wrap;
+}
+.ykt-problem-editor { margin-top: 9px; padding: 9px; border: 1px solid var(--ykt-border); border-radius: 7px; background: #fff; }
+.ykt-problem-choice { display: flex; align-items: flex-start; gap: 7px; padding: 5px 4px; border-radius: 5px; cursor: pointer; }
+.ykt-problem-choice:hover { background: #f1f5ff; }
+.ykt-problem-choice input { margin-top: 3px; }
+.ykt-problem-choice .choice-key { font-weight: 700; }
+.ykt-problem-blank { display: block; margin: 7px 0; font-size: 12px; color: #475569; }
+.ykt-problem-blank input { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; height: 31px; padding: 0 8px; border: 1px solid var(--ykt-border-strong); border-radius: 5px; }
+.ykt-problem-editor textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--ykt-border-strong); border-radius: 6px; padding: 7px; resize: vertical; font: inherit; }
+.ykt-problem-hint { margin: 6px 0; font-size: 11px; color: #8a5a00; }
+.ykt-problem-editor-actions { display: flex; gap: 7px; margin-top: 8px; }
+.ykt-problem-editor-actions button { padding: 4px 10px; border: 1px solid var(--ykt-border-strong); border-radius: 6px; background: #f8fafc; cursor: pointer; font-size: 12px; }
+.ykt-problem-editor-actions button.primary { border-color: var(--ykt-accent); background: var(--ykt-accent); color: #fff; }
+.ykt-problem-editor-actions button.danger { border-color: #f0b4b4; background: #fff5f5; color: #b42318; }
+.ykt-problem-editor-actions button.muted { color: var(--ykt-muted); }
+.ykt-problem-confirm-mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 100000020; display: flex; align-items: center; justify-content: center; padding: 14px; }
+.ykt-problem-confirm-box { max-width: 420px; background: #fff; border-radius: 10px; padding: 16px; box-shadow: var(--ykt-shadow); font-size: 13px; }
+.ykt-problem-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.ykt-problem-confirm-actions button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #fff; cursor: pointer; }
+.ykt-problem-confirm-actions .btn-ok { border-color: #d64545; background: #d64545; color: #fff; }

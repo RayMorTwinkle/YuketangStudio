@@ -121,8 +121,8 @@ export function clearCourseSelection() {
 export function manualCourseId(context = getCourseContext()) {
   const v = readManual();
   if (!v?.cid) return '';
-  // 有 classId 时只允许同一 classId 下沿用；没有 classId 的全局页沿用上次选择。
-  if (context.classId && v.classId && String(v.classId) !== String(context.classId)) return '';
+  // 有 classId 时只允许同一 classId 下沿用；全局页的手动选择不能覆盖课程页的当前课程。
+  if (context.classId && String(v.classId || '') !== String(context.classId)) return '';
   return String(v.cid);
 }
 

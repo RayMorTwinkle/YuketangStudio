@@ -109,6 +109,14 @@ ok('无 URL 课程时使用上次手动选择', () => {
   clearCourseSelection();
 });
 
+ok('首页手动选择不会覆盖课程页的当前课程', () => {
+  clearCourseSelection();
+  rememberCourseSelection('333', context('/m/v2'));
+  const course = context('/m/v2/course/1/logs/1/222');
+  assert.equal(preferredCourse(courses, course).id, '222');
+  clearCourseSelection();
+});
+
 ok('完全无上下文时回退第一门课', () => {
   clearCourseSelection();
   assert.equal(preferredCourse(courses, context('/unknown')).id, '111');

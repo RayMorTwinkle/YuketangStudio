@@ -42,6 +42,8 @@ export const DEFAULT_CONFIG = {
   autoAnswerOnAutoJoin: false,
   aiAutoAnalyze: false,
   aiSlidePickPriority: true,
+  // AI/PPT 对话附图来源：teacher=老师正在讲；selected=课件页选中。
+  aiSlideSource: 'teacher',
   // 正则化工具调用：不发 tools，模型用 <answer>...</answer> 交答案
   regexToolCall: false,
   // 习题提醒

@@ -326,8 +326,10 @@ export const actions = {
 
 
   navigateTo(presId, slideId) {
-    repo.currentPresentationId = presId;
-    repo.currentSlideId = slideId;
+    repo.currentPresentationId = String(presId);
+    repo.currentSlideId = String(slideId);
+    repo.selectedPresentationId = String(presId);
+    repo.selectedSlideId = String(slideId);
     ui.updateSlideView();
     ui.showPresentationPanel(true);
   },

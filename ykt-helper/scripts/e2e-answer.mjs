@@ -338,6 +338,27 @@ await okAsync('通知弹窗 AI 使用该题 task', async () => {
   assert.equal(r.taskId, `classroom:${r.pid1}`);
 });
 
+await okAsync('提醒可收起并重新展开', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI();
+    const pid = T.injectProblem(1, { body: '可收起的提醒', options: [{ key: 'A', value: '甲' }] });
+    document.querySelectorAll('.ykt-problem-notify').forEach((e) => e.remove());
+    T.notifyProblem(pid);
+    await new Promise((r) => setTimeout(r, 80));
+    const popup = document.querySelector('.ykt-problem-notify');
+    const collapse = popup?.querySelector('.ykt-notify-collapse');
+    collapse?.click();
+    const collapsed = !!popup?.classList.contains('collapsed');
+    const detailHidden = popup ? getComputedStyle(popup.querySelector('.ykt-notify-detail')).display === 'none' : false;
+    popup?.querySelector('.ykt-notify-title')?.click();
+    await new Promise((r) => setTimeout(r, 40));
+    const expanded = !!popup && !popup.classList.contains('collapsed');
+    popup?.remove();
+    return { hasPopup: !!popup, collapsed, detailHidden, expanded };
+  });
+  assert.deepEqual(r, { hasPopup: true, collapsed: true, detailHidden: true, expanded: true });
+});
+
 await okAsync('同一题 60s 内重复提醒只弹一次', async () => {
   const r = await toolsPage.evaluate(async () => {
     const T = window.__yktTest; T.reset(); T.clearUI();

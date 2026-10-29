@@ -76,11 +76,47 @@ export function mountChatPanel() {
     $file.value = '';
   });
   $sel('#ykt-chat-plus-slides')?.addEventListener('click', () => { hideMenu(); openSlidePicker(); });
+  window.addEventListener('ykt:chat:use-slide', async (ev) => {
+    const { slideId, prompt } = ev.detail || {};
+    if (!slideId) return;
+    showChatPanel(true);
+    let slide = repo.slides.get(String(slideId));
+    for (const [, pres] of repo.presentations) {
+      slide = slide || (pres?.slides || []).find((s) => String(s.id) === String(slideId));
+    }
+    const url = slideImageUrl(slide);
+    if (url) {
+      try {
+        const dataUrl = await fetchAsDataURL(url);
+        if (dataUrl) addAttachment(dataUrl);
+      } catch { /* 直接发送文本，用户可自行重选 */ }
+    }
+    const box = $sel('#ykt-chat-input');
+    if (box) box.value = prompt || '';
+    setTimeout(() => box?.focus(), 60);
+  });
 
   // shell 生命周期钩子：切到本 tab 刷新上下文缩略图；
   // 不中断流式：tab 切换/收起壳都继续后台生成，切回来直接看结果；
   // 只有页面刷新（JS 上下文没了）、清空会话、用户主动取消才断
-  root.__yksOnShow = () => { refreshCtxThumb(); };
+  function syncSlideSourceButtons() {
+    const current = ui.config.aiSlideSource || 'teacher';
+    root.querySelectorAll('[data-slide-source]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.slideSource === current);
+    });
+  }
+  root.querySelectorAll('[data-slide-source]').forEach((b) => {
+    b.addEventListener('click', () => {
+      ui.config.aiSlideSource = b.dataset.slideSource === 'selected' ? 'selected' : 'teacher';
+      ui.saveConfig();
+      syncSlideSourceButtons();
+      refreshCtxThumb();
+    });
+  });
+  syncSlideSourceButtons();
+  window.addEventListener('ykt:presentation:slide-selected', refreshCtxThumb);
+
+  root.__yksOnShow = () => { syncSlideSourceButtons(); refreshCtxThumb(); };
   root.__yksOnHide = () => {};
 
   warmupRichAssets();

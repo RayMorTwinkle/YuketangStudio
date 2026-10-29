@@ -102,7 +102,6 @@ export function mountSettingsPanel() {
   const $autoAnalyze = root.querySelector('#ykt-input-ai-auto-analyze');
   const $delay = root.querySelector('#ykt-input-answer-delay');
   const $rand = root.querySelector('#ykt-input-random-delay');
-  const $priority = root.querySelector('#ykt-ai-pick-main-first');
   const $notifyDur = root.querySelector('#ykt-input-notify-duration');
   const $notifyVol = root.querySelector('#ykt-input-notify-volume');
   const $iftex = root.querySelector('#ykt-ui-tex');
@@ -113,6 +112,33 @@ export function mountSettingsPanel() {
   const $preview   = root.querySelector('#ykt-btn-preview-audio');
   const $clear     = root.querySelector('#ykt-btn-clear-audio');
   const $audioName = root.querySelector('#ykt-tip-audio-name');
+  const $saveState = root.querySelector('#ykt-settings-save-state');
+  const $notifyVolOut = root.querySelector('#ykt-notify-volume-out');
+
+  const setSaveState = (text, kind = 'muted') => {
+    if (!$saveState) return;
+    $saveState.textContent = text;
+    $saveState.dataset.kind = kind;
+  };
+
+  // 设置分类导航：在面板内部滚动，不触发整页跳转
+  root.querySelectorAll('#ykt-settings-nav a').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetId = link.getAttribute('href')?.slice(1);
+      const target = targetId ? root.querySelector(`#${targetId}`) : null;
+      if (!target) return;
+      root.querySelectorAll('#ykt-settings-nav a').forEach((x) => x.classList.remove('active'));
+      link.classList.add('active');
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  root.querySelector('#ykt-settings-nav a')?.classList.add('active');
+
+  const syncVolumeOut = () => {
+    if ($notifyVolOut && $notifyVol) $notifyVolOut.textContent = String($notifyVol.value ?? 60);
+  };
+  $notifyVol?.addEventListener('input', syncVolumeOut);
 
   // Profile UI
   function refreshProfileSelect() {
@@ -159,6 +185,7 @@ export function mountSettingsPanel() {
     if ($promptChat) { ui.config.systemPromptChat = $promptChat.value.trim() === DEFAULT_SYSTEM_PROMPT_CHAT.trim() ? '' : $promptChat.value; }
     if ($promptAI) { ui.config.systemPromptAI = $promptAI.value.trim() === DEFAULT_SYSTEM_PROMPT_AI.trim() ? '' : $promptAI.value; }
     ui.saveConfig();
+    setSaveState('已保存', 'ok');
   };
   // 编辑即暂存（blur 由通用自动保存覆盖不了 textarea value 判空逻辑，这里显式处理）
   $promptChat?.addEventListener('change', savePrompts);
@@ -491,13 +518,16 @@ export function mountSettingsPanel() {
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
     ui.config.iftex = !!$iftex.checked;
-    ui.config.aiSlidePickPriority = !!$priority.checked;
     ui.config.regexToolCall = !!$regex?.checked;
     ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
-    ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
+    const volumePercent = Number($notifyVol?.value);
+    ui.config.notifyVolume = Number.isFinite(volumePercent)
+      ? Math.max(0, Math.min(1, volumePercent / 100))
+      : 0.6;
 
     ui.saveConfig();
     ui.updateAutoAnswerBtn();
+    setSaveState(silent ? '已自动保存' : '已保存', 'ok');
     if (!silent) ui.toast('设置已保存');
     return p;
   }
@@ -511,7 +541,7 @@ export function mountSettingsPanel() {
       try { commitForm({ silent: true }); } catch (e) { log.warn('[Settings] 自动保存失败', e); }
     }, 300);
   };
-  const AUTO_SAVE_SELECTOR = 'input[type="text"], input[type="password"], input[type="number"], textarea, select, input[type="checkbox"]';
+  const AUTO_SAVE_SELECTOR = 'input[type="text"], input[type="password"], input[type="number"], input[type="range"], textarea, select, input[type="checkbox"]';
   root.addEventListener('change', (e) => {
     if (e.target?.matches?.(AUTO_SAVE_SELECTOR) && e.target.closest('.settings-content')) scheduleAutoSave();
   });
@@ -537,10 +567,10 @@ export function mountSettingsPanel() {
       ? Number(ui.config.autoAnswerRandomDelay) : 2000;
     $delay.value = Math.floor(delayMs / 1000);
     $rand.value = Math.floor(randMs / 1000);
-    $priority.checked = (ui.config.aiSlidePickPriority !== false);
     if ($regex) $regex.checked = !!ui.config.regexToolCall;
     $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
     $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));
+    syncVolumeOut();
     $audioName.textContent = ui.config.customNotifyAudioName
       ? `当前：${ui.config.customNotifyAudioName}`
       : '当前：使用内置“叮-咚”提示音';
@@ -579,6 +609,7 @@ export function mountSettingsPanel() {
 
     ui.saveConfig();
     ui.updateAutoAnswerBtn();
+    setSaveState('已重置', 'ok');
     ui.toast('设置已重置');
   });
 
@@ -598,6 +629,7 @@ export function mountSettingsPanel() {
         const src = reader.result;
         ui.setCustomNotifyAudio({ src, name: f.name });
         $audioName.textContent = `当前：${f.name}`;
+        setSaveState('已保存', 'ok');
         ui._playNotifySound(ui.config.notifyVolume);
         ui.toast('已应用自定义提示音');
       };
@@ -617,6 +649,7 @@ export function mountSettingsPanel() {
 
       ui.setCustomNotifyAudio({ src: url, name: '' });
       $audioName.textContent = '当前：（自定义URL）';
+      setSaveState('已保存', 'ok');
       ui._playNotifySound(ui.config.notifyVolume);
       ui.toast('已应用自定义音频URL');
     });
@@ -632,6 +665,7 @@ export function mountSettingsPanel() {
     $clear.addEventListener('click', () => {
       ui.setCustomNotifyAudio({ src: '', name: '' });
       $audioName.textContent = '当前：使用内置“叮-咚”提示音';
+      setSaveState('已保存', 'ok');
       ui.toast('已清除自定义音频');
     });
   }
