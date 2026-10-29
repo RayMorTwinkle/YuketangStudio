@@ -16,7 +16,7 @@
 | 0.9.4 分支 | `feat/0.9.4-courseware` |
 | 0.9.4 提交 | `ee9a6b7` + release `cee0a73` |
 | 0.9.4 版本 | `0.9.4` / Android `versionCode=50` |
-| 0.9.4 本地 APK | `YuketangStudio-0.9.4/android/app/build/outputs/apk/release/app-release.apk` |
+| 0.9.4 本地 APK | `YuketangStudio-main/android/app/build/outputs/apk/release/app-release.apk` |
 | 后续 | 0.9.5 继续做真实环境验证与体验修整 |
 
 0.9.4 beta 链接：
@@ -24,6 +24,7 @@
 - 信息：https://api.raymor.top/yuketangstudio/latest?channel=beta
 - 用户脚本：https://dl.raymor.top/f/KN88DY
 - APK：https://dl.raymor.top/f/6Jkey4
+- GitHub Release：https://github.com/RayMorTwinkle/YuketangStudio/releases/tag/v0.9.4
 
 0.9.3 beta 链接：
 
@@ -361,4 +362,4 @@ REQUEST_INSTALL_PACKAGES 已声明
 1. 真机安装 0.9.4 APK，验证安装权限和原生关于回调。
 2. 真实考试页验证 `@match`、工具栏、考试填入。
 3. 真实课堂验证单列课件、老师翻页、题目内嵌、补交。
-4. 等 GitHub 网络恢复后补推 main/tag 和 Release；国内 beta 已上线。
+4. GitHub main/tag/Release 已补推；国内 beta 已上线。
