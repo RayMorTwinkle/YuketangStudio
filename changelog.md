@@ -1,5 +1,15 @@
 # 更新日志
 
+0.9.6:
+
+- 🔄 **Android 后台运行套件（Script-First）**：新增 Foreground Service + 常驻通知、WebView 保留、Renderer 崩溃恢复、JS/Native 双向心跳、电池优化白名单和可选的 WakeLock/Wi-Fi Lock 强力模式
+- 🧠 **后台运行状态可诊断**：设置页新增「后台」分区，显示心跳、WebSocket、最后课堂事件、电池优化状态；诊断报告包含运行时状态
+- 🛡 **Renderer 恢复**：处理 `onRenderProcessGone`，保留标签 URL 并重建 WebView；不再对无响应页面直接盲目 reload
+- 🧪 **自动作答遥测增强**：记录 unlock 到达、自动进入结果、自动作答开始/跳过原因/完成/错误、计时器延迟和页面可见性；便于定位“挂上但没答题”
+- 🌐 **考试域注入补全**：Android document-start 白名单加入 `changjiang-exam` / `tsinghua-exam` / `examination.xuetangx.com`
+- 🔔 **后台通知**：显示监听中/等待心跳/脚本可能已停止/页面渲染进程已回收，并提供停止操作
+- ⚠️ 后台运行是尽力保活：系统 Doze、厂商省电策略、用户强制停止仍可能中断；脚本侧只报告状态，不伪造成功
+
 0.9.5:
 
 - 📚 **班级课件刷课一次刷完**：翻页后重新查询 Swiper DOM，避免旧缩略图节点失效；按官方 `view_depth` 复查未读页，实测 Java 第 6 章 0/59 → 59/59、第 2 章 67/103 → 103/103

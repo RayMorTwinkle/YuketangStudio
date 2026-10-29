@@ -18,6 +18,8 @@ import { displayAnswer } from '../answer/model.js';
 import { getOverride } from '../ui/panels/ai.js';
 import { captureSlideImage } from '../capture/screenshoot.js';
 import { normalizeTimestamp, deadlineFromLimit, isDeadlineReached } from '../core/problem-timing.js';
+import { answerLog } from '../answer/debug.js';
+import { trace } from '../core/telemetry.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
@@ -83,6 +85,19 @@ function enqueueAutoAnswer(fn) {
   return run;
 }
 
+/** 自动作答诊断：本地环形日志 + 强化遥测（不含题目正文/答案）。 */
+function recordAuto(event, data = {}) {
+  try { answerLog(event, data); } catch { /* ignore */ }
+  try {
+    trace({
+      event,
+      ok: data.ok !== false,
+      reason: data.reason,
+      payload: data,
+    });
+  } catch { /* ignore */ }
+}
+
 /**
  * 自动作答：AnswerEngine V2（headless）。
  * - 成功 → 唯一提交入口 submitAnswerTask
@@ -96,6 +111,11 @@ async function handleAutoAnswerInternal(problem) {
       answering: status?.answering,
       hasResult: !!problem.result,
     });
+    recordAuto('auto_answer_skip', {
+      reason: !status ? 'no_status' : status.answering ? 'answering' : 'already_done',
+      problemId: String(problem.problemId || ''),
+      problemType: Number(problem.problemType) || 0,
+    });
     return;
   }
 
@@ -103,10 +123,21 @@ async function handleAutoAnswerInternal(problem) {
   const serverNow = Date.now() + (status.clockOffset || 0);
   if (status.endTime != null && serverNow >= status.endTime) {
     log.dbg('[雨课堂助手][WARN][AutoAnswer] 跳过：已超时');
+    recordAuto('auto_answer_skip', {
+      reason: 'expired',
+      problemId: String(problem.problemId || ''),
+      problemType: Number(problem.problemType) || 0,
+    });
     return;
   }
 
   status.answering = true;
+  recordAuto('auto_answer_started', {
+    problemId: String(problem.problemId || ''),
+    problemType: Number(problem.problemType) || 0,
+    visibility: document.visibilityState,
+    hidden: !!document.hidden,
+  });
   try {
     log.dbg('[雨课堂助手][INFO][AutoAnswer] =================================');
     log.dbg('[雨课堂助手][INFO][AutoAnswer] 开始自动答题（AnswerEngine V2）');
@@ -119,6 +150,11 @@ async function handleAutoAnswerInternal(problem) {
       if (!ui.config.autoAnswerFallbackDefault) {
         status.answering = false;
         log.warn('[雨课堂助手][WARN][AutoAnswer] 未配置 API Key，跳过自动作答（可在设置开启「无 Key 提交兜底答案」）');
+        recordAuto('auto_answer_skip', {
+          reason: 'no_api_profile',
+          problemId: String(problem.problemId || ''),
+          problemType: Number(problem.problemType) || 0,
+        });
         return ui.toast('未配置 API Key，已跳过自动作答', 3000);
       }
       const parsed = makeDefaultAnswer(problem);
@@ -177,6 +213,11 @@ async function handleAutoAnswerInternal(problem) {
       log.dbg('[雨课堂助手][INFO][AutoAnswer] 提交成功:', r.submitted.route);
       ui.toast(r.submitted.route === 'retry' ? '自动作答完成（补交）' : '自动作答完成', 3000);
       showAutoAnswerPopup(problem, displayAnswer(r.run.answer));
+      recordAuto('auto_answer_completed', {
+        problemId: String(problem.problemId || ''),
+        problemType: Number(problem.problemType) || 0,
+        route: r.submitted.route,
+      });
       return;
     }
 
@@ -188,6 +229,12 @@ async function handleAutoAnswerInternal(problem) {
     ui.toast(`自动作答失败：${err?.message || '模型未给出可提交的答案'}`, 4000);
   } catch (e) {
     log.err('[雨课堂助手][ERR][AutoAnswer] 失败:', e);
+    recordAuto('auto_answer_error', {
+      ok: false,
+      reason: String(e?.message || e).slice(0, 200),
+      problemId: String(problem.problemId || ''),
+      problemType: Number(problem.problemType) || 0,
+    });
     log.err('[雨课堂助手][ERR][AutoAnswer] 错误堆栈:', e.stack);
     ui.toast(`自动作答失败: ${e.message}`, 4000);
   } finally {
@@ -274,6 +321,17 @@ export const actions = {
       answering: !!prev?.answering,   // 重复 unlock 不打断在途作答
     };
     repo.problemStatus.set(String(data.prob), status);
+    recordAuto('unlock_received', {
+      problemId: String(data.prob),
+      problemType: Number(problem.problemType) || 0,
+      visibility: document.visibilityState,
+      hidden: !!document.hidden,
+    });
+    try {
+      window.dispatchEvent(new CustomEvent('ykt:unlockproblem', {
+        detail: { problemId: String(data.prob), at: Date.now() },
+      }));
+    } catch { /* ignore */ }
 
     if (isDeadlineReached(status.endTime, clockOffset) || problem.result) {
       log.dbg('[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过');
@@ -287,9 +345,24 @@ export const actions = {
     if (ui.config.autoAnswer) {
       const delay = ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
       status.autoAnswerTime = Date.now() + delay;
+      recordAuto('auto_answer_scheduled', {
+        problemId: String(data.prob),
+        problemType: Number(problem.problemType) || 0,
+        delayMs: delay,
+        visibility: document.visibilityState,
+        hidden: !!document.hidden,
+      });
       
       log.dbg(`[雨课堂助手][INFO][onUnlockProblem] 将在 ${Math.floor(delay / 1000)} 秒后自动作答`);
       ui.toast(`将在 ${Math.floor(delay / 1000)} 秒后使用融合模式自动作答`, 3000);
+    } else {
+      recordAuto('auto_answer_skip', {
+        reason: 'auto_disabled',
+        problemId: String(data.prob),
+        problemType: Number(problem.problemType) || 0,
+        visibility: document.visibilityState,
+        hidden: !!document.hidden,
+      });
     }
     
     ui.updateActiveProblems();
@@ -381,7 +454,16 @@ export const actions = {
         if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
           const problem = repo.problems.get(pid);
           if (problem && !problem.result) {
+            const lateMs = now - status.autoAnswerTime;
             status.autoAnswerTime = null;
+            if (lateMs > 500) {
+              recordAuto('auto_answer_timer_lag', {
+                problemId: String(pid),
+                lateMs,
+                visibility: document.visibilityState,
+                hidden: !!document.hidden,
+              });
+            }
             handleAutoAnswerInternal(problem);
           }
         }
@@ -407,10 +489,12 @@ export const actions = {
           if (repo.isLessonConnected(lessonId)) continue; // 已有连接
 
           log.dbg('[雨课堂助手][INFO][AutoJoin] 检测到正在上课的课堂，准备进入:', lessonId);
+          recordAuto('auto_join_attempt', { lessonId: String(lessonId) });
           try {
             const { token } = await checkinClass(lessonId);
             if (!token) {
               log.warn('[雨课堂助手][WARN][AutoJoin] 未获取到 lessonToken，跳过:', lessonId);
+              recordAuto('auto_join_skip', { reason: 'no_token', lessonId: String(lessonId) });
               continue;
             }
             connectOrAttachLessonWS({ lessonId, auth: token });
@@ -419,8 +503,13 @@ export const actions = {
             if (ui.config.autoAnswerOnAutoJoin) {
               repo.forceAutoAnswerLessons.add(lessonId);
             }
+            recordAuto('auto_join_success', {
+              lessonId: String(lessonId),
+              autoAnswer: !!ui.config.autoAnswerOnAutoJoin,
+            });
           } catch (e) {
             log.err('[雨课堂助手][ERR][AutoJoin] 进入课堂失败:', lessonId, e);
+            recordAuto('auto_join_error', { ok: false, lessonId: String(lessonId), reason: String(e?.message || e).slice(0, 200) });
           }
         }
       } catch (e) {

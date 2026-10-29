@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
@@ -66,6 +67,8 @@ class MainActivity : AppCompatActivity() {
     // ---------- 多标签 ----------
     private class Tab(val webView: WebView, var title: String = "新标签页") {
         var fallbackInjected = false
+        var lastUrl: String = ""
+        var recovering = false
     }
     private val tabs = mutableListOf<Tab>()
     private var activeIndex = -1
@@ -87,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     // 未授权“安装未知应用”时暂存安装目标，授权返回后自动继续
     private var pendingInstallUri: Uri? = null
     private var pendingInstallPath: String? = null
+    private var runtimePingReceiver: android.content.BroadcastReceiver? = null
 
     private var desktopMode
         get() = prefs.getBoolean("desktopMode", false)
@@ -163,6 +167,7 @@ class MainActivity : AppCompatActivity() {
 
         configureToolbar()
         registerUpdateReceiver()
+        registerRuntimePingReceiver()
         askNotificationPermission()
         newTab(homeUrl())
         status(if (desktopMode) "桌面端" else "移动端")
@@ -234,6 +239,8 @@ class MainActivity : AppCompatActivity() {
         updateSheet = null
         updateReceiver?.let { runCatching { unregisterReceiver(it) } }
         updateReceiver = null
+        runtimePingReceiver?.let { runCatching { unregisterReceiver(it) } }
+        runtimePingReceiver = null
         closeCollectPage()
         tabs.forEach { it.webView.apply { stopLoading(); clearHistory(); removeAllViews(); destroy() } }
         tabs.clear()
@@ -257,6 +264,7 @@ class MainActivity : AppCompatActivity() {
     private fun newTab(url: String) {
         val wv = WebView(this)
         val tab = Tab(wv)
+        tab.lastUrl = url
         configureWebView(wv, tab)
         wv.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -357,6 +365,10 @@ class MainActivity : AppCompatActivity() {
             applyDesktopMode(this)
         }
         wv.addJavascriptInterface(bridge, "YktBridge")
+        // 明确使用重要渲染优先级；这是 WebView 的默认策略，写上便于审查和后续回退。
+        if (Build.VERSION.SDK_INT >= 26) {
+            runCatching { wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false) }
+        }
 
         val combined = shimAsset + "\n;\n" + scriptAsset
         if (docStartSupported) {
@@ -367,6 +379,9 @@ class MainActivity : AppCompatActivity() {
                         "https://changjiang.yuketang.cn",
                         "https://www.yuketang.cn",
                         "https://pro.yuketang.cn",
+                        "https://changjiang-exam.yuketang.cn",
+                        "https://tsinghua-exam.yuketang.cn",
+                        "https://examination.xuetangx.com",
                     ),
                 )
             } catch (e: Exception) {
@@ -385,7 +400,26 @@ class MainActivity : AppCompatActivity() {
                 return handleNavigation(url ?: return false)
             }
 
+            override fun onRenderProcessGone(
+                view: WebView,
+                detail: android.webkit.RenderProcessGoneDetail,
+            ): Boolean {
+                Log.e(TAG, "WebView Renderer 已退出 didCrash=${detail.didCrash()}")
+                BackgroundRuntimeService.reportRendererState(this@MainActivity, "gone")
+                if (view === collectView) {
+                    closeCollectPage()
+                    return true
+                }
+                val target = tabs.firstOrNull { it.webView === view }
+                if (target != null) {
+                    runOnUiThread { recoverTabAfterRendererGone(target) }
+                }
+                return true
+            }
+
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                if (!url.isNullOrBlank()) tab.lastUrl = url
+                BackgroundRuntimeService.reportRendererState(this@MainActivity, "responsive")
                 if (!docStartSupported && url != null && isYuketang(url) && !tab.fallbackInjected) {
                     tab.fallbackInjected = true
                     view.evaluateJavascript(combined, null)
@@ -394,6 +428,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
+                if (!url.isNullOrBlank()) tab.lastUrl = url
+                BackgroundRuntimeService.reportRendererState(this@MainActivity, "responsive")
                 CookieManager.getInstance().flush()
                 // 桌面端固定 1440px 视口；双指缩放由 WebSettings 支持
                 if (desktopMode) {
@@ -469,10 +505,12 @@ class MainActivity : AppCompatActivity() {
             WebViewCompat.setWebViewRenderProcessClient(wv, object : WebViewRenderProcessClient() {
                 override fun onRenderProcessUnresponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) {
                     Log.e(TAG, "渲染进程无响应 url=${view.url}")
-                    status("页面无响应，自动重载")
-                    view.reload()
+                    BackgroundRuntimeService.reportRendererState(this@MainActivity, "unresponsive")
+                    status("页面无响应，后台监听会保留状态")
                 }
-                override fun onRenderProcessResponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) {}
+                override fun onRenderProcessResponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) {
+                    BackgroundRuntimeService.reportRendererState(this@MainActivity, "responsive")
+                }
             })
         }
 
@@ -495,6 +533,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Renderer 被系统回收/崩溃后，保留原来的 tab 位置和 URL，换一个 WebView 重新加载。
+     * 不复制页面内存状态；会明确标记这是恢复后的页面，避免假装什么都没发生。
+     */
+    private fun recoverTabAfterRendererGone(tab: Tab) {
+        if (tab.recovering || tabs.none { it === tab }) return
+        tab.recovering = true
+        val index = tabs.indexOf(tab)
+        val url = tab.lastUrl.ifBlank { homeUrl() }
+        try {
+            binding.tabContainer.removeView(tab.webView)
+            tabs.removeAt(index)
+            tab.webView.destroy()
+
+            val wv = WebView(this)
+            val replacement = Tab(wv, tab.title)
+            replacement.lastUrl = url
+            configureWebView(wv, replacement)
+            wv.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            binding.tabContainer.addView(wv)
+            tabs.add(index.coerceIn(0, tabs.size), replacement)
+            switchTab(tabs.indexOf(replacement))
+            wv.loadUrl(url)
+            status("页面已恢复，请确认课堂状态")
+            Log.i(TAG, "Renderer 恢复 → $url")
+        } catch (e: Throwable) {
+            Log.e(TAG, "Renderer 恢复失败", e)
+            status("页面恢复失败，请重新打开课堂")
+        }
+    }
+
     private fun applyDesktopMode(settings: WebSettings) {
         settings.userAgentString = if (desktopMode) DESKTOP_UA else WebSettings.getDefaultUserAgent(this)
         settings.useWideViewPort = true
@@ -508,6 +580,35 @@ class MainActivity : AppCompatActivity() {
     // ============================================================
     // 工具栏 / 菜单（BottomSheet）
     // ============================================================
+
+    /** 前台服务 → 页面 JS 的反向心跳；没有响应时服务会显示脚本失联。 */
+    private fun registerRuntimePingReceiver() {
+        if (runtimePingReceiver != null) return
+        val rx = object : android.content.BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                for (tab in tabs.toList()) {
+                    runCatching {
+                        tab.webView.evaluateJavascript(
+                            "window.__yktRuntimePing && window.__yktRuntimePing()",
+                            null,
+                        )
+                    }
+                }
+            }
+        }
+        runtimePingReceiver = rx
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(rx, android.content.IntentFilter(BackgroundRuntimeService.ACTION_PING), Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(rx, android.content.IntentFilter(BackgroundRuntimeService.ACTION_PING))
+            }
+        } catch (e: Throwable) {
+            runtimePingReceiver = null
+            Log.w(TAG, "register runtime ping receiver failed", e)
+        }
+    }
 
     private fun configureToolbar() {
         binding.btnBack.setOnClickListener { activeWebView?.let { if (it.canGoBack()) it.goBack() } }
@@ -2208,6 +2309,37 @@ class MainActivity : AppCompatActivity() {
     // ============================================================
     // 收集页 / 桥接
     // ============================================================
+
+    fun isIgnoringBatteryOptimizations(): Boolean {
+        return try {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            pm.isIgnoringBatteryOptimizations(packageName)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun requestIgnoreBatteryOptimizations(): Boolean {
+        if (isIgnoringBatteryOptimizations()) {
+            toast("已允许后台运行")
+            return true
+        }
+        return try {
+            startActivity(Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:$packageName"),
+            ))
+            true
+        } catch (_: Throwable) {
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                true
+            } catch (_: Throwable) {
+                toast("无法打开电池优化设置")
+                false
+            }
+        }
+    }
 
     fun openCollectPage(url: String) {
         runOnUiThread {

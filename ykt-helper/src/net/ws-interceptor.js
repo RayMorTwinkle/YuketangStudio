@@ -31,6 +31,16 @@ export function installWSInterceptor() {
     constructor(url, protocols) {
       super(url, protocols);
       const parsed = new URL(url, location.href);
+      const emit = (state) => {
+        try {
+          window.dispatchEvent(new CustomEvent('ykt:ws-state', {
+            detail: { state, url: parsed.href, at: Date.now() },
+          }));
+        } catch { /* ignore */ }
+      };
+      this.addEventListener('open', () => emit('open'));
+      this.addEventListener('close', () => emit('closed'));
+      this.addEventListener('error', () => emit('error'));
       for (const h of this.constructor.handlers) h(this, parsed);
     }
     intercept(cb) {
@@ -75,6 +85,11 @@ MyWebSocket.addHandler((ws, url) => {
 function dispatchWSMessage(message) {
   try {
     log.dbg('[雨课堂助手][INFO] WebSocket接收:', message);
+    try {
+      window.dispatchEvent(new CustomEvent('ykt:ws-message', {
+        detail: { op: String(message?.op || ''), at: Date.now(), hasProblem: !!message?.problem },
+      }));
+    } catch { /* ignore */ }
     switch (message.op) {
       case 'fetchtimeline':
         log.dbg('[雨课堂助手][INFO] 收到时间线:', message.timeline);

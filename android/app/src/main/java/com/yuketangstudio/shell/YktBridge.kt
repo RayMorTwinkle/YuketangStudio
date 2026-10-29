@@ -51,6 +51,38 @@ class YktBridge(private val activity: MainActivity) {
         activity.broadcastValue(name, null)
     }
 
+    // ---------- 后台运行 ----------
+    @JavascriptInterface
+    fun startBackgroundRuntime(strong: Boolean): Boolean =
+        BackgroundRuntimeService.start(activity, strong)
+
+    @JavascriptInterface
+    fun stopBackgroundRuntime() {
+        BackgroundRuntimeService.stop(activity)
+    }
+
+    @JavascriptInterface
+    fun setBackgroundRuntimeStrong(strong: Boolean) {
+        BackgroundRuntimeService.setStrong(activity, strong)
+    }
+
+    @JavascriptInterface
+    fun getBackgroundRuntimeState(): String =
+        BackgroundRuntimeService.snapshot(activity)
+
+    @JavascriptInterface
+    fun reportRuntime(payload: String) {
+        BackgroundRuntimeService.update(activity, payload)
+    }
+
+    @JavascriptInterface
+    fun isBatteryOptimizationIgnored(): Boolean =
+        activity.isIgnoringBatteryOptimizations()
+
+    @JavascriptInterface
+    fun requestBatteryOptimization(): Boolean =
+        activity.requestIgnoreBatteryOptimizations()
+
     // ---------- 收集页 ----------
     @JavascriptInterface
     fun openCollect(url: String) = activity.openCollectPage(url)

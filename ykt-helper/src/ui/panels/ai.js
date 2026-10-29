@@ -19,6 +19,7 @@ import { buildUserContent } from '../../answer/prompt.js';
 import { stripRegexAnswer } from '../../answer/parse.js';
 import { answerLog, getAnswerLog } from '../../answer/debug.js';
 import * as telemetry from '../../core/telemetry.js';
+import { getState as getRuntimeState } from '../../core/runtime.js';
 import { renderAnswerCard } from './answer-card.js';
 import { mdToHtml, renderRich, StreamRenderer, warmupRichAssets } from '../rich.js';
 
@@ -594,12 +595,17 @@ export function buildDiagnosticReport() {
     config: {
       regexToolCall: !!ui.config.regexToolCall,
       enhancedTelemetry: telemetry.enhancedEnabled(),
+      autoAnswer: !!ui.config.autoAnswer,
+      autoJoinEnabled: !!ui.config.autoJoinEnabled,
+      autoAnswerOnAutoJoin: !!ui.config.autoAnswerOnAutoJoin,
+      notifyProblems: !!ui.config.notifyProblems,
       ai: {
         profile: active ? { id: active.id, name: active.name, baseUrl: redactBaseUrl(active.baseUrl), model: active.visionModel || active.model, hasKey: !!active.apiKey } : null,
         profileCount: profiles.length,
       },
     },
     task: taskSnapshot(task),
+    runtime: getRuntimeState(),
     lastRun: lastRunResult,
     lastRequest: lastRequest ? { taskId: lastRequest.task?.id || '', userText: lastRequest.userText || '', historyLen: (lastRequest.historyMessages || []).length } : null,
     history: getAIHistory().slice(-8),
@@ -614,6 +620,7 @@ export function buildDiagnosticReport() {
     `任务: ${task ? `${task.id} (${task.source}, ${task.question?.type})` : '无'}`,
     `最近运行: ${lastRunResult ? `${lastRunResult.ok ? '成功' : '失败'} ${lastRunResult.code || ''} runId=${lastRunResult.runId || ''}` : '无'}`,
     `强化遥测: ${report.config.enhancedTelemetry ? '开' : '关'}`,
+    `后台: ${report.runtime?.enabled ? `开${report.runtime?.strong ? '(强力)' : ''} / 心跳 ${report.runtime?.lastHeartbeatAt ? new Date(report.runtime.lastHeartbeatAt).toLocaleTimeString() : '无'}` : '关'}`,
   ].join('\n');
   return { json, summary, task };
 }

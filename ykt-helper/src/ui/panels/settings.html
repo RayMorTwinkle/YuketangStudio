@@ -17,6 +17,7 @@
       <a href="#ykt-settings-auto" data-settings-target="auto"><i class="fas fa-wand-magic-sparkles"></i><span>自动作答</span></a>
       <a href="#ykt-settings-notify" data-settings-target="notify"><i class="fas fa-bell"></i><span>提醒</span></a>
       <a href="#ykt-settings-prompt" data-settings-target="prompt"><i class="fas fa-message"></i><span>提示词</span></a>
+      <a href="#ykt-settings-runtime" data-settings-target="runtime"><i class="fas fa-mobile-screen"></i><span>后台</span></a>
       <a href="#ykt-settings-privacy" data-settings-target="privacy"><i class="fas fa-shield-halved"></i><span>隐私</span></a>
     </nav>
 
@@ -357,6 +358,71 @@
           <div class="settings-control settings-control-full">
             <textarea id="ykt-prompt-ai" rows="6"></textarea>
             <button id="ykt-prompt-ai-reset" type="button" class="settings-btn-inline">恢复默认</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="ykt-settings-runtime" class="settings-section" data-settings-section="runtime">
+        <div class="settings-section-head">
+          <span class="settings-section-icon"><i class="fas fa-mobile-screen"></i></span>
+          <div>
+            <h4>后台课堂监听</h4>
+            <p>仅 Android 壳支持；开启后会显示常驻通知，尽量保持 WebView 和通知监听运行。</p>
+          </div>
+        </div>
+
+        <div id="ykt-background-unsupported" class="settings-note" style="display:none">
+          当前不是 Android 壳环境，后台运行功能不可用。
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-background-runtime">开启后台监听</label>
+            <small class="settings-hint">提高进程优先级；不代表 WebView 已连接，状态看下方心跳。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-background-runtime">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
+            <label class="settings-label" for="ykt-background-strong">强力保活</label>
+            <small class="settings-hint">持有 Partial WakeLock / Wi-Fi Lock，更稳但更耗电；关闭监听会自动释放。</small>
+          </div>
+          <div class="settings-control">
+            <label class="settings-switch">
+              <input type="checkbox" id="ykt-background-strong">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row settings-row-stack">
+          <div class="settings-copy">
+            <label class="settings-label">电池优化</label>
+            <small class="settings-hint">允许后台运行可减少系统休眠时回收；需要你在系统页面确认。</small>
+          </div>
+          <div class="settings-control settings-control-full">
+            <div class="settings-inline">
+              <span id="ykt-background-battery-status" class="settings-hint">检查中…</span>
+              <button id="ykt-background-battery-request" type="button">允许后台运行</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row settings-row-stack">
+          <div class="settings-copy">
+            <label class="settings-label">运行状态</label>
+            <small class="settings-hint">脚本心跳、WebSocket 和最后课堂事件。</small>
+          </div>
+          <div class="settings-control settings-control-full">
+            <div id="ykt-background-status" class="settings-runtime-status">未开启</div>
           </div>
         </div>
       </section>

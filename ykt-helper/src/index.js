@@ -13,6 +13,7 @@ import { log } from './core/log.js';
 import { ensureFontAwesome } from './core/env.js';
 import { checkForUpdate } from './core/update-check.js';
 import { installTestHooks } from './core/test-hooks.js';
+import { initRuntimeMonitor } from './core/runtime.js';
 
 // Font Awesome：内嵌 css（字体 data-URI）优先；CSP 拦时 env.js 里退回 CDN
 ensureFontAwesome();
@@ -168,6 +169,9 @@ function whenBodyReady(fn) {
 
   // 每次使用自动检查更新（15min 节流，失败静默）
   try { checkForUpdate(); } catch {}
+
+  // 后台运行监控：心跳/可见性/WS 状态/Android 前台服务
+  try { initRuntimeMonitor(); } catch (e) { log.warn('[runtime] monitor init failed', e); }
 
   // 再装网络拦截
   installWSInterceptor();

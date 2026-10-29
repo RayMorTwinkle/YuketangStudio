@@ -235,6 +235,18 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 #ykt-settings-panel .settings-inline input{ flex: 1 1 auto; min-width: 0; }
 #ykt-settings-panel .settings-unit{ color: var(--settings-muted); font-size: 11px; }
 #ykt-settings-panel .settings-divider{ height: 1px; background: #edf0f6; margin: 4px 0; }
+#ykt-settings-panel .settings-note{
+  margin: 10px 0; padding: 9px 11px; border: 1px solid #fde68a; border-radius: 8px;
+  background: #fffbeb; color: #92400e; font-size: 11px; line-height: 1.55;
+}
+#ykt-settings-panel .settings-runtime-status{
+  padding: 8px 10px; border-radius: 8px; border: 1px solid #e2e8f0;
+  background: #f8fafc; color: #475569; font-size: 11px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+#ykt-settings-panel .settings-runtime-status[data-kind="ok"]{ border-color:#bbf7d0; background:#f0fdf4; color:#166534; }
+#ykt-settings-panel .settings-runtime-status[data-kind="warn"]{ border-color:#fde68a; background:#fffbeb; color:#92400e; }
+#ykt-settings-panel #ykt-background-battery-request{ flex: 0 0 auto; }
 #ykt-settings-panel input[type="text"],
 #ykt-settings-panel input[type="password"],
 #ykt-settings-panel input[type="number"],
