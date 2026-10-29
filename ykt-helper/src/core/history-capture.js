@@ -310,9 +310,10 @@ export async function importHistoryLesson(classId, activity, opts = {}) {
         try { GM_removeValueChangeListener(id); } catch {}
       }
     }
-    // 完成/失败后关闭收集页（GM_openInTab 返回的 tab 对象支持 close）
+    // 完成/失败后关闭收集页（GM_openInTab 返回的 tab 对象支持 close）。
+    // 不再延迟二次 close：Android 的 YktBridge.closeCollect() 关闭的是“当前”
+    // 收集页，第一个课堂结束后 1.5s 的延迟 close 会误杀紧接开始的第二个课堂。
     try { collectTab?.close?.(); } catch {}
-    setTimeout(() => { try { collectTab?.close?.(); } catch {} }, 1500);
     // 结果已收到（或超时放弃），把该 lessonId 的 GM 键删干净——不留垃圾键累积
     setTimeout(() => cleanupLessonKeys(lessonId), 500);
   }

@@ -80,6 +80,16 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
   pointer-events: none;
 }
 
+/* ===== 批量导入进度条 ===== */
+#ykt-import-progress{ transition: max-width .18s ease, padding .18s ease; }
+#ykt-import-progress.collapsed{
+  max-width: 260px !important;
+  padding: 8px 10px !important;
+}
+#ykt-import-progress.collapsed .ip-head{ margin-bottom: 0 !important; }
+#ykt-import-progress.collapsed .ip-body{ display: none; }
+#ykt-import-progress .ip-actions button:hover{ filter: brightness(.96); }
+
 /* ===== 习题提醒浮层 ===== */
 .ykt-problem-notify{
   transition: max-width .18s ease, padding .18s ease, border-radius .18s ease;
@@ -377,6 +387,10 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 #ykt-about-panel .tutorial-content li{ line-height: 1.5; }
 #ykt-about-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }
 #ykt-about-panel .tutorial-content a:hover{ text-decoration: underline; }
+#ykt-about-panel .about-note{ margin: 2px 0 10px; }
+#ykt-about-panel .about-note p{ margin: 0 0 8px; line-height: 1.7; }
+#ykt-about-panel .about-note p:last-child{ margin-bottom: 0; }
+#ykt-about-panel .about-note strong{ color: #1e293b; }
 
 /* 版本与更新块 */
 #ykt-about-panel .ykt-about-version{

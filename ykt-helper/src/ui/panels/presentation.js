@@ -837,38 +837,75 @@ function showImportProgressBar(title, onCancel) {
   bar.id = 'ykt-import-progress';
   bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:56px;z-index:99999998;background:#fff;border:1px solid #c7d2fe;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:10px 12px;font-size:13px;max-width:420px;margin:0 auto;';
   bar.innerHTML = `
-    <div style="font-weight:600;margin-bottom:6px;color:#1d63df;display:flex;justify-content:space-between;align-items:center;gap:8px">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📥 正在导入「${title}」</span>
-      <button class="ip-close" title="取消整批下载" style="flex:0 0 auto;width:34px;height:34px;border:none;background:#fdecec;color:#c0392b;border-radius:8px;font-size:16px;line-height:1;cursor:pointer">✕</button>
+    <div class="ip-head" style="font-weight:600;margin-bottom:6px;color:#1d63df;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <span class="ip-title" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📥 正在导入「${title}」</span>
+      <span class="ip-actions" style="flex:0 0 auto;display:flex;align-items:center;gap:5px">
+        <button class="ip-collapse" title="收起进度条" aria-label="收起进度条" style="width:30px;height:30px;border:none;background:#eef4ff;color:#1d63df;border-radius:7px;font-size:17px;line-height:1;cursor:pointer">−</button>
+        <button class="ip-close" title="取消整批下载" aria-label="取消整批下载" style="width:30px;height:30px;border:none;background:#fdecec;color:#c0392b;border-radius:7px;font-size:16px;line-height:1;cursor:pointer">✕</button>
+      </span>
     </div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <div style="flex:1;height:8px;background:#dbeafe;border-radius:4px;overflow:hidden">
-        <div class="ip-fill" style="height:100%;width:0%;background:#1d63df;border-radius:4px;transition:width .3s"></div>
+    <div class="ip-body">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;height:8px;background:#dbeafe;border-radius:4px;overflow:hidden">
+          <div class="ip-fill" style="height:100%;width:0%;background:#1d63df;border-radius:4px;transition:width .3s"></div>
+        </div>
+        <span class="ip-pct" style="min-width:36px;text-align:right;color:#607190">0%</span>
       </div>
-      <span class="ip-pct" style="min-width:36px;text-align:right;color:#607190">0%</span>
-    </div>
-    <div class="ip-text" style="margin-top:5px;color:#607190;font-size:12px">正在打开收集页…</div>`;
+      <div class="ip-text" style="margin-top:5px;color:#607190;font-size:12px">正在打开收集页…</div>
+    </div>`;
   document.body.appendChild(bar);
+  let hideTimer = 0;
+  let terminal = false;
+  const removeBar = () => {
+    clearTimeout(hideTimer);
+    bar.remove();
+  };
   const api = {
     cancelled: false,
+    terminal: false,
+    collapsed: false,
     update(pct, text) {
+      if (terminal) return;
       const f = bar.querySelector('.ip-fill'); if (f) f.style.width = `${pct}%`;
       const p = bar.querySelector('.ip-pct'); if (p) p.textContent = `${pct}%`;
       const t = bar.querySelector('.ip-text'); if (t) t.textContent = text;
     },
     done(text) {
+      terminal = true; api.terminal = true;
       const f = bar.querySelector('.ip-fill'); if (f) f.style.width = '100%';
+      const p = bar.querySelector('.ip-pct'); if (p) p.textContent = '100%';
       const t = bar.querySelector('.ip-text'); if (t) { t.textContent = text; t.style.color = '#059669'; }
-      bar.querySelector('.ip-close')?.remove();
-      setTimeout(() => bar.remove(), 30000);
+      const titleEl = bar.querySelector('.ip-title');
+      if (titleEl) titleEl.textContent = '✅ 批量导入完成';
+      const close = bar.querySelector('.ip-close');
+      if (close) { close.title = '关闭'; close.setAttribute('aria-label', '关闭'); }
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(removeBar, 4000);
     },
     fail(text) {
+      terminal = true; api.terminal = true;
       const t = bar.querySelector('.ip-text'); if (t) { t.textContent = '❌ ' + text; t.style.color = '#c0392b'; }
-      bar.querySelector('.ip-close')?.remove();
-      setTimeout(() => bar.remove(), 30000);
+      const titleEl = bar.querySelector('.ip-title');
+      if (titleEl) titleEl.textContent = '批量导入未完成';
+      const close = bar.querySelector('.ip-close');
+      if (close) { close.title = '关闭'; close.setAttribute('aria-label', '关闭'); }
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(removeBar, 6000);
     },
+    close: removeBar,
   };
+  bar.querySelector('.ip-collapse')?.addEventListener('click', () => {
+    const collapsed = bar.classList.toggle('collapsed');
+    api.collapsed = collapsed;
+    const btn = bar.querySelector('.ip-collapse');
+    if (btn) {
+      btn.textContent = collapsed ? '＋' : '−';
+      btn.title = collapsed ? '展开进度条' : '收起进度条';
+      btn.setAttribute('aria-label', btn.title);
+    }
+  });
   bar.querySelector('.ip-close')?.addEventListener('click', async () => {
+    if (api.terminal) { removeBar(); return; }
     if (api.cancelled) return;
     const ok = await confirmDialog(
       '取消整批下载？',
@@ -876,10 +913,8 @@ function showImportProgressBar(title, onCancel) {
     );
     if (!ok) return;
     api.cancelled = true;
-    api.update(0, '已取消整批下载');
     const t = bar.querySelector('.ip-text');
-    if (t) t.style.color = '#c0392b';
-    bar.querySelector('.ip-close')?.remove();
+    if (t) { t.textContent = '正在取消，等待当前收集页关闭…'; t.style.color = '#c0392b'; }
     try { onCancel?.(); } catch {}
   });
   return api;
