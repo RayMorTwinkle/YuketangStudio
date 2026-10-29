@@ -192,20 +192,42 @@ export const ui = {
       // 2) 自定义悬浮弹窗
       const wrapper = document.createElement('div');
       wrapper.className = 'ykt-problem-notify';
-      // 手机端左下角有纵向工具栏（3 个按钮），弹窗要给左侧留出避让空间，
-      // 否则固定 bottom/right 的弹窗会横跨整屏、左侧被工具栏压住。
       const narrow = (() => {
         try {
           return window.matchMedia?.('(max-width: 560px)').matches ||
             (navigator.maxTouchPoints > 0 && window.innerWidth <= 820);
         } catch { return false; }
       })();
-      // 内联样式，避免依赖外部CSS
+      wrapper.classList.toggle('narrow', narrow);
+      // 手机端工具栏可能是左下纵向条，也可能被收成窄轨；按它当前真实位置避让。
+      let left = narrow ? '64px' : 'auto';
+      let right = narrow ? '10px' : '20px';
+      let bottom = narrow ? '16px' : '24px';
+      if (narrow) {
+        try {
+          const bar = document.getElementById('ykt-helper-toolbar');
+          const barRect = bar?.getBoundingClientRect();
+          const barVisible = barRect && barRect.width > 0 && barRect.height > 0
+            && getComputedStyle(bar).display !== 'none';
+          if (barVisible) {
+            if (barRect.height >= barRect.width && barRect.left < window.innerWidth / 2) {
+              // 左侧纵向工具栏：弹窗放在工具栏右侧，底边与工具栏对齐
+              left = `${Math.ceil(barRect.right + 10)}px`;
+              bottom = `${Math.max(12, Math.ceil(window.innerHeight - barRect.bottom))}px`;
+            } else if (barRect.top > window.innerHeight / 2) {
+              // 底部横向工具栏：弹窗整体抬到工具栏上方
+              left = '10px';
+              right = '10px';
+              bottom = `${Math.ceil(window.innerHeight - barRect.top + 10)}px`;
+            }
+          }
+        } catch { /* 工具栏不可用时使用默认安全边距 */ }
+      }
       Object.assign(wrapper.style, {
         position: 'fixed',
-        right: narrow ? '10px' : '20px',
-        left: narrow ? '64px' : 'auto',     // 让开左侧工具栏（8px + 48px + 8px）
-        bottom: narrow ? '16px' : '24px',
+        right,
+        left,
+        bottom,
         maxWidth: narrow ? 'none' : '380px',
         background: 'rgba(20,20,20,0.92)',
         color: '#fff',
@@ -224,23 +246,28 @@ export const ui = {
       });
 
       // 缩略图（可选）
+      let thumb = null;
       if (slide?.thumbnail) {
-        const img = document.createElement('img');
-        img.src = slide.thumbnail;
-        Object.assign(img.style, {
+        thumb = document.createElement('img');
+        thumb.src = slide.thumbnail;
+        thumb.className = 'ykt-notify-thumb';
+        Object.assign(thumb.style, {
           width: '56px',
           height: '56px',
           objectFit: 'cover',
           borderRadius: '8px',
           flex: '0 0 auto',
         });
-        wrapper.appendChild(img);
+        wrapper.appendChild(thumb);
       }
 
       const body = document.createElement('div');
+      body.className = 'ykt-notify-body';
       body.style.flex = '1 1 auto';
+      body.style.minWidth = '0';
 
       const head = document.createElement('div');
+      head.className = 'ykt-notify-head';
       Object.assign(head.style, {
         display: 'flex',
         alignItems: 'center',
@@ -254,10 +281,37 @@ export const ui = {
 
       const title = document.createElement('div');
       title.textContent = '习题已发布';
+      title.className = 'ykt-notify-title';
       Object.assign(title.style, { fontWeight: '600', fontSize: '15px', flex: '1 1 auto' });
 
+      const headActions = document.createElement('div');
+      headActions.className = 'ykt-notify-head-actions';
+      headActions.style.cssText = 'display:flex;align-items:center;gap:2px;flex:0 0 auto';
+
+      const collapseBtn = document.createElement('button');
+      collapseBtn.type = 'button';
+      collapseBtn.textContent = '−';
+      collapseBtn.className = 'ykt-notify-collapse';
+      collapseBtn.title = '收起提醒';
+      collapseBtn.setAttribute('aria-label', '收起提醒');
+      Object.assign(collapseBtn.style, {
+        border: 'none',
+        background: 'transparent',
+        color: '#fff',
+        opacity: '0.72',
+        fontSize: '18px',
+        lineHeight: '18px',
+        cursor: 'pointer',
+        padding: '0 4px',
+        flex: '0 0 auto',
+      });
+
       const closeBtn = document.createElement('button');
-      closeBtn.textContent = 'x';
+      closeBtn.type = 'button';
+      closeBtn.textContent = '×';
+      closeBtn.className = 'ykt-notify-close';
+      closeBtn.title = '关闭提醒';
+      closeBtn.setAttribute('aria-label', '关闭提醒');
       Object.assign(closeBtn.style, {
         border: 'none',
         background: 'transparent',
@@ -267,14 +321,16 @@ export const ui = {
         lineHeight: '18px',
         cursor: 'pointer',
         padding: '0 4px',
-        marginLeft: '4px',
         flex: '0 0 auto',
       });
-      closeBtn.addEventListener('mouseenter', () => (closeBtn.style.opacity = '1'));
-      closeBtn.addEventListener('mouseleave', () => (closeBtn.style.opacity = '0.7'));
+      for (const btn of [collapseBtn, closeBtn]) {
+        btn.addEventListener('mouseenter', () => (btn.style.opacity = '1'));
+        btn.addEventListener('mouseleave', () => (btn.style.opacity = btn === collapseBtn ? '0.72' : '0.7'));
+      }
 
       const detail = document.createElement('pre');
       detail.textContent = this.getProblemDetail(problem);
+      detail.className = 'ykt-notify-detail';
       Object.assign(detail.style, {
         whiteSpace: 'pre-wrap',
         margin: 0,
@@ -284,18 +340,24 @@ export const ui = {
         overflow: 'auto',
       });
 
+      headActions.appendChild(collapseBtn);
+      headActions.appendChild(closeBtn);
       head.appendChild(title);
-      head.appendChild(closeBtn);
+      head.appendChild(headActions);
       body.appendChild(head);
       body.appendChild(detail);
 
       const pid = String(problem?.problemId ?? problem?.id ?? '');
       const st = pid ? repo.problemStatus.get(pid) : null;
+      let aiBtn = null;
+      let cd = null;
 
       // 通知里也能直接进入“这道题”的 AI 解答（显式 task，不依赖当前页）
       if (pid) {
-        const aiBtn = document.createElement('button');
+        aiBtn = document.createElement('button');
+        aiBtn.type = 'button';
         aiBtn.textContent = 'AI 解答';
+        aiBtn.className = 'ykt-notify-ai';
         aiBtn.style.cssText = 'margin-top:10px;padding:5px 12px;border:1px solid rgba(255,255,255,.35);border-radius:6px;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;font-size:12px';
         aiBtn.onclick = () => { wrapper.remove(); AIPanel.askProblem?.(pid).catch((e) => log.warn('[notify] askProblem failed', e)); };
         body.appendChild(aiBtn);
@@ -304,7 +366,8 @@ export const ui = {
       // 实时倒计时：用服务端时钟（clockOffset）换算，每秒刷新
       const endTime = normalizeTimestamp(st?.endTime ?? problem?.endTime);
       if (endTime != null) {
-        const cd = document.createElement('div');
+        cd = document.createElement('div');
+        cd.className = 'ykt-notify-countdown';
         cd.style.cssText = 'margin-top:8px;font-size:12px;opacity:.85;font-variant-numeric:tabular-nums';
         body.appendChild(cd);
         const offset = Number(st?.clockOffset) || 0;
@@ -317,8 +380,6 @@ export const ui = {
         };
         cd.__t = setInterval(tick, 1000);
         tick();
-        const oldRemove = wrapper.remove.bind(wrapper);
-        wrapper.remove = () => { if (cd.__t) clearInterval(cd.__t); oldRemove(); };
       }
 
       wrapper.appendChild(body);
@@ -327,14 +388,49 @@ export const ui = {
       this._bringToFront(wrapper);
 
       const timeout = Math.max(2000, +this.config.notifyPopupDuration || 5000);
-      const timer = setTimeout(() => wrapper.remove(), timeout);
-      closeBtn.onclick = () => {
+      let timer = 0;
+      let collapsed = false;
+      const armTimer = () => {
         clearTimeout(timer);
+        if (collapsed) return;
+        timer = setTimeout(() => wrapper.remove(), timeout);
+      };
+      const setCollapsed = (on) => {
+        collapsed = !!on;
+        wrapper.classList.toggle('collapsed', collapsed);
+        if (thumb) thumb.style.display = collapsed ? 'none' : '';
+        detail.style.display = collapsed ? 'none' : '';
+        if (aiBtn) aiBtn.style.display = collapsed ? 'none' : '';
+        title.textContent = collapsed ? '习题提醒（已收起）' : '习题已发布';
+        collapseBtn.textContent = collapsed ? '＋' : '−';
+        collapseBtn.title = collapsed ? '展开提醒' : '收起提醒';
+        collapseBtn.setAttribute('aria-label', collapsed ? '展开提醒' : '收起提醒');
+        wrapper.style.maxWidth = collapsed ? '260px' : (narrow ? 'none' : '380px');
+        if (collapsed) clearTimeout(timer);
+        else armTimer();
+      };
+      collapseBtn.onclick = (e) => {
+        e.stopPropagation();
+        setCollapsed(!collapsed);
+      };
+      wrapper.addEventListener('click', (e) => {
+        if (collapsed && !e.target.closest('button')) setCollapsed(false);
+      });
+      closeBtn.onclick = (e) => {
+        e.stopPropagation();
         wrapper.remove();
       };
+      const oldRemove = wrapper.remove.bind(wrapper);
+      wrapper.remove = () => {
+        clearTimeout(timer);
+        if (cd?.__t) clearInterval(cd.__t);
+        oldRemove();
+      };
+      armTimer();
       enableNotifyDrag(wrapper, head, (el) => this._bringToFront(el));
 
-      this._playNotifySound(+this.config.notifyVolume || 0.6);
+      const notifyVolume = Number(this.config.notifyVolume);
+      this._playNotifySound(Number.isFinite(notifyVolume) ? notifyVolume : 0.6);
     } catch (e) {
       log.warn('[雨课堂助手][WARN][ui.notifyProblem] failed:', e);
     }
