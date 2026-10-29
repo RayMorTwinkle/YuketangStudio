@@ -14,6 +14,7 @@ import { actions } from '../state/actions.js';
 import { collectExamQuestions, fillExamAnswers } from '../quiz/exam-fill.js';
 import * as Shell from '../ui/panels/shell.js';
 import * as telemetry from './telemetry.js';
+import { __testRunClassCard } from '../ui/panels/brush.js';
 
 const L = (...a) => log.info('[test]', ...a);
 
@@ -180,6 +181,11 @@ export function installTestHooks() {
       const slide = st?.slideId ? repo.slides.get(String(st.slideId)) : null;
       ui.notifyProblem(problem, slide);
       return true;
+    },
+
+    /** 仅测试：直接刷一个班级课件 */
+    brushClassCard(opts) {
+      return __testRunClassCard(opts);
     },
 
     /** 删除题目 status（模拟历史题） */

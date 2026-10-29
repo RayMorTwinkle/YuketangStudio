@@ -7,7 +7,7 @@
 // 只读：绝不发起开始/重置/交卷类请求；跨域请求不携带 pro 平台凭据。
 import { proGet, proPost, gmGet } from './active-http.js';
 import {
-  AuthError, dataOf, parseExamHost, parseExamProgress, canReviewExam, joinExamPaper,
+  AuthError, dataOf, parseExamHost, parseExamProgress, canViewExamPaper, joinExamPaper,
 } from './active-core.js';
 
 const enc = encodeURIComponent;
@@ -89,31 +89,82 @@ export async function openExamReview(row) {
   };
 }
 
-/**
- * 考试详情（只读）：
- *   1. EP4 拉最新 cover —— 即使列表缓存说已出分也以实时为准；
- *   2. 未达回顾门禁（未交卷/未出分/缺考/作废/未公布）→ 只返回状态，不碰 token；
- *   3. 达门禁 → EP5-9 考试域复核 cover 后读 problem_results + show_paper 拼卷。
- */
-export async function fetchExamReview(row) {
-  const cover = dataOf(await proGet(examCoverPath(row)));
-  const base = {
+function isExamResultHost() {
+  try {
+    return /(^|\.)(changjiang-exam\.yuketang\.cn|tsinghua-exam\.yuketang\.cn|examination\.xuetangx\.com)$/i
+      .test(location.hostname);
+  } catch { return false; }
+}
+
+function examBase(cover) {
+  return {
     mode: 'exam-cover',
+    title: String(cover?.title || ''),
     progress: parseExamProgress(cover),
     problems: [],
     questions: [],
     fontUrl: null,
     descriptionHtml: '',
   };
-  if (!canReviewExam(cover, Date.now())) return base;
+}
+
+/**
+ * 在考试结果域直接读取当前结果接口。
+ * result 页已经过官方 login，同源 fetch 即可；不再走 pro 域的 gen_token。
+ */
+async function fetchExamReviewOnExamHost(examId) {
+  const id = String(examId || '');
+  if (!id) throw new Error('当前考试页缺少考试 ID');
+  const get = async (path) => {
+    const r = await fetch(`${path}?exam_id=${enc(id)}`, {
+      credentials: 'include',
+      headers: { 'x-client': 'web', xtbz: 'cloud' },
+    });
+    if (r.status === 401 || r.status === 403) throw new AuthError();
+    if (!r.ok) throw new Error(`考试结果读取失败（HTTP ${r.status}）`);
+    try { return JSON.parse(await r.text()); } catch { throw new Error('考试结果返回非 JSON。'); }
+  };
+  const cover = dataOf(await get('/exam_room/cover'));
+  const base = examBase(cover);
+  // 未交卷/缺考/作废/老师禁止查看时只返回状态；允许查看但尚未批改的编程题
+  // 仍可读取试卷和“我的答案”，这正是 Java 课里大量无回顾权限考试的场景。
+  if (!canViewExamPaper(cover, Date.now())) return base;
+  const results = dataOf(await get('/exam_room/problem_results'));
+  const paper = dataOf(await get('/exam_room/show_paper'));
+  const joined = joinExamPaper(paper, results, cover);
+  return {
+    ...base,
+    mode: 'exam-review',
+    problems: joined.problems,
+    questions: joined.questions,
+    fontUrl: joined.fontUrl,
+    descriptionHtml: joined.descriptionHtml,
+  };
+}
+
+/**
+ * 考试详情（只读）：
+ *   1. 先拉最新 cover，以实时状态为准；
+ *   2. 未交卷/缺考/作废/老师禁止查看 → 只返回状态，不碰题目；
+ *   3. 允许查看 → 读取 problem_results + show_paper 拼卷。
+ *      不要求已经批改/出分：编程题待批改时官方结果页仍有题目和我的答案。
+ */
+export async function fetchExamReview(row) {
+  if (isExamResultHost()) {
+    return fetchExamReviewOnExamHost(row?.leafTypeId || row?.newId || row?.examId);
+  }
+  const cover = dataOf(await proGet(examCoverPath(row)));
+  const base = examBase(cover);
+  if (!canViewExamPaper(cover, Date.now())) return base;
   const examGet = await openExamReview(row);
   const reviewCoverBody = await examGet('/exam_room/cover');
   const reviewCover = dataOf(reviewCoverBody);
   const refreshed = {
     ...base,
+    title: String(reviewCover?.title || base.title || ''),
     progress: parseExamProgress(reviewCover),
   };
-  if (!canReviewExam(reviewCover, Date.now())) return refreshed;
+  if (!canViewExamPaper(reviewCover, Date.now())) return refreshed;
   const results = dataOf(await examGet('/exam_room/problem_results'));
   const paper = dataOf(await examGet('/exam_room/show_paper'));
   const joined = joinExamPaper(paper, results, reviewCover);

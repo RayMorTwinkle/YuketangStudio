@@ -95,6 +95,23 @@ ok('目录没有的 API 条目会追加', () => {
   assert.equal(rows[0].completed, true);
 });
 
+ok('班级课件基础行不覆盖 view_depth 真实进度', () => {
+  const base = [{
+    id: 'classcard:3293023', title: '第1章 Java概述', type: 7,
+    schedule: { done: 0, total: 45 }, completed: false, brushable: true,
+    completionSource: 'class-card', cardsId: '3293023',
+  }];
+  const extra = [{
+    id: 'classcard:3293023', title: '第1章 Java概述', type: 7,
+    schedule: { done: 38, total: 45 }, completed: false, brushable: true,
+    completionSource: 'class-card', cardsId: '3293023', total: 45,
+  }];
+  const rows = mergeBrushItems(base, extra);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].schedule, { done: 38, total: 45 });
+  assert.equal(rows[0].total, 45);
+});
+
 ok('无目录 total 时采用 API completed', () => {
   const rows = mergeBrushItems(
     [{ id: '301', title: '视频', schedule: { done: 0, total: 0 }, completed: false }],

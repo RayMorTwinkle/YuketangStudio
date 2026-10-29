@@ -8,7 +8,7 @@ import { exerciseListPath } from './exercise.js';
 import { normalizeCourse } from './course-cards.js';
 import { examCoverPath } from './exam.js';
 import {
-  AuthError, dataOf, parseProgress, parseExamProgress, canReviewExam,
+  AuthError, dataOf, parseProgress, parseExamProgress, canReviewExam, canViewExamPaper,
   isAssignmentRetained, uvIdFromCookie,
 } from './active-core.js';
 
@@ -140,7 +140,7 @@ async function enrichExerciseRow(row, uvId) {
   if (progress.totalCount !== null) row.problemCount = progress.totalCount;
 }
 
-/** type 20：EP4 读 cover 状态，并记录 canReview 供列表「回顾」按钮显隐。 */
+/** type 20：EP4 读 cover 状态，并记录 canReview/canViewPaper 供列表入口显隐。 */
 async function enrichExamRow(row) {
   const cover = dataOf(await proGet(examCoverPath(row)));
   const p = parseExamProgress(cover);
@@ -154,6 +154,7 @@ async function enrichExamRow(row) {
     totalCount: p.totalCount,
     statusMessage: p.statusMessage,
     canReview: canReviewExam(cover, Date.now()),
+    canViewPaper: canViewExamPaper(cover, Date.now()),
   });
   if (p.totalCount !== null) row.problemCount = p.totalCount;
 }

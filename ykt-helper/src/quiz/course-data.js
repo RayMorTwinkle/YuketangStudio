@@ -195,12 +195,19 @@ export function mergeBrushItems(baseItems, extraItems) {
     }
     const existingTotal = Number(it.schedule?.total) || 0;
     const extraTotal = Number(e.schedule?.total) || 0;
-    const schedule = existingTotal > 0
-      ? it.schedule
-      : (extraTotal > 0 ? e.schedule : (it.schedule || e.schedule || { done: 0, total: 0 }));
-    const completed = existingTotal > 0
-      ? !!it.completed
-      : !!(it.completed || e.completed);
+    // 班级课件的基础行只是为了保留目录顺序，真实进度来自 cards/view_depth
+    // 生成的 e；不能因为基础行已有 total 就忽略 API 进度，否则会一直显示 0/45。
+    const useExtraSchedule = (Number(it.type) === 7 || Number(e.type) === 7) && extraTotal > 0;
+    const schedule = useExtraSchedule
+      ? e.schedule
+      : existingTotal > 0
+        ? it.schedule
+        : (extraTotal > 0 ? e.schedule : (it.schedule || e.schedule || { done: 0, total: 0 }));
+    const completed = useExtraSchedule
+      ? !!e.completed
+      : existingTotal > 0
+        ? !!it.completed
+        : !!(it.completed || e.completed);
     const hasBaseScore = !!it.hasScore;
     Object.assign(it, {
       schedule,
@@ -219,7 +226,7 @@ export function mergeBrushItems(baseItems, extraItems) {
       activityId: it.activityId || e.activityId || '',
       assignmentId: it.assignmentId || e.assignmentId || '',
       statusMessage: it.statusMessage || e.statusMessage || '',
-      total: existingTotal > 0 ? it.total : (e.total || it.total || 0),
+      total: useExtraSchedule ? (Number(schedule.total) || 0) : (existingTotal > 0 ? it.total : (e.total || it.total || 0)),
     });
     it.aliases = [...new Set([...aliasesOf(it), ...aliasesOf(e)])];
     for (const alias of it.aliases) if (!byAlias.has(alias)) byAlias.set(alias, it);

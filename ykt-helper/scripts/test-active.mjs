@@ -22,6 +22,7 @@ import {
   isAssignmentRetained,
   parseExamProgress,
   canReviewExam,
+  canViewExamPaper,
   parseProgress,
   parseProblem,
   joinExamPaper,
@@ -293,6 +294,21 @@ ok('show_perm/show_score 缺失或 false → 不可回顾', () => {
   delete noPerm.show_perm;
   assert.equal(canReviewExam(noPerm, 1000), false);
   assert.equal(canReviewExam({ ...reviewableCover, show_score: false }, 1000), false);
+});
+
+console.log('== canViewExamPaper（未批改但可查看） ==');
+ok('编程题未批改：交卷+允许查看+已公布 → 可查看', () => {
+  const ungraded = {
+    ...reviewableCover,
+    result: { ...reviewableCover.result, score: 0, score_finish: null },
+  };
+  assert.equal(canReviewExam(ungraded, 1000), false);
+  assert.equal(canViewExamPaper(ungraded, 1000), true);
+});
+ok('禁止查看/未交卷/未公布 → 不可查看', () => {
+  assert.equal(canViewExamPaper({ ...reviewableCover, show_perm: false }, 1000), false);
+  assert.equal(canViewExamPaper({ ...reviewableCover, result: { ...reviewableCover.result, status: 3 } }, 1000), false);
+  assert.equal(canViewExamPaper({ ...reviewableCover, show_score_time: 2000 }, 1000), false);
 });
 
 console.log('== parseProgress（exercise 汇总） ==');

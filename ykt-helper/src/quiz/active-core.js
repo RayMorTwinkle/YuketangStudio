@@ -241,6 +241,24 @@ export function canReviewExam(data, now) {
   );
 }
 
+/**
+ * 考试试卷查看门禁：已交卷 + 老师允许查看 + 公布时间已到。
+ * 与 canReviewExam 的区别：不要求已经批改/出分——编程题等待批改时，
+ * 官方结果页仍然展示题目和我的答案，脚本也应允许读取并交给 AI 分析。
+ * 仍然拒绝未交卷、缺考、作废和明确禁止查看的考试。
+ */
+export function canViewExamPaper(data, now) {
+  const cover = record(data) ?? {};
+  const progress = parseExamProgress(cover);
+  const release = number(cover.show_score_time);
+  return (
+    progress.examStatus === 'submitted' &&
+    cover.show_perm === true &&
+    release !== null &&
+    release <= (number(cover.server_time) ?? now)
+  );
+}
+
 /** 作业批改汇总（graded 仅在证据充分时给出 true/false，否则 null）。 */
 function homeworkGraded(problems, aggregate, answered) {
   if (answered === 0 && (aggregate ?? 0) === 0) return false;

@@ -41,8 +41,25 @@ let loadSeq = 0;   // 课程切换请求序号：旧请求/旧 enrich 返回后�
 let lastFocusedRoute = '';
 let autoOpening = false;
 let lastCourseContextKey = '';
+let examPageLoadedId = '';
 
 function $(sel) { return root?.querySelector(sel); }
+
+function isExamPageHost() {
+  try {
+    return /(^|\.)(changjiang-exam\.yuketang\.cn|tsinghua-exam\.yuketang\.cn|examination\.xuetangx\.com)$/i
+      .test(location.hostname);
+  } catch { return false; }
+}
+
+function currentExamPageId() {
+  try {
+    const m = location.pathname.match(/\/result\/(\d+)/) || location.pathname.match(/\/exam\/(\d+)/);
+    if (m) return m[1];
+    const q = new URLSearchParams(location.search);
+    return q.get('exam_id') || q.get('examId') || '';
+  } catch { return ''; }
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -154,6 +171,7 @@ function rowMetaParts(a) {
   if (a.score != null) parts.push(`得分 ${a.score}`);
   if (a.type === 20) {
     if (a.examStatus === 'submitted') parts.push('已交卷');
+    if (a.examStatus === 'submitted' && a.graded === false) parts.push('待批改');
     else if (a.examStatus === 'absent') parts.push('缺考');
     else if (a.examStatus === 'invalid') parts.push('已作废');
   } else if (a.type === 19 && a.graded === false && (a.answeredCount ?? 0) > 0) {
@@ -291,7 +309,7 @@ async function openActiveDetail(a) {
         setStatus(detail.progress?.statusMessage || '该考试暂不可回顾（未出分或未公布），请在官网查看。');
         return;
       }
-      showQuestionsView(detail, a.title, a);
+      showQuestionsView(detail, detail.title || a.title, a);
     } else {
       setStatus(`正在读取「${a.title}」…`);
       const detail = await fetchExerciseDetail({
@@ -441,7 +459,7 @@ function renderList() {
     const actions = [];
 
     // 脚本内查看：可回顾考试 / 新版作业 / 老版作业。
-    if (a.type === 20 && a.canReview && a.leafTypeId) {
+    if (a.type === 20 && (a.canViewPaper || a.canReview) && a.leafTypeId) {
       actions.push(`<button type="button" data-act="review" data-id="${escapeHtml(a.id)}" title="在当前面板查看考试回顾">在脚本内查看</button>`);
     } else if (a.type === 19 && a.leafTypeId) {
       actions.push(`<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}" title="在当前面板查看作业详情">在脚本内查看</button>`);
@@ -553,14 +571,47 @@ async function focusRouteTarget({ open = true } = {}) {
 
   // 直接路由：自动展开，用户不需要再找一次。
   if (target.type === 20) {
-    if (target.canReview) await openActiveDetail(target);
-    else setStatus(target.statusMessage || '该考试暂不可回顾；进行中考试可打开考试页使用 AI 参考。');
+    if (target.canViewPaper || target.canReview) await openActiveDetail(target);
+    else setStatus(target.statusMessage || '该考试暂不可查看；进行中考试可打开考试页使用 AI 参考。');
   } else if (target.type === 19) {
     await openActiveDetail(target);
   } else if (target.oldId) {
     await openAssignmentQuestions(target);
   }
   return true;
+}
+
+/**
+ * 考试结果域没有 pro 课程列表；直接把当前 result 页当作一条考试记录。
+ * 例如 changjiang-exam.yuketang.cn/result/2215164?isFrom=2。
+ */
+async function loadCurrentExamPage() {
+  const examId = currentExamPageId();
+  if (!examId) {
+    setStatus('当前考试页没有识别到考试 ID');
+    return;
+  }
+  cid = '';
+  selected.clear();
+  const row = {
+    id: `exam-page:${examId}`,
+    type: 20,
+    kind: 'exam',
+    title: `当前考试 ${examId}`,
+    oldId: '',
+    newId: '',
+    leafTypeId: examId,
+    classroomId: '',
+    canReview: false,
+    canViewPaper: true,
+    examStatus: 'submitted',
+    statusMessage: '当前考试页',
+  };
+  list = [row];
+  loaded = true;
+  renderList();
+  setStatus('当前考试页');
+  await openActiveDetail(row);
 }
 
 async function loadCourses() {
@@ -814,7 +865,7 @@ async function batchAI() {
   const override = getOverride();
   if (!override) { ui.toast?.('请先在设置里配置 AI', 2500); return; }
   const examCount = items.filter((a) => Number(a.type) === 20).length;
-  const inProgressCount = items.filter((a) => Number(a.type) === 20 && !a.canReview).length;
+  const inProgressCount = items.filter((a) => Number(a.type) === 20 && !a.canViewPaper).length;
   const detail = [
     `将依次对 ${items.length} 份作业/考试调用 AI 解答，题目较多时耗时和费用都会增加。`,
     examCount ? `其中 ${examCount} 份是考试；AI 只生成参考，不自动提交。` : '',
@@ -876,7 +927,7 @@ async function batchAI() {
             }
           }
         } else if (Number(a.type) === 20) {
-          if (!a.canReview) {
+          if (!a.canViewPaper) {
             const current = currentExamContext();
             const samePage = current.isExam && current.examId && (
               (a.newId && String(current.examId) === String(a.newId))
@@ -1008,8 +1059,16 @@ export function mountAssignmentsPanel() {
   document.body.appendChild(root);
 
   root.__yksOnShow = () => {
-    const ctx = getCourseContext();
     syncExamFillButton();
+    const examId = isExamPageHost() ? currentExamPageId() : '';
+    if (examId) {
+      if (examPageLoadedId !== examId) {
+        examPageLoadedId = examId;
+        void loadCurrentExamPage();
+      }
+      return;
+    }
+    const ctx = getCourseContext();
     if (!loaded) {
       loaded = true;
       loadCourses();
@@ -1020,6 +1079,14 @@ export function mountAssignmentsPanel() {
     else renderCurrentCard();
   };
   subscribeCourseRoute(() => {
+    const examId = isExamPageHost() ? currentExamPageId() : '';
+    if (examId) {
+      // 考试结果域没有课程路由：按当前考试页展示。
+      setTimeout(() => {
+        try { ui.showAssignmentsPanel?.(true); } catch { /* ignore */ }
+      }, 350);
+      return;
+    }
     const ctx = getCourseContext();
     const switched = syncCourseContextIfNeeded();
     if (!ctx.newId && !ctx.oldQuizId) {
@@ -1032,8 +1099,14 @@ export function mountAssignmentsPanel() {
     }, 350);
   });
   renderCurrentCard();
+  const initialExamId = isExamPageHost() ? currentExamPageId() : '';
+  if (initialExamId) {
+    setTimeout(() => {
+      try { ui.showAssignmentsPanel?.(true); } catch { /* ignore */ }
+    }, 900);
+  }
   const initialCtx = getCourseContext();
-  if (initialCtx.newId || initialCtx.oldQuizId) {
+  if (!initialExamId && (initialCtx.newId || initialCtx.oldQuizId)) {
     setTimeout(() => {
       try { ui.showAssignmentsPanel?.(true); } catch { /* ignore */ }
     }, 900);

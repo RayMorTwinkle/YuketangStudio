@@ -529,6 +529,18 @@ async function waitViewerReady(viewer, timeout = 12000, selector = '.swiper-slid
   return null;
 }
 
+/** 班级课件当前 DOM 里的页面缩略图；Swiper 会重复渲染，按页码去重。 */
+function collectViewerPages(d) {
+  const byPage = new Map();
+  for (const el of d.querySelectorAll('.swiper-slide')) {
+    const pageEl = el.querySelector('.page');
+    const page = Number(String(pageEl?.textContent || '').trim());
+    if (!Number.isFinite(page) || page <= 0 || byPage.has(page)) continue;
+    byPage.set(page, { el, page, pageEl });
+  }
+  return [...byPage.values()].sort((a, b) => a.page - b.page);
+}
+
 function contentUrl(it) {
   const cid = current?.id || currentClassId();
   if (!cid || !it.id) return '';
@@ -695,32 +707,55 @@ async function processClassCard(it) {
     let before = null;
     try { before = await fetchClassCardProgress(cid, it.cardsId); } catch { /* ignore */ }
     // 复刷已完成班级课件时不要沿用旧进度，否则会全部跳过。
-    const read = (it.completed && includeCompleted())
+    let read = (it.completed && includeCompleted())
       ? new Set()
-      : new Set((before?.depthDetail || []).map((x) => Number(x)));
-    const thumbs = [...d.querySelectorAll('.swiper-slide')]
-      .map((el) => {
-        const page = Number(el.querySelector('.page')?.textContent?.trim());
-        return Number.isFinite(page) && page > 0 ? { el, page } : null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.page - b.page);
-    const total = Math.max(it.total || 0, thumbs.length, before?.depth || 0);
-    let processed = 0;
-    for (const t of thumbs) {
-      if (stopped) break;
-      while (paused && !stopped) await sleep(500);
-      if (stopped) break;
-      if (read.has(t.page - 1)) continue;
-      try {
-        (t.el.querySelector('.page') || t.el).click();
-        processed++;
-        await sleep(2200);
-      } catch { /* continue */ }
-      if (processed % 4 === 0) logLine(`「${it.title}」已翻 ${processed} 页`);
+      : new Set((before?.depth_detail || before?.depthDetail || []).map((x) => Number(x)));
+    const initialPages = collectViewerPages(d);
+    if (!initialPages.length) {
+      updateItemState(it, 'fail');
+      logLine(`课件没有可识别的页面：「${it.title}」`, 'bad');
+      return false;
     }
-    // 没有缩略图时按下一页/键盘兜底
-    if (!thumbs.length) {
+    const total = Math.max(it.total || 0, initialPages.length, before?.depth || 0);
+    let processed = 0;
+    let lastDepth = Number(before?.depth) || 0;
+    let pass = 0;
+
+    // 不能只点一次一开始抓到的缩略图：Swiper/Vue 会在翻页后替换 DOM，
+    // 旧节点会失效，表现为“一次只刷十几页”。每页重新查当前 DOM，并按官方
+    // depth_detail 复查；最多做几轮，直到没有未读页或进度不再增长。
+    while (!stopped && pass < 4) {
+      const targets = collectViewerPages(d).filter((t) => !read.has(t.page - 1));
+      if (!targets.length) break;
+      for (const target of targets) {
+        if (stopped) break;
+        while (paused && !stopped) await sleep(500);
+        if (stopped) break;
+        // 关键：每次点击前重新取当前 DOM 中同一页的节点，避免点击已被替换的旧节点。
+        const fresh = collectViewerPages(d).find((t) => t.page === target.page);
+        if (!fresh) continue;
+        try {
+          (fresh.pageEl || fresh.el).click();
+          processed++;
+          await sleep(1800);
+          read.add(target.page - 1);
+        } catch { /* continue */ }
+        if (processed % 4 === 0) logLine(`「${it.title}」已翻 ${processed} 页`);
+      }
+
+      // 以官方 view_depth 为准，不用本地点击次数伪造完成。
+      let snapshot = null;
+      try { snapshot = await fetchClassCardProgress(cid, it.cardsId); } catch { /* ignore */ }
+      if (snapshot) {
+        read = new Set((snapshot.depth_detail || snapshot.depthDetail || []).map((x) => Number(x)));
+        lastDepth = Number(snapshot.depth) || lastDepth;
+      }
+      pass++;
+      if (lastDepth >= total) break;
+    }
+
+    // 没有缩略图时按下一页/键盘兜底；有缩略图时这里通常不会走到。
+    if (!collectViewerPages(d).length) {
       const next = d.querySelector('.swiper-button-next,.ppt-next,.next-page,[class*="next"][class*="page"]');
       for (let i = 0; i < Math.min(200, total || 100); i++) {
         if (stopped) break;
@@ -732,18 +767,35 @@ async function processClassCard(it) {
         await sleep(1800);
       }
     }
-    await sleep(1800);
+    await sleep(1200);
     let after = null;
     try { after = await fetchClassCardProgress(cid, it.cardsId); } catch { /* ignore */ }
-    const ok = (after?.depth || 0) > (before?.depth || 0);
-    it.schedule = { done: after?.depth || 0, total: total || after?.depth || 0 };
+    const doneDepth = Number(after?.depth) || lastDepth;
+    const ok = doneDepth > (before?.depth || 0);
+    it.schedule = { done: doneDepth, total: total || doneDepth || 0 };
     it.total = it.schedule.total;
     it.completed = it.total > 0 && it.schedule.done >= it.total;
     updateItemState(it, ok || it.completed ? 'ok' : 'fail');
-    logLine(`${it.completed ? '已完成' : '未确认'}：${it.title}（${it.schedule.done}/${it.total}）`, ok || it.completed ? 'info' : 'warn');
+    logLine(`${it.completed ? '已完成' : '未确认'}：${it.title}（${it.schedule.done}/${it.total}，点击 ${processed} 页）`, ok || it.completed ? 'info' : 'warn');
     renderQueue();
     return ok || it.completed;
   } finally {
     close();
   }
+}
+
+/** 仅测试模式使用：直接跑单个班级课件，验证翻页链路。 */
+export function __testRunClassCard({ cardsId, activityId, title = '测试班级课件', total = 0 } = {}) {
+  return processClassCard({
+    id: `classcard:${cardsId}`,
+    title,
+    type: 7,
+    typeLabel: '班级课件',
+    brushable: true,
+    cardsId,
+    activityId,
+    total,
+    schedule: { done: 0, total },
+    state: 'idle',
+  });
 }
