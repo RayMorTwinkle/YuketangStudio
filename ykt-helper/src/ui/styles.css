@@ -698,7 +698,7 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
 #ykt-assign-tab .ap-main{ flex:1 1 auto; min-width:0; }
 #ykt-assign-tab .ap-title{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #ykt-assign-tab .ap-meta{ font-size:11px; color:var(--ykt-muted); margin-top:2px; }
-#ykt-assign-tab .ap-links{ display:flex; gap:6px; flex:0 0 auto; }
+#ykt-assign-tab .ap-links{ display:flex; gap:6px; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end; }
 #ykt-assign-tab .ap-links button{
   padding:3px 8px; border:1px solid var(--ykt-border-strong); border-radius:5px;
   background:#fff; cursor:pointer; font-size:11px; color:var(--ykt-fg);

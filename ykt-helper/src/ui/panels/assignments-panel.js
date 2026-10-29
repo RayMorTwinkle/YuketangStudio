@@ -438,26 +438,41 @@ function renderList() {
   box.innerHTML = list.map((a) => {
     const oldU = oldUrl(a);
     const newU = newUrl(a, cid);
-    // 只保留一个主入口：有新版入口走新版，只有老版时才走老版。
-    let openBtn = '';
+    const actions = [];
+
+    // 脚本内查看：可回顾考试 / 新版作业 / 老版作业。
     if (a.type === 20 && a.canReview && a.leafTypeId) {
-      openBtn = `<button type="button" data-act="review" data-id="${escapeHtml(a.id)}">回顾</button>`;
+      actions.push(`<button type="button" data-act="review" data-id="${escapeHtml(a.id)}" title="在当前面板查看考试回顾">在脚本内查看</button>`);
     } else if (a.type === 19 && a.leafTypeId) {
-      openBtn = `<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}">详情</button>`;
+      actions.push(`<button type="button" data-act="detail" data-id="${escapeHtml(a.id)}" title="在当前面板查看作业详情">在脚本内查看</button>`);
     } else if (a.type === 4 && a.oldId) {
-      openBtn = `<button type="button" data-q="${escapeHtml(a.id)}">打开</button>`;
-    } else if (newU) {
-      openBtn = `<button type="button" data-link="${escapeHtml(newU)}">打开新界面</button>`;
-    } else if (oldU) {
-      openBtn = `<button type="button" data-link="${escapeHtml(oldU)}">打开老界面</button>`;
+      actions.push(`<button type="button" data-q="${escapeHtml(a.id)}" title="在当前面板查看试卷">在脚本内查看</button>`);
     }
+
+    // 官方页面入口始终保留，脚本内查看不再是唯一入口。
+    // type=4 的 newId 实际是 courseware_id，不能当作新版入口；只有确实不同的 newId 才显示。
+    const hasDistinctNew = !!newU && !(a.type === 4 && String(a.newId) === String(a.oldId));
+    if (hasDistinctNew) {
+      actions.push(`<button type="button" data-link="${escapeHtml(newU)}" title="在雨课堂新版页面打开">新界面</button>`);
+    }
+    if (oldU) {
+      actions.push(`<button type="button" data-link="${escapeHtml(oldU)}" title="在雨课堂老版页面打开">旧界面</button>`);
+    }
+
+    // 兼容没有任何入口的数据：至少保留一个外部入口。
+    if (!actions.length && newU) {
+      actions.push(`<button type="button" data-link="${escapeHtml(newU)}" title="在雨课堂新版页面打开">新界面</button>`);
+    } else if (!actions.length && oldU) {
+      actions.push(`<button type="button" data-link="${escapeHtml(oldU)}" title="在雨课堂老版页面打开">旧界面</button>`);
+    }
+
     return `<div class="ap-row" data-id="${escapeHtml(a.id)}">
       <input type="checkbox" class="ap-check" data-id="${escapeHtml(a.id)}" ${selected.has(a.id) ? 'checked' : ''}>
       <div class="ap-main">
         <div class="ap-title">${escapeHtml(a.title)}</div>
         <div class="ap-meta">${rowMetaParts(a)}</div>
       </div>
-      <div class="ap-links">${openBtn}</div>
+      <div class="ap-links">${actions.join('')}</div>
     </div>`;
   }).join('');
 }
