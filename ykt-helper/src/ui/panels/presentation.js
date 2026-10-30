@@ -546,6 +546,8 @@ async function saveSlideImage(slide, filename) {
 
 function askChatAboutSlide(slide) {
   const sid = String(slide.id);
+  // 先切换到「对话」tab，再让 chat 挂载/接收附件。
+  ui.showChatPanel?.(true);
   repo.selectedSlideId = sid;
   repo.selectedPresentationId = String(repo.currentPresentationId || slide.presentationId || '');
   window.dispatchEvent(new CustomEvent('ykt:chat:use-slide', {

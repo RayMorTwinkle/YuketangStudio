@@ -761,7 +761,9 @@ export async function askAnswer(task, { autoSubmit = false, userText = '', soft 
 export async function askProblem(problemId) {
   const r = await resolveActiveProblemTask(problemId);
   if (!r.task) { ui.toast?.('题目信息不完整，无法解答', 2200); return null; }
-  showAIPanel(true);
+  // 必须走 Shell.openTab；直接调用本地 showAIPanel 只切换面板 class，
+  // 在 shell 内不会把当前 tab 从「课件」切到「AI 解答」。
+  ui.showAIPanel?.(true);
   try {
     return await askAnswer(r.task);
   } catch (e) {

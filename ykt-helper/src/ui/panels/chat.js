@@ -79,7 +79,8 @@ export function mountChatPanel() {
   window.addEventListener('ykt:chat:use-slide', async (ev) => {
     const { slideId, prompt } = ev.detail || {};
     if (!slideId) return;
-    showChatPanel(true);
+    // 必须走 Shell.openTab；本地 showChatPanel 在 shell 内不会切换 tab。
+    ui.showChatPanel?.(true);
     let slide = repo.slides.get(String(slideId));
     for (const [, pres] of repo.presentations) {
       slide = slide || (pres?.slides || []).find((s) => String(s.id) === String(slideId));
