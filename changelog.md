@@ -1,5 +1,11 @@
 # 更新日志
 
+0.9.7:
+
+- 🖱 **课件页「问 AI / AI 解答」修复**：按钮现在会通过 Shell 切换到「PPT对话 / AI解答」tab，不再停留在课件页
+- 🧪 课件页问 AI 会同时定位选中页、附加页面图片并填入默认问题
+- 🧪 AI 解答按钮已通过合成课件 E2E 验证；真实课堂页面在测试时已进入 overview 快照，未能覆盖实时 slide
+
 0.9.6:
 
 - 🔄 **Android 后台运行套件（Script-First）**：新增 Foreground Service + 常驻通知、WebView 保留、Renderer 崩溃恢复、JS/Native 双向心跳、电池优化白名单和可选的 WakeLock/Wi-Fi Lock 强力模式
