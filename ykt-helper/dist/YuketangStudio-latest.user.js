@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.9.6
+// @version      0.9.7
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档、班级课件下载、刷课
@@ -768,7 +768,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.9.6" !== "undefined" && "0.9.6") return String("0.9.6");
+      if (typeof "0.9.7" !== "undefined" && "0.9.7") return String("0.9.7");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -2096,7 +2096,7 @@
       }
     });
   }
-  const L$3 = (...a) => log$1.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
+  const L$2 = (...a) => log$1.dbg("[雨课堂助手][DBG][vuex-helper]", ...a);
   const W$1 = (...a) => log$1.warn("[雨课堂助手][WARN][vuex-helper]", ...a);
   const E = (...a) => log$1.err("[雨课堂助手][ERR][vuex-helper]", ...a);
   let _vueMissWarned = false;
@@ -2217,12 +2217,12 @@
       };
       const unwatch = store.watch(lastSid, (n, o) => {
         if (!n || n === o) return;
-        L$3("移动版时间线幻灯片切换", {
+        L$2("移动版时间线幻灯片切换", {
           newSid: n
         });
         callback(n, null);
       });
-      L$3("已启动移动版时间线幻灯片监听");
+      L$2("已启动移动版时间线幻灯片监听");
       return unwatch;
     }
     // 移动版实时课堂：watch「最后一个含 sid 卡片的 sid 值」——
@@ -2237,18 +2237,18 @@
       };
       const unwatch = store.watch(lastSid, (n, o) => {
         if (!n || n === o) return;
-        L$3("移动版时间线页面切换", {
+        L$2("移动版时间线页面切换", {
           newSid: n
         });
         callback(n, null);
       });
-      L$3("已启动移动版时间线页面监听");
+      L$2("已启动移动版时间线页面监听");
       return unwatch;
     }
     const unwatch = store.watch(state => state.currSlide, (ns, os) => {
       const newSid = ns?.sid == null ? null : String(ns.sid);
       const oldSid = os?.sid == null ? null : String(os.sid);
-      L$3("主界面页面切换", {
+      L$2("主界面页面切换", {
         oldSid: oldSid,
         newSid: newSid,
         newType: ns?.type,
@@ -2260,7 +2260,7 @@
     }, {
       deep: false
     });
-    L$3("已启动主界面页面切换监听");
+    L$2("已启动主界面页面切换监听");
     return unwatch;
   }
   /** 统一从各种移动版 store 形态取「幻灯片列表」：
@@ -2321,7 +2321,7 @@
       });
       updated++;
     }
-    if (updated) L$3("移动版幻灯片镜像进 repo:", updated, "个课件");
+    if (updated) L$2("移动版幻灯片镜像进 repo:", updated, "个课件");
     return updated;
   }
   function waitForVueReady(timeoutMs = 15e3) {
@@ -2330,7 +2330,7 @@
       const check = () => {
         const app = getVueApp();
         if (app && getStore(app)) {
-          L$3("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
+          L$2("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
           resolve(app);
         } else if (Date.now() - t0 >= timeoutMs) {
           W$1(`waitForVueReady: ${timeoutMs}ms 内未等到 Vue store，放弃（跟随/识别功能降级）`);
@@ -4500,7 +4500,7 @@
       timerLagMs: state.timerLagMs,
       lessonId: String(repo.currentLessonId || ""),
       page: location.pathname,
-      scriptVersion: String("0.9.6"),
+      scriptVersion: String("0.9.7"),
       autoAnswer: !!cfg.autoAnswer,
       autoJoin: !!cfg.autoJoinEnabled,
       autoAnswerOnAutoJoin: !!cfg.autoAnswerOnAutoJoin,
@@ -5383,8 +5383,7 @@
   // src/ui/panels/ai.js
   // AI 解答面板：只负责 UI / 流式渲染 / 触发 AnswerEngine。
   // 答题上下文、解析、提交全部在 src/answer/ 下，面板不再判断 __submitTarget 之类字段。
-    const L$2 = (...a) => log$1.dbg("[ai]", ...a);
-  let mounted$9 = false;
+    let mounted$9 = false;
   let root$8;
   let history$2 = [];
  // 手动问答历史（作业/自动作答绝不写入）
@@ -5507,20 +5506,6 @@
     };
     root$8.__yksOnHide = () => {};
     return root$8;
-  }
-  function showAIPanel(v = true) {
-    if (!mounted$9) mountAIPanel();
-    root$8.classList.toggle("visible", !!v);
-    if (v) {
-      lastTask = null;
-      renderCtxStatus();
-      if (history$2.length === 0) addBubble$1("ai", mdToHtml("点击「发送」（输入留空）即可解答当前页题目；也可以直接输入问题针对页面内容追问。"));
-      if (ui.config.aiAutoAnalyze && history$2.length === 0 && !streaming$1) queueMicrotask(() => sendCurrent$1());
-      setTimeout(() => $$5("#ykt-ai-input")?.focus(), 60);
-    }
-    L$2("showAIPanel", {
-      visible: v
-    });
   }
   function abortStreaming$1(reason = "已取消") {
     if (abortCtrl$1) try {
@@ -6146,7 +6131,9 @@
       ui.toast?.("题目信息不完整，无法解答", 2200);
       return null;
     }
-    showAIPanel(true);
+    // 必须走 Shell.openTab；直接调用本地 showAIPanel 只切换面板 class，
+    // 在 shell 内不会把当前 tab 从「课件」切到「AI 解答」。
+        ui.showAIPanel?.(true);
     try {
       return await askAnswer(r.task);
     } catch (e) {
@@ -8864,6 +8851,8 @@
   }
   function askChatAboutSlide(slide) {
     const sid = String(slide.id);
+    // 先切换到「对话」tab，再让 chat 挂载/接收附件。
+        ui.showChatPanel?.(true);
     repo.selectedSlideId = sid;
     repo.selectedPresentationId = String(repo.currentPresentationId || slide.presentationId || "");
     window.dispatchEvent(new CustomEvent("ykt:chat:use-slide", {
@@ -9697,7 +9686,8 @@
     window.addEventListener("ykt:chat:use-slide", async ev => {
       const {slideId: slideId, prompt: prompt} = ev.detail || {};
       if (!slideId) return;
-      showChatPanel(true);
+      // 必须走 Shell.openTab；本地 showChatPanel 在 shell 内不会切换 tab。
+            ui.showChatPanel?.(true);
       let slide = repo.slides.get(String(slideId));
       for (const [, pres] of repo.presentations) slide = slide || (pres?.slides || []).find(s => String(s.id) === String(slideId));
       const url = slideImageUrl(slide);
@@ -9736,14 +9726,6 @@
     warmupRichAssets();
     mounted$5 = true;
     return root$5;
-  }
-  function showChatPanel(visible = true) {
-    if (!mounted$5) mountChatPanel();
-    root$5.classList.toggle("visible", visible);
-    if (visible) {
-      refreshCtxThumb();
-      setTimeout(() => $sel("#ykt-chat-input")?.focus(), 60);
-    }
   }
   // ---------------- 当前 PPT 页获取（共享模块 slide-image.js） ----------------
     async function refreshCtxThumb() {
@@ -10871,7 +10853,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.9.6";
+      return "0.9.7";
     } catch {}
     return "0.0.0";
   }
@@ -11046,8 +11028,8 @@
   function mountAboutPanel() {
     if (mounted$3) return root$3;
     const host = document.createElement("div");
-    // "0.9.6" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.6"}<`);
+    // "0.9.7" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.7"}<`);
     document.body.appendChild(host.firstElementChild);
     root$3 = document.getElementById("ykt-about-panel");
     const $btn = root$3.querySelector("#ykt-about-check");
