@@ -152,79 +152,6 @@ function startHeartbeat() {
   sendHeartbeat();
 }
 
-function stopHeartbeat() {
-  if (heartbeatTimer) window.clearInterval(heartbeatTimer);
-  heartbeatTimer = 0;
-}
-
-export function startBackground(strong = false) {
-  const b = bridge();
-  if (!b) return false;
-  try {
-    const ok = b.startBackgroundRuntime(!!strong) !== false;
-    if (ok) {
-      state.enabled = true;
-      state.strong = !!strong;
-      startHeartbeat();
-      dispatchState();
-    }
-    return ok;
-  } catch (e) {
-    state.lastError = String(e?.message || e);
-    log.warn('[runtime] start failed', e?.message || e);
-    return false;
-  }
-}
-
-export function stopBackground() {
-  const b = bridge();
-  if (!b) return false;
-  try {
-    b.stopBackgroundRuntime?.();
-    state.enabled = false;
-    stopHeartbeat();
-    dispatchState();
-    return true;
-  } catch (e) {
-    state.lastError = String(e?.message || e);
-    log.warn('[runtime] stop failed', e?.message || e);
-    return false;
-  }
-}
-
-export function setStrongMode(strong) {
-  const b = bridge();
-  if (!b) return false;
-  try {
-    b.setBackgroundRuntimeStrong?.(!!strong);
-    state.strong = !!strong;
-    dispatchState();
-    return true;
-  } catch (e) {
-    state.lastError = String(e?.message || e);
-    return false;
-  }
-}
-
-export function requestBatteryOptimization() {
-  const b = bridge();
-  if (!b) return false;
-  try {
-    const ok = b.requestBatteryOptimization?.() !== false;
-    setTimeout(refreshNativeState, 500);
-    return ok;
-  } catch (e) {
-    state.lastError = String(e?.message || e);
-    return false;
-  }
-}
-
-export function isBatteryOptimizationIgnored() {
-  try {
-    return bridge()?.isBatteryOptimizationIgnored?.() ?? null;
-  } catch { return null; }
-}
-
 export function initRuntimeMonitor() {
   if (started) return;
   // 只由顶层页面上报，避免 iframe 里重复心跳/重复通知。
@@ -234,11 +161,10 @@ export function initRuntimeMonitor() {
   const native = readNativeState();
   state.enabled = !!native?.enabled;
   state.strong = !!native?.strong;
-  state.batteryIgnored = isBatteryOptimizationIgnored();
-  // 上次开启过后台监听：App 重新打开时恢复前台服务（没有 WebView 时通知会显示等待心跳）。
-  if (state.enabled && bridge()) {
-    try { bridge().startBackgroundRuntime?.(!!state.strong); } catch { /* ignore */ }
-  }
+  try {
+    state.batteryIgnored = bridge()?.isBatteryOptimizationIgnored?.() ?? null;
+  } catch { state.batteryIgnored = null; }
+  // 后台服务由 Android 外壳拥有并在冷启动时恢复；脚本只上报心跳，不主动启动服务。
 
   document.addEventListener('visibilitychange', () => {
     state.lastVisibilityChangeAt = Date.now();
@@ -277,7 +203,5 @@ export function initRuntimeMonitor() {
     return true;
   };
   window.__yktRuntimeState = getState;
-  window.__yktRuntimeStart = startBackground;
-  window.__yktRuntimeStop = stopBackground;
   refreshNativeState();
 }

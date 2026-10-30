@@ -1,14 +1,14 @@
 # Android 后台运行与诊断
 
-> 版本：0.9.6  
-> 架构：Script-First。JavaScript 继续负责课堂业务，Kotlin 只负责 Android 生命周期、通知、后台状态和恢复。
+> 版本：0.9.8
+> 架构：Script-First。JavaScript 负责课堂业务与心跳上报；Kotlin 负责 Android 生命周期、通知、后台状态和恢复。后台开关只在外壳设置中。
 
 ## 一、已实现的后台套件
 
 ### 1. Foreground Service
 
 - `BackgroundRuntimeService`
-- 用户从「设置 → 后台」手动开启
+- 用户从「外壳菜单 → 设置 → 后台运行」手动开启
 - 常驻通知显示：
   - 监听中
   - 等待脚本心跳
@@ -48,7 +48,7 @@
 
 ### 5. 电池优化与强力模式
 
-- 设置页检查 `PowerManager.isIgnoringBatteryOptimizations`
+- 外壳「设置 → 后台运行」检查 `PowerManager.isIgnoringBatteryOptimizations`
 - 用户点击后打开系统官方授权页
 - 可选「强力保活」：
   - `PARTIAL_WAKE_LOCK`
@@ -65,6 +65,14 @@ changjiang-exam.yuketang.cn
 tsinghua-exam.yuketang.cn
 examination.xuetangx.com
 ```
+
+### 7. 控制权与备份
+
+- 后台开关、强力模式、电池优化、更新策略、备份/还原统一在外壳「菜单 → 设置」。
+- 脚本设置页不再显示后台分区，也不主动启动/停止前台服务。
+- `runtime.js` 只保留心跳、可见性、WebSocket、课堂事件上报和诊断状态。
+- 外壳冷启动时根据 `RuntimeState.enabled` 恢复服务；脚本只消费 native 状态。
+- 备份文件包含 Cookie、localStorage、更新策略、界面模式和后台偏好；还原后台偏好后会按该偏好启动/停止服务。
 
 ## 二、后台运行的边界
 
@@ -165,7 +173,7 @@ no_api_profile
 在 Android 13 真机上验证了最小链路：
 
 ```text
-打开 App → 设置 → 后台 → 开启后台监听
+打开 App → 菜单 → 设置 → 后台运行 → 开启后台监听
 ```
 
 结果：

@@ -45,6 +45,7 @@ class BackgroundRuntimeService : Service() {
         private var live: BackgroundRuntimeService? = null
 
         fun start(context: Context, strong: Boolean): Boolean {
+            Log.i(TAG, "start requested strong=$strong")
             RuntimeState.setEnabled(context, true)
             RuntimeState.setStrong(context, strong)
             return try {
@@ -81,6 +82,10 @@ class BackgroundRuntimeService : Service() {
         fun update(context: Context, json: String) {
             try {
                 val patch = JSONObject(json)
+                // enabled/strong 是外壳设置的所有权字段，JS 心跳不能覆盖。
+                // 否则用户刚关闭服务，脚本的旧 heartbeat 又会把 enabled 写回 true。
+                patch.remove("enabled")
+                patch.remove("strong")
                 // JS 用 heartbeatAt / ts；服务统一存 heartbeatAt。
                 if (!patch.has("heartbeatAt") && patch.has("ts")) patch.put("heartbeatAt", patch.optLong("ts"))
                 RuntimeState.update(context, patch)
@@ -125,10 +130,12 @@ class BackgroundRuntimeService : Service() {
     override fun onCreate() {
         super.onCreate()
         live = this
+        Log.i(TAG, "service onCreate")
         createChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "onStartCommand action=${intent?.action} startId=$startId")
         when (intent?.action) {
             ACTION_STOP -> {
                 RuntimeState.setEnabled(this, false)
@@ -168,10 +175,12 @@ class BackgroundRuntimeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        Log.i(TAG, "service onDestroy")
         handler.removeCallbacks(ticker)
         releaseLocks()
         if (live === this) live = null
-        RuntimeState.setEnabled(this, false)
+        // 这里不把 enabled 改成 false：系统回收服务后，下次冷启动仍应恢复用户开启的后台监听。
+        // 只有用户主动停止（ACTION_STOP / stop()）才清除 enabled。
         super.onDestroy()
     }
 
@@ -208,6 +217,7 @@ class BackgroundRuntimeService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            Log.i(TAG, "startForeground ok")
         } catch (e: Throwable) {
             RuntimeState.markError(this, "前台服务启动失败：${e.message ?: e.javaClass.simpleName}")
             Log.e(TAG, "startForeground failed", e)

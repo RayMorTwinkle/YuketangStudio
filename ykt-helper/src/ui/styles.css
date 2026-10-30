@@ -4,14 +4,28 @@
 
 :root{
   --ykt-z: 10000000;
-  --ykt-border: #ddd;
-  --ykt-border-strong: #ccc;
+  --ykt-border: #e5e9f2;
+  --ykt-border-strong: #d5dce8;
   --ykt-bg: #fff;
-  --ykt-fg: #222;
-  --ykt-muted: #607190;
+  --ykt-fg: #0f172a;
+  --ykt-muted: #64748b;
   --ykt-accent: #1d63df;
   --ykt-hover: #1e3050;
   --ykt-shadow: 0 10px 30px rgba(0,0,0,.18);
+  /* v0.9.8 统一设计变量：设置、对话、课件、题目、作业、刷课共用 */
+  --ykt-surface: #fff;
+  --ykt-surface-soft: #f6f8fc;
+  --ykt-text: #0f172a;
+  --ykt-text-secondary: #64748b;
+  --ykt-accent-soft: #eef4ff;
+  --ykt-danger: #b42318;
+  --ykt-success: #15803d;
+  --ykt-radius-sm: 8px;
+  --ykt-radius-md: 12px;
+  --ykt-radius-lg: 14px;
+  --ykt-control-h: 34px;
+  --ykt-touch-min: 40px;
+  --ykt-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 /* ===== 工具栏 ===== */
@@ -122,10 +136,13 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
   position: fixed; right: 20px; bottom: 60px;
   width: min(560px, calc(100vw - 48px));   /* 窄窗口不溢出 */
   max-height: min(72vh, calc(100vh - 140px)); overflow: auto;
-  background: var(--ykt-bg); color: var(--ykt-fg);
-  border: 1px solid var(--ykt-border-strong); border-radius: 8px;
-  box-shadow: var(--ykt-shadow);
+  background: var(--ykt-surface); color: var(--ykt-text);
+  border: 1px solid var(--ykt-border); border-radius: var(--ykt-radius-lg);
+  box-shadow: 0 18px 50px rgba(15,23,42,.16);
   display: none;
+  font-family: var(--ykt-font);
+  text-align: left;
+  box-sizing: border-box;
   /* 提高z-index，确保后打开的面板在最上层 */
   z-index: var(--ykt-z);
 }
@@ -277,8 +294,14 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 #ykt-settings-panel .apikey-test-result{ display: block; margin-top: 5px; min-height: 16px; font-size: 11px; }
 
 /* 开关 */
-#ykt-settings-panel .settings-switch{ display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
-#ykt-settings-panel .settings-switch input{ position: absolute; opacity: 0; width: 1px; height: 1px; }
+#ykt-settings-panel .settings-switch{ position: relative; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; touch-action: manipulation; }
+/* 隐藏 input 必须留在 label 内：绝对定位到视口会把 Android WebView 的焦点滚到空白处 */
+#ykt-settings-panel .settings-switch input{ position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; pointer-events: none; }
+/* 轨道/滑块只负责绘制，点击穿透到 input：Android WebView 里点轨道也应切换 */
+#ykt-settings-panel .settings-switch .switch-track,
+#ykt-settings-panel .settings-switch .switch-thumb{ cursor: pointer; }
+#ykt-settings-panel .settings-switch .switch-text{ pointer-events: none; }
+#ykt-settings-panel .settings-switch:focus-visible{ outline: 2px solid var(--ykt-accent); outline-offset: 3px; border-radius: 6px; }
 #ykt-settings-panel .switch-track{
   position: relative; width: 38px; height: 22px; border-radius: 999px;
   background: #cbd5e1; transition: background .18s; flex: 0 0 auto;
@@ -890,3 +913,553 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
 .ykt-problem-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .ykt-problem-confirm-actions button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #fff; cursor: pointer; }
 .ykt-problem-confirm-actions .btn-ok { border-color: #d64545; background: #d64545; color: #fff; }
+
+/* =====================================================================
+   v0.9.8 统一界面层
+   目标：所有 tab 与设置页共享同一套颜色、圆角、间距、字号、控件高度。
+   约束：不修改业务 ID / 功能 class；只做视觉覆盖，避免破坏事件与选择器。
+   ===================================================================== */
+
+/* ---------- 外壳 ---------- */
+#ykt-shell-panel {
+  width: min(820px, calc(100vw - 32px));
+  border-radius: var(--ykt-radius-lg);
+  background: var(--ykt-surface);
+}
+#ykt-shell-panel .ykt-shell-header {
+  padding: 12px 16px;
+  background: var(--ykt-surface);
+  border-bottom: 1px solid var(--ykt-border);
+}
+#ykt-shell-panel .shell-title {
+  color: var(--ykt-text);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+#ykt-shell-panel .shell-close {
+  width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px;
+  color: var(--ykt-text-secondary);
+}
+#ykt-shell-panel .shell-close:hover { background: var(--ykt-surface-soft); color: var(--ykt-text); }
+#ykt-shell-panel .ykt-shell-tabs {
+  width: 140px;
+  padding: 10px;
+  gap: 3px;
+  background: var(--ykt-surface-soft);
+  border-right: 1px solid var(--ykt-border);
+}
+#ykt-shell-panel .ykt-shell-tab {
+  min-height: 40px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #475569;
+  font-size: 13px;
+  transition: background .15s, border-color .15s, color .15s;
+}
+#ykt-shell-panel .ykt-shell-tab:hover { background: #eef4ff; color: var(--ykt-accent); }
+#ykt-shell-panel .ykt-shell-tab.active {
+  background: var(--ykt-accent-soft);
+  border-color: #c7d9fb;
+  color: var(--ykt-accent);
+  font-weight: 600;
+}
+#ykt-shell-panel .ykt-shell-content { background: var(--ykt-surface); }
+
+/* ---------- 通用 header / 空状态 ---------- */
+#ykt-shell-content .panel-header {
+  min-height: 52px;
+  padding: 10px 16px;
+  gap: 10px;
+  border-bottom: 1px solid var(--ykt-border);
+  background: var(--ykt-surface);
+}
+#ykt-shell-content .panel-header h3 {
+  margin: 0;
+  color: var(--ykt-text);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+#ykt-shell-content :is(#ykt-chat-panel, #ykt-ai-answer-panel, #ykt-presentation-panel, #ykt-problem-list-panel, #ykt-brush-panel, #ykt-about-panel) .panel-header button {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#ykt-shell-content :is(#ykt-chat-panel, #ykt-ai-answer-panel, #ykt-presentation-panel, #ykt-problem-list-panel, #ykt-brush-panel, #ykt-about-panel) .panel-header button:hover {
+  border-color: #9db8ed;
+  background: #eef4ff;
+  color: var(--ykt-accent);
+}
+
+/* ---------- 设置页 ---------- */
+#ykt-settings-panel {
+  width: min(680px, calc(100vw - 48px));
+}
+#ykt-settings-panel .settings-section {
+  border-color: var(--ykt-border);
+  border-radius: var(--ykt-radius-md);
+  background: var(--ykt-surface);
+}
+#ykt-settings-panel .settings-section-head h4 { color: var(--ykt-text); }
+#ykt-settings-panel .settings-label { color: #1e293b; }
+#ykt-settings-panel .settings-hint { color: var(--ykt-text-secondary); }
+#ykt-settings-panel .settings-nav {
+  background: linear-gradient(#fff 75%, rgba(255,255,255,.94));
+  border-bottom-color: var(--ykt-border);
+}
+#ykt-settings-panel .settings-nav a {
+  min-height: 30px;
+  border-color: var(--ykt-border);
+  border-radius: 999px;
+  color: #475569;
+}
+#ykt-settings-panel .settings-nav a.active {
+  background: var(--ykt-accent-soft);
+  border-color: #c7d9fb;
+  color: var(--ykt-accent);
+  font-weight: 600;
+}
+#ykt-settings-panel .settings-switch .switch-track { box-shadow: inset 0 0 0 1px rgba(15,23,42,.06); }
+#ykt-settings-panel .settings-switch input:focus-visible + .switch-track { outline: none; box-shadow: 0 0 0 3px rgba(29,99,223,.16); }
+
+/* ---------- 对话 / AI 解答 ---------- */
+#ykt-shell-content #ykt-chat-log,
+#ykt-shell-content #ykt-ai-log {
+  padding: 16px;
+  gap: 12px;
+  background: var(--ykt-surface-soft);
+}
+#ykt-shell-content .ykt-chat-msg,
+#ykt-shell-content .ykt-ai-msg {
+  max-width: min(92%, 620px);
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--ykt-radius-md);
+  font-size: 13px;
+  line-height: 1.65;
+}
+#ykt-shell-content .ykt-chat-msg.user,
+#ykt-shell-content .ykt-ai-msg.user {
+  background: var(--ykt-accent);
+  border-color: var(--ykt-accent);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+#ykt-shell-content .ykt-chat-msg.ai,
+#ykt-shell-content .ykt-ai-msg.ai {
+  background: var(--ykt-surface);
+  border-color: var(--ykt-border);
+  color: var(--ykt-text);
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 1px 2px rgba(15,23,42,.04);
+}
+#ykt-shell-content .ykt-chat-msg.ai .reasoning-body,
+#ykt-shell-content .ykt-ai-msg.ai .reasoning-body {
+  color: var(--ykt-text-secondary);
+  border-left-color: #dbe3ef;
+}
+#ykt-shell-content #ykt-chat-ctx,
+#ykt-shell-content #ykt-ai-ctx {
+  min-height: 40px;
+  padding: 7px 16px;
+  border-top: 1px solid var(--ykt-border);
+  background: var(--ykt-surface);
+  color: var(--ykt-text-secondary);
+  font-size: 11px;
+}
+#ykt-shell-content #ykt-chat-ctx img,
+#ykt-shell-content #ykt-ai-ctx img {
+  height: 30px;
+  border-color: var(--ykt-border);
+  border-radius: 6px;
+}
+#ykt-shell-content .ykt-slide-source-toggle button,
+#ykt-shell-content #ykt-ai-ctx .ykt-slide-source-toggle button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid var(--ykt-border);
+  border-radius: 7px;
+  background: var(--ykt-surface);
+  color: #475569;
+  font-size: 11px;
+  cursor: pointer;
+}
+#ykt-shell-content .ykt-slide-source-toggle button.active,
+#ykt-shell-content #ykt-ai-ctx .ykt-slide-source-toggle button.active {
+  background: var(--ykt-accent-soft);
+  border-color: #b9cdf2;
+  color: var(--ykt-accent);
+  font-weight: 600;
+}
+#ykt-shell-content .ykt-chat-inputbar,
+#ykt-shell-content .ykt-ai-inputbar {
+  padding: 10px 16px;
+  gap: 8px;
+  border-top: 1px solid var(--ykt-border);
+  background: var(--ykt-surface);
+}
+#ykt-shell-content #ykt-chat-input,
+#ykt-shell-content #ykt-ai-input {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--ykt-border);
+  border-radius: 10px;
+  background: var(--ykt-surface-soft);
+  color: var(--ykt-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+#ykt-shell-content #ykt-chat-input:focus,
+#ykt-shell-content #ykt-ai-input:focus {
+  border-color: #8fb2ee;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(29,99,223,.10);
+  outline: none;
+}
+#ykt-shell-content #ykt-chat-send,
+#ykt-shell-content #ykt-ai-send {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: var(--ykt-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+#ykt-shell-content #ykt-chat-plus {
+  width: 40px; height: 40px;
+  border: 1px dashed var(--ykt-border-strong);
+  border-radius: 10px;
+  background: var(--ykt-surface-soft);
+  color: var(--ykt-text-secondary);
+  font-size: 18px;
+}
+#ykt-shell-content #ykt-ai-custom { padding: 7px 16px; border-top: 1px solid var(--ykt-border); }
+#ykt-shell-content #ykt-ai-custom input {
+  height: var(--ykt-control-h);
+  padding: 0 10px;
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface-soft);
+  font-size: 12px;
+}
+#ykt-shell-content #ykt-chat-atts { padding: 7px 16px; border-top-color: var(--ykt-border); }
+#ykt-shell-content #ykt-chat-atts .att { border-color: var(--ykt-border); border-radius: 7px; }
+
+/* ---------- 课件 ---------- */
+#ykt-shell-content #ykt-presentation-panel .panel-controls { gap: 7px; }
+#ykt-shell-content #ykt-presentation-panel .panel-controls select,
+#ykt-shell-content #ykt-presentation-panel #ykt-presentation-picker {
+  height: var(--ykt-control-h);
+  padding: 0 9px;
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+  color: var(--ykt-text);
+  font-size: 12px;
+}
+#ykt-shell-content #ykt-presentation-panel #ykt-follow-current.active,
+#ykt-shell-content #ykt-presentation-panel #ykt-filter-problems.active {
+  background: var(--ykt-accent-soft);
+  border-color: #b9cdf2;
+  color: var(--ykt-accent);
+}
+#ykt-shell-content #ykt-presentation-panel .presentation-list {
+  border-color: var(--ykt-border);
+  border-radius: var(--ykt-radius-md);
+  background: var(--ykt-surface-soft);
+  padding: 12px;
+}
+#ykt-shell-content #ykt-presentation-panel .cw-slide {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--ykt-border);
+  border-radius: var(--ykt-radius-md);
+  background: var(--ykt-surface);
+}
+#ykt-shell-content #ykt-presentation-panel .cw-slide:last-child { margin-bottom: 0; }
+#ykt-shell-content #ykt-presentation-panel .cw-slide.active {
+  border-color: #8fb2ee;
+  outline: 2px solid rgba(29,99,223,.16);
+  outline-offset: 0;
+}
+#ykt-shell-content #ykt-presentation-panel .cw-slide-image img {
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: #fff;
+}
+#ykt-shell-content #ykt-presentation-panel .cw-rail {
+  background: var(--ykt-surface-soft);
+  border-color: var(--ykt-border);
+  border-radius: 9px;
+}
+#ykt-shell-content #ykt-presentation-panel .cw-rail-track { background: #dbe3ef; }
+#ykt-shell-content #ykt-presentation-panel .cw-marker { background: #c8d2e2; }
+#ykt-shell-content #ykt-presentation-panel .cw-marker.teacher { background: var(--ykt-accent); }
+#ykt-shell-content #ykt-presentation-panel .cw-marker.selected { background: #059669; }
+#ykt-shell-content #ykt-presentation-panel .cw-marker.problem { background: #f59e0b; }
+#ykt-shell-content #ykt-presentation-panel .pdf-progress {
+  background: var(--ykt-accent-soft);
+  border: 1px solid #dbe7fb;
+  border-radius: 9px;
+}
+
+/* ---------- 题目 ---------- */
+#ykt-shell-content #ykt-problem-list-panel .panel-body { padding: 12px 16px 18px; background: var(--ykt-surface-soft); }
+#ykt-shell-content #ykt-problem-list-panel .pl-filter {
+  height: var(--ykt-control-h);
+  border-color: var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+  color: var(--ykt-text);
+}
+#ykt-shell-content #ykt-problem-list-panel .pl-row {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-color: var(--ykt-border);
+  border-radius: var(--ykt-radius-md);
+  background: var(--ykt-surface);
+  box-shadow: 0 1px 2px rgba(15,23,42,.04);
+}
+#ykt-shell-content #ykt-problem-list-panel .pl-row:hover { border-color: #c7d9fb; }
+#ykt-shell-content #ykt-problem-list-panel .pl-title { color: var(--ykt-text); font-size: 13px; }
+#ykt-shell-content #ykt-problem-list-panel .pl-meta { color: var(--ykt-text-secondary); }
+#ykt-shell-content #ykt-problem-list-panel .pl-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-color: var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+  color: #334155;
+  font-size: 12px;
+}
+#ykt-shell-content #ykt-problem-list-panel .pl-actions button:hover { border-color: #9db8ed; background: var(--ykt-accent-soft); color: var(--ykt-accent); }
+#ykt-shell-content #ykt-problem-list-panel .pl-actions button.primary { border-color: var(--ykt-accent); background: var(--ykt-accent); color: #fff; }
+
+/* ---------- 作业 / 考试 ---------- */
+#ykt-shell-content #ykt-assign-tab .ap-current-card,
+#ykt-shell-content #ykt-assign-tab .ap-desc,
+#ykt-shell-content #ykt-assign-tab .ap-active-item,
+#ykt-shell-content #ykt-assign-tab .quiz-answer {
+  border-color: var(--ykt-border);
+  border-radius: var(--ykt-radius-md);
+  background: var(--ykt-surface-soft);
+}
+#ykt-shell-content #ykt-assign-tab .ap-row,
+#ykt-shell-content #ykt-assign-tab .quiz-item {
+  border-top-color: var(--ykt-border);
+}
+#ykt-shell-content #ykt-assign-tab .ap-toolbar select {
+  height: var(--ykt-control-h);
+  border-color: var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+}
+#ykt-shell-content #ykt-assign-tab .ap-toolbar button,
+#ykt-shell-content #ykt-assign-tab .ap-actions button,
+#ykt-shell-content #ykt-assign-tab .ap-links button,
+#ykt-shell-content #ykt-assign-tab .ap-active-links button,
+#ykt-shell-content #ykt-assign-tab .quiz-actions button,
+#ykt-shell-content #ykt-assign-tab .quiz-item button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-color: var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+  color: #334155;
+  font-size: 12px;
+}
+#ykt-shell-content #ykt-assign-tab .ap-actions button:hover,
+#ykt-shell-content #ykt-assign-tab .ap-links button:hover,
+#ykt-shell-content #ykt-assign-tab .ap-active-links button:hover,
+#ykt-shell-content #ykt-assign-tab .quiz-actions button:hover,
+#ykt-shell-content #ykt-assign-tab .quiz-item button:hover {
+  border-color: #9db8ed;
+  background: var(--ykt-accent-soft);
+  color: var(--ykt-accent);
+}
+#ykt-shell-content #ykt-assign-tab .ap-title { font-size: 13px; color: var(--ykt-text); }
+#ykt-shell-content #ykt-assign-tab .ap-meta { color: var(--ykt-text-secondary); }
+
+/* ---------- 刷课 ---------- */
+#ykt-shell-content #ykt-brush-panel .brush-head {
+  padding: 12px 16px;
+  border-bottom-color: var(--ykt-border);
+  background: var(--ykt-surface);
+}
+#ykt-shell-content #ykt-brush-panel .brush-head h3 { color: var(--ykt-text); font-size: 16px; font-weight: 600; }
+#ykt-shell-content #ykt-brush-panel select,
+#ykt-shell-content #ykt-brush-panel button {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+  color: #334155;
+  font-size: 12px;
+}
+#ykt-shell-content #ykt-brush-panel button:hover { border-color: #9db8ed; background: var(--ykt-accent-soft); color: var(--ykt-accent); }
+#ykt-shell-content #ykt-brush-panel button.primary { border-color: var(--ykt-accent); background: var(--ykt-accent); color: #fff; }
+#ykt-shell-content #ykt-brush-panel .brush-score,
+#ykt-shell-content #ykt-brush-panel .brush-controls {
+  padding: 9px 16px;
+  border-bottom-color: var(--ykt-border);
+  background: var(--ykt-surface-soft);
+  color: var(--ykt-text-secondary);
+}
+#ykt-shell-content #ykt-brush-panel .brush-controls label {
+  min-height: 30px;
+  border-color: var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+}
+#ykt-shell-content #ykt-brush-panel .brush-controls label.active {
+  border-color: #b9cdf2;
+  background: var(--ykt-accent-soft);
+  color: var(--ykt-accent);
+}
+#ykt-shell-content #ykt-brush-panel .brush-body { grid-template-columns: minmax(0,1fr) 300px; min-height: 300px; }
+#ykt-shell-content #ykt-brush-panel .brush-queue { padding: 10px 16px; background: var(--ykt-surface-soft); }
+#ykt-shell-content #ykt-brush-panel .brush-log {
+  border-left-color: var(--ykt-border);
+  background: var(--ykt-surface);
+  color: var(--ykt-text-secondary);
+}
+#ykt-shell-content #ykt-brush-panel .brush-item { border-bottom-color: #edf0f6; }
+
+/* ---------- 关于 ---------- */
+#ykt-shell-content #ykt-about-panel .panel-body { padding: 16px 18px 24px; }
+#ykt-shell-content #ykt-about-panel .tutorial-content { color: var(--ykt-text); font-size: 13px; line-height: 1.7; }
+#ykt-shell-content #ykt-about-panel .tutorial-content h4 {
+  margin: 18px 0 8px;
+  color: var(--ykt-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+#ykt-shell-content #ykt-about-panel .tutorial-content h4:first-child { margin-top: 2px; }
+#ykt-shell-content #ykt-about-panel .tutorial-content p { margin: 6px 0; color: #334155; }
+#ykt-shell-content #ykt-about-panel .tutorial-content a { color: var(--ykt-accent); text-decoration: none; }
+#ykt-shell-content #ykt-about-panel .tutorial-content a:hover { text-decoration: underline; }
+#ykt-shell-content #ykt-about-panel .ykt-about-version {
+  padding: 12px;
+  border: 1px solid var(--ykt-border);
+  border-radius: var(--ykt-radius-md);
+  background: var(--ykt-surface-soft);
+}
+#ykt-shell-content #ykt-about-panel .ykt-about-ver-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#ykt-shell-content #ykt-about-panel .about-note {
+  padding: 10px 12px;
+  border: 1px solid var(--ykt-border);
+  border-radius: var(--ykt-radius-md);
+  background: var(--ykt-surface-soft);
+}
+#ykt-shell-content #ykt-about-panel .ykt-about-actions { gap: 8px; }
+#ykt-shell-content #ykt-about-panel button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: var(--ykt-surface);
+  color: #334155;
+  font-size: 12px;
+  cursor: pointer;
+}
+#ykt-shell-content #ykt-about-panel button:hover { border-color: #9db8ed; background: var(--ykt-accent-soft); color: var(--ykt-accent); }
+
+/* ---------- 活动题浮窗 ---------- */
+#ykt-active-problems {
+  border-color: var(--ykt-border);
+  border-radius: var(--ykt-radius-md);
+  box-shadow: 0 14px 36px rgba(15,23,42,.16);
+}
+#ykt-active-problems .ap-actions button {
+  height: 30px;
+  border-color: var(--ykt-border);
+  border-radius: 7px;
+  background: var(--ykt-surface);
+}
+#ykt-active-problems .ap-actions button:hover { background: var(--ykt-accent-soft); color: var(--ykt-accent); }
+
+/* ---------- 手机端统一 ---------- */
+@media (max-width: 560px) {
+  #ykt-shell-panel {
+    width: calc(100vw - 12px);
+    height: calc(100vh - 78px);
+    max-height: calc(100vh - 78px);
+  }
+  #ykt-shell-panel .ykt-shell-header { padding: 8px 12px; }
+  #ykt-shell-panel .ykt-shell-tabs {
+    width: 100%;
+    padding: 5px 6px;
+    gap: 3px;
+    background: var(--ykt-surface-soft);
+    border-right: 0;
+    border-bottom: 1px solid var(--ykt-border);
+  }
+  #ykt-shell-panel .ykt-shell-tab {
+    min-height: 44px;
+    padding: 4px 7px;
+    border-radius: 8px;
+    font-size: 10px;
+  }
+  #ykt-shell-panel .ykt-shell-tab i { font-size: 15px; }
+  #ykt-shell-content .panel-header { min-height: 44px; padding: 7px 12px; }
+  #ykt-shell-content .panel-header h3 { font-size: 14px; }
+  #ykt-shell-content .panel-header button { height: 28px; padding: 0 8px; font-size: 11px; }
+  #ykt-shell-content #ykt-chat-log,
+  #ykt-shell-content #ykt-ai-log { padding: 12px; gap: 10px; }
+  #ykt-shell-content .ykt-chat-msg,
+  #ykt-shell-content .ykt-ai-msg { max-width: 94%; padding: 9px 10px; font-size: 12.5px; }
+  #ykt-shell-content #ykt-chat-ctx,
+  #ykt-shell-content #ykt-ai-ctx { padding: 6px 12px; gap: 6px; }
+  #ykt-shell-content .ykt-chat-inputbar,
+  #ykt-shell-content .ykt-ai-inputbar { padding: 8px 12px; }
+  #ykt-shell-content #ykt-chat-input,
+  #ykt-shell-content #ykt-ai-input { min-height: 38px; font-size: 12px; }
+  #ykt-shell-content #ykt-chat-send,
+  #ykt-shell-content #ykt-ai-send { min-height: 38px; padding: 0 12px; }
+  #ykt-shell-content #ykt-chat-plus { width: 38px; height: 38px; }
+  #ykt-shell-content #ykt-presentation-panel .cw-slide { padding: 8px; }
+  #ykt-shell-content #ykt-brush-panel .brush-body { grid-template-columns: 1fr; }
+  #ykt-shell-content #ykt-brush-panel .brush-log {
+    border-left: 0;
+    border-top: 1px solid var(--ykt-border);
+    max-height: 180px;
+  }
+  #ykt-shell-content #ykt-brush-panel .brush-head,
+  #ykt-shell-content #ykt-brush-panel .brush-score,
+  #ykt-shell-content #ykt-brush-panel .brush-controls { padding-left: 12px; padding-right: 12px; }
+  #ykt-shell-content #ykt-brush-panel .brush-queue { padding: 8px 12px; }
+  #ykt-shell-content #ykt-about-panel .panel-body { padding: 12px 14px 20px; }
+}
+
+/* 宿主页面可能给 div 设置 text-align:center（例如部分课程页/示例页），
+   面板内部必须显式恢复左对齐，避免设置项与对话内容被宿主样式带偏。 */
+#ykt-shell-panel,
+#ykt-shell-panel * ,
+#ykt-shell-content,
+#ykt-shell-content * {
+  box-sizing: border-box;
+}
+#ykt-shell-panel,
+#ykt-shell-panel .ykt-shell-header,
+#ykt-shell-content,
+#ykt-shell-content .panel-header,
+#ykt-shell-content .panel-body,
+#ykt-shell-content .settings-section,
+#ykt-shell-content .settings-row,
+#ykt-shell-content .settings-copy,
+#ykt-shell-content .settings-label,
+#ykt-shell-content .settings-hint {
+  text-align: left;
+}

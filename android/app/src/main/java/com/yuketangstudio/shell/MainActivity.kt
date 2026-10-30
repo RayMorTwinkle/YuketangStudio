@@ -42,6 +42,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import androidx.webkit.WebViewClientCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -91,6 +92,16 @@ class MainActivity : AppCompatActivity() {
     private var pendingInstallUri: Uri? = null
     private var pendingInstallPath: String? = null
     private var runtimePingReceiver: android.content.BroadcastReceiver? = null
+
+    // ---------- 原生设置 ----------
+    private var settingsSheet: BottomSheetDialog? = null
+    private var settingsRuntimeSwitch: SwitchCompat? = null
+    private var settingsStrongSwitch: SwitchCompat? = null
+    private var settingsBatteryButton: Button? = null
+    private var settingsBatteryText: TextView? = null
+    private var settingsStatusText: TextView? = null
+    private var settingsRefreshTask: Runnable? = null
+    private var settingsRefreshing = false
 
     private var desktopMode
         get() = prefs.getBoolean("desktopMode", false)
@@ -170,6 +181,13 @@ class MainActivity : AppCompatActivity() {
         registerRuntimePingReceiver()
         askNotificationPermission()
         newTab(homeUrl())
+        // 后台服务由外壳拥有：上次开启过且进程被系统回收后，本次冷启动恢复。
+        if (RuntimeState.read(this).optBoolean("enabled", false)) {
+            BackgroundRuntimeService.start(
+                this,
+                RuntimeState.read(this).optBoolean("strong", false),
+            )
+        }
         status(if (desktopMode) "桌面端" else "移动端")
 
         // 调试广播（仅 debug）：NAV 导航 + EVAL 注入 JS
@@ -715,14 +733,17 @@ class MainActivity : AppCompatActivity() {
     /** 面板里的一行（图标 + 标题 + 副标题） */
     private fun sheetRow(
         parent: LinearLayout, icon: String, label: String, sub: String? = null,
-        onClick: () -> Unit
+        dismissOnClick: Boolean = true, onClick: () -> Unit
     ) {
         val item = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(13), dp(16), dp(13))
             background = ripple()
-            setOnClickListener { dismissSheet(); onClick() }
+            setOnClickListener {
+                if (dismissOnClick) dismissSheet()
+                onClick()
+            }
         }
         item.addView(TextView(this).apply { text = icon; textSize = 19f })
         val col = LinearLayout(this).apply {
@@ -758,16 +779,14 @@ class MainActivity : AppCompatActivity() {
             sheetDivider(layout)
             sheetRow(layout, if (desktopMode) "🖥️" else "📱", "切换${if (desktopMode) "移动" else "桌面"}端",
                 "桌面端自动 70% 缩放") { toggleDesktopMode() }
+            sheetRow(layout, "⚙️", "设置", "后台、更新、备份与界面") { showSettingsSheet() }
             sheetDivider(layout)
             sheetRow(layout, "📜", "历史记录") { showHistory() }
             sheetRow(layout, "📥", "下载管理") { showDownloads() }
             sheetRow(layout, "📷", "扫一扫", "扫码进课堂/签到") { startScan() }
             sheetRow(layout, "📰", "动态", "查看课件/测验/公告推送") { showFeed() }
             sheetDivider(layout)
-            sheetRow(layout, "💾", "备份设置", "登录态+全部配置+账号+历史") { pickBackupTarget() }
-            sheetRow(layout, "♻️", "还原设置") { pickRestoreSource() }
-            sheetDivider(layout)
-            sheetRow(layout, "ℹ️", "关于与更新", "版本 v${BuildConfig.VERSION_NAME} · 官网 / GitHub") { showAboutSheet() }
+            sheetRow(layout, "ℹ️", "关于", "版本 v${BuildConfig.VERSION_NAME} · 官网 / GitHub") { showAboutSheet() }
             sheetDivider(layout)
             sheetRow(layout, "🗑", "清空当前标签页数据") {
                 activeWebView?.let {
@@ -777,6 +796,312 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    // ============================================================
+    // 原生设置
+    // ============================================================
+
+    /** 设置里的分组标题，比 sectionTitle 更突出。 */
+    private fun settingsSection(parent: LinearLayout, title: String) {
+        parent.addView(TextView(this).apply {
+            text = title
+            textSize = 12f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(TEXT_SEC)
+            setPadding(dp(16), dp(14), dp(16), dp(4))
+        })
+    }
+
+    /** 带开关的设置行。点击图标/文字也能切换，整行不会被 BottomSheet 吃掉。 */
+    private fun sheetSwitchRow(
+        parent: LinearLayout,
+        icon: String,
+        label: String,
+        sub: String?,
+        checked: Boolean,
+        onChange: (Boolean) -> Unit,
+    ): SwitchCompat {
+        val item = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = ripple()
+        }
+        item.addView(TextView(this).apply { text = icon; textSize = 19f })
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, dp(10), 0)
+        }
+        col.addView(TextView(this).apply { text = label; textSize = 15f; setTextColor(TXT) })
+        if (sub != null) col.addView(TextView(this).apply {
+            text = sub; textSize = 11f; setTextColor(TEXT_SEC); setPadding(0, dp(2), 0, 0)
+        })
+        item.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val sw = SwitchCompat(this).apply {
+            isChecked = checked
+            isClickable = true
+            setOnCheckedChangeListener { _, value ->
+                if (!settingsRefreshing) onChange(value)
+            }
+        }
+        item.addView(sw)
+        col.setOnClickListener { sw.toggle() }
+        item.getChildAt(0).setOnClickListener { sw.toggle() }
+        parent.addView(item)
+        return sw
+    }
+
+    /** 只读的设置行，右侧显示当前值/状态。 */
+    private fun sheetValueRow(
+        parent: LinearLayout,
+        icon: String,
+        label: String,
+        sub: String?,
+        value: String,
+    ): TextView {
+        val item = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+        }
+        item.addView(TextView(this).apply { text = icon; textSize = 19f })
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, dp(10), 0)
+        }
+        col.addView(TextView(this).apply { text = label; textSize = 15f; setTextColor(TXT) })
+        if (sub != null) col.addView(TextView(this).apply {
+            text = sub; textSize = 11f; setTextColor(TEXT_SEC); setPadding(0, dp(2), 0, 0)
+        })
+        item.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val valueView = TextView(this).apply {
+            text = value
+            textSize = 12f
+            setTextColor(TEXT_SEC)
+            gravity = Gravity.END
+            maxWidth = dp(150)
+        }
+        item.addView(valueView)
+        parent.addView(item)
+        return valueView
+    }
+
+    /** 运行状态块：多行文本放在标题下方，避免窄屏右侧被挤成一条。 */
+    private fun sheetStatusBlock(
+        parent: LinearLayout,
+        icon: String,
+        label: String,
+        sub: String?,
+    ): TextView {
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+        }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        head.addView(TextView(this).apply { text = icon; textSize = 19f })
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, 0, 0)
+        }
+        col.addView(TextView(this).apply { text = label; textSize = 15f; setTextColor(TXT) })
+        if (sub != null) col.addView(TextView(this).apply {
+            text = sub; textSize = 11f; setTextColor(TEXT_SEC); setPadding(0, dp(2), 0, 0)
+        })
+        head.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        wrap.addView(head)
+        val value = TextView(this).apply {
+            text = "读取中…"
+            textSize = 12f
+            setTextColor(TEXT_SEC)
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            background = GradientDrawable().apply {
+                setColor(0xFFF8FAFC.toInt())
+                cornerRadius = dp(9).toFloat()
+                setStroke(dp(1), 0xFFE5E9F2.toInt())
+            }
+        }
+        wrap.addView(value, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        parent.addView(wrap)
+        return value
+    }
+
+    /** 设置里的按钮行，不关闭设置面板。 */
+    private fun sheetButtonRow(parent: LinearLayout, text: String, onClick: () -> Unit): Button {
+        val button = Button(this).apply {
+            this.text = text
+            textSize = 12f
+            setOnClickListener { onClick() }
+        }
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(dp(16), dp(2), dp(16), dp(8))
+        }
+        wrap.addView(button, LinearLayout.LayoutParams(dp(132), dp(36)))
+        parent.addView(wrap)
+        return button
+    }
+
+    private fun showSettingsSheet() {
+        stopSettingsRefresh()
+        settingsRuntimeSwitch = null
+        settingsStrongSwitch = null
+        settingsBatteryButton = null
+        settingsBatteryText = null
+        settingsStatusText = null
+
+        val sheet = showSheet("设置") { layout ->
+            settingsSection(layout, "后台运行")
+            settingsRuntimeSwitch = sheetSwitchRow(
+                layout, "🛰️", "开启后台监听",
+                "提高进程优先级并显示常驻通知；不代表 WebView 一定在线。",
+                RuntimeState.read(this).optBoolean("enabled", false),
+            ) { enabled ->
+                if (enabled) {
+                    val strong = settingsStrongSwitch?.isChecked == true
+                    if (!BackgroundRuntimeService.start(this, strong)) {
+                        toast("后台服务启动失败，请查看系统通知权限/日志")
+                    }
+                } else {
+                    BackgroundRuntimeService.stop(this)
+                }
+                refreshSettingsUi()
+            }
+            settingsStrongSwitch = sheetSwitchRow(
+                layout, "🔒", "强力保活",
+                "持有 Partial WakeLock / Wi-Fi Lock；更稳但更耗电。",
+                RuntimeState.read(this).optBoolean("strong", false),
+            ) { strong ->
+                BackgroundRuntimeService.setStrong(this, strong)
+                refreshSettingsUi()
+            }
+            settingsBatteryText = sheetValueRow(
+                layout, "🔋", "电池优化", "允许后台运行可减少系统休眠时回收。",
+                if (isIgnoringBatteryOptimizations()) "已允许" else "未允许",
+            )
+            settingsBatteryButton = sheetButtonRow(layout, "去授权") {
+                requestIgnoreBatteryOptimizations()
+                uiHandler.postDelayed({ refreshSettingsUi() }, 800)
+            }
+            settingsStatusText = sheetStatusBlock(
+                layout, "📡", "运行状态", "服务、脚本心跳与最近课堂事件。",
+            )
+
+            settingsSection(layout, "更新")
+            sheetRow(layout, "🔄", "检查更新", "当前 v${BuildConfig.VERSION_NAME}", dismissOnClick = false) {
+                checkAppUpdate()
+            }
+            sheetRow(layout, "📡", "更新渠道",
+                if (updateChannel == "beta") "测试版（尝鲜）" else "稳定版（推荐）",
+                dismissOnClick = false) { pickUpdateChannel() }
+            sheetRow(layout, "🔔", "自动检查更新", autoCheckSummary(), dismissOnClick = false) {
+                pickAutoCheckPolicy()
+            }
+
+            settingsSection(layout, "数据")
+            sheetRow(layout, "💾", "备份设置", "登录态 + 全部配置 + 账号 + 历史",
+                dismissOnClick = false) { pickBackupTarget() }
+            sheetRow(layout, "♻️", "还原设置", "从文件或剪贴板恢复",
+                dismissOnClick = false) { pickRestoreSource() }
+
+            settingsSection(layout, "界面")
+            sheetRow(layout, "🌐", "切换环境", "当前：${env.label}", dismissOnClick = false) { pickEnv() }
+            sheetRow(layout, if (desktopMode) "🖥️" else "📱",
+                "切换${if (desktopMode) "移动" else "桌面"}端",
+                "桌面端自动 70% 缩放", dismissOnClick = false) { toggleDesktopMode() }
+
+            settingsSection(layout, "关于")
+            sheetRow(layout, "ℹ️", "关于 YuketangStudio",
+                "版本 v${BuildConfig.VERSION_NAME} · 官网 / GitHub") { showAboutSheet() }
+        }
+
+        settingsSheet = sheet
+        sheet.setOnDismissListener {
+            if (activeSheet === sheet) activeSheet = null
+            if (settingsSheet === sheet) {
+                settingsSheet = null
+                stopSettingsRefresh()
+                settingsRuntimeSwitch = null
+                settingsStrongSwitch = null
+                settingsBatteryButton = null
+                settingsBatteryText = null
+                settingsStatusText = null
+            }
+        }
+        refreshSettingsUi()
+        startSettingsRefresh()
+    }
+
+    private fun startSettingsRefresh() {
+        stopSettingsRefresh()
+        val task = object : Runnable {
+            override fun run() {
+                if (settingsSheet?.isShowing != true) return
+                refreshSettingsUi()
+                settingsRefreshTask = this
+                uiHandler.postDelayed(this, 2_000L)
+            }
+        }
+        settingsRefreshTask = task
+        uiHandler.post(task)
+    }
+
+    private fun stopSettingsRefresh() {
+        settingsRefreshTask?.let { uiHandler.removeCallbacks(it) }
+        settingsRefreshTask = null
+    }
+
+    private fun refreshSettingsUi() {
+        val state = runCatching {
+            JSONObject(BackgroundRuntimeService.snapshot(this))
+        }.getOrNull() ?: JSONObject()
+        val enabled = state.optBoolean("enabled", false)
+        val running = state.optBoolean("running", false)
+        val strong = state.optBoolean("strong", false)
+        val age = state.optLong("heartbeatAgeMs", -1L)
+        settingsRefreshing = true
+        settingsRuntimeSwitch?.isChecked = enabled
+        settingsStrongSwitch?.isChecked = strong
+        settingsStrongSwitch?.isEnabled = enabled
+        settingsRefreshing = false
+
+        val batteryIgnored = isIgnoringBatteryOptimizations()
+        settingsBatteryText?.text = if (batteryIgnored) "已允许" else "未允许"
+        settingsBatteryButton?.apply {
+            isEnabled = !batteryIgnored
+            text = if (batteryIgnored) "已授权" else "去授权"
+        }
+
+        val lines = mutableListOf<String>()
+        lines += if (running) "服务：运行中" else "服务：未运行"
+        if (!running) {
+            lines += "开启后台监听后才会持续上报心跳。"
+        } else {
+            when {
+                age < 0 -> lines += "脚本心跳：等待脚本上报"
+                age > 30_000 -> lines += "脚本心跳：可能已停止（${fmtRuntimeTime(state.optLong("heartbeatAt", 0L))}）"
+                else -> lines += "脚本心跳：正常（${age / 1000} 秒前）"
+            }
+            state.optString("lastWsState", "").takeIf { it.isNotBlank() }?.let { lines += "WebSocket：$it" }
+            state.optLong("lastEventAt", 0L).takeIf { it > 0 }?.let {
+                lines += "最后课堂事件：${fmtRuntimeTime(it)}"
+            }
+            state.optString("lastError", "").takeIf { it.isNotBlank() }?.let {
+                lines += "最近错误：$it"
+            }
+        }
+        settingsStatusText?.text = lines.joinToString("\n")
+    }
+
+    private fun fmtRuntimeTime(ms: Long): String {
+        if (ms <= 0) return "—"
+        return SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(ms))
     }
 
     // ============================================================
@@ -1207,6 +1532,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (settingsSheet?.isShowing == true) refreshSettingsUi()
         val uri = pendingInstallUri ?: return
         if (!canInstallPackages()) return
         val path = pendingInstallPath ?: ""
@@ -2122,6 +2448,15 @@ class MainActivity : AppCompatActivity() {
         val prefsJson = JSONObject()
             .put("desktopMode", desktopMode)
             .put("envIndex", envIndex)
+            .put("updateChannel", updateChannel)
+            .put("update.autoCheck", updateAutoCheck)
+            .put("update.snoozeUntil", updateSnoozeUntil())
+            .put("update.skipRemaining", updateSkipRemaining)
+            .put("update.lastSkippedVersion", updateLastSkippedVersion)
+        val runtime = RuntimeState.read(this)
+        val background = JSONObject()
+            .put("enabled", runtime.optBoolean("enabled", false))
+            .put("strong", runtime.optBoolean("strong", false))
         val accountsArr = JSONArray()
         AccountStore.all(this).forEach { accountsArr.put(it.toJson()) }
         val doc = JSONObject()
@@ -2132,6 +2467,7 @@ class MainActivity : AppCompatActivity() {
             .put("cookies", cookies)
             .put("localStorage", ls)
             .put("prefs", prefsJson)
+            .put("background", background)
             .put("history", JSONArray(historyPrefs.getString("entries", "[]")))
             .put("accounts", accountsArr)
         val text = doc.toString(2)
@@ -2217,6 +2553,7 @@ class MainActivity : AppCompatActivity() {
                     when (val v = p.get(k)) {
                         is Boolean -> e.putBoolean(k, v)
                         is Int -> e.putInt(k, v)
+                        is Long -> e.putLong(k, v)
                         is String -> e.putString(k, v)
                         else -> {}
                     }
@@ -2239,12 +2576,27 @@ class MainActivity : AppCompatActivity() {
                 }
                 AccountStore.save(this, list)
             }
-            // env 同步 UI
+            // env / 桌面模式 / 更新策略同步到当前 UI
             env = Env.entries[envIndex.coerceIn(0, Env.entries.size - 1)]
+            tabs.forEach { applyDesktopMode(it.webView.settings) }
+            syncUpdateChannelToScript()
+            syncUpdatePolicyToScript()
+            doc.optJSONObject("background")?.let { bg ->
+                val enabled = bg.optBoolean("enabled", false)
+                val strong = bg.optBoolean("strong", false)
+                if (enabled) {
+                    if (!BackgroundRuntimeService.start(this, strong)) {
+                        toast("后台监听恢复失败，请到设置检查")
+                    }
+                } else {
+                    BackgroundRuntimeService.stop(this)
+                }
+            }
         }
         // cookies + localStorage
         doRestore(doc.optJSONObject("cookies") ?: JSONObject(),
                   doc.optJSONObject("localStorage") ?: JSONObject())
+        if (settingsSheet?.isShowing == true) refreshSettingsUi()
     }
 
     private fun doRestore(cookies: JSONObject, ls: JSONObject) {
@@ -2268,7 +2620,7 @@ class MainActivity : AppCompatActivity() {
         if (targetOrigin != null) {
             val cur = originOf(activeWebView?.url)
             if (cur != targetOrigin) {
-                activeWebView?.loadUrl("$targetOrigin/web/")
+                activeWebView?.loadUrl(if (desktopMode) "$targetOrigin/web/" else "$targetOrigin/m/v2")
             } else {
                 activeWebView?.evaluateJavascript(pendingRestoreLs.remove(targetOrigin)!!) { }
                 activeWebView?.reload()

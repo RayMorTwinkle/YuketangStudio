@@ -17,7 +17,6 @@
       <a href="#ykt-settings-auto" data-settings-target="auto"><i class="fas fa-wand-magic-sparkles"></i><span>自动作答</span></a>
       <a href="#ykt-settings-notify" data-settings-target="notify"><i class="fas fa-bell"></i><span>提醒</span></a>
       <a href="#ykt-settings-prompt" data-settings-target="prompt"><i class="fas fa-message"></i><span>提示词</span></a>
-      <a href="#ykt-settings-runtime" data-settings-target="runtime"><i class="fas fa-mobile-screen"></i><span>后台</span></a>
       <a href="#ykt-settings-privacy" data-settings-target="privacy"><i class="fas fa-shield-halved"></i><span>隐私</span></a>
     </nav>
 
@@ -97,11 +96,11 @@
             <small class="settings-hint">关闭后不发送 reasoning_effort；DeepSeek-R1 等推理模型的思考是固有行为，无法通过此开关关闭。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-ai-thinking">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">启用</span>
-            </label>
+            </span>
           </div>
         </div>
 
@@ -126,11 +125,11 @@
             <small class="settings-hint">适合不支持 tools 的端点。开启后用 &lt;answer&gt;...&lt;/answer&gt; 交答案。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-ai-regex-tool">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">启用</span>
-            </label>
+            </span>
           </div>
         </div>
 
@@ -165,11 +164,11 @@
             <small class="settings-hint">只进入状态为“正在上课”的课堂。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-input-auto-join">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">开启</span>
-            </label>
+            </span>
           </div>
         </div>
 
@@ -179,11 +178,11 @@
             <small class="settings-hint">只影响自动进入的课堂，不影响手动进入。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-input-auto-join-auto-answer">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">开启</span>
-            </label>
+            </span>
           </div>
         </div>
 
@@ -193,11 +192,11 @@
             <small class="settings-hint">题目出现后由 AI 自动作答并提交；有风险，请谨慎开启。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-input-auto-answer">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">开启</span>
-            </label>
+            </span>
           </div>
         </div>
 
@@ -207,11 +206,11 @@
             <small class="settings-hint">未配置 AI 时提交占位答案；默认关闭，宁缺答不误答。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-input-fallback-answer">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">开启</span>
-            </label>
+            </span>
           </div>
         </div>
 
@@ -221,11 +220,11 @@
             <small class="settings-hint">进入 AI 解答面板时自动询问当前题目。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-input-ai-auto-analyze">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">开启</span>
-            </label>
+            </span>
           </div>
         </div>
 
@@ -257,11 +256,11 @@
             <small class="settings-hint">关闭后题目中的公式按纯文本显示。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-ui-tex">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">开启</span>
-            </label>
+            </span>
           </div>
         </div>
       </section>
@@ -362,71 +361,6 @@
         </div>
       </section>
 
-      <section id="ykt-settings-runtime" class="settings-section" data-settings-section="runtime">
-        <div class="settings-section-head">
-          <span class="settings-section-icon"><i class="fas fa-mobile-screen"></i></span>
-          <div>
-            <h4>后台课堂监听</h4>
-            <p>仅 Android 壳支持；开启后会显示常驻通知，尽量保持 WebView 和通知监听运行。</p>
-          </div>
-        </div>
-
-        <div id="ykt-background-unsupported" class="settings-note" style="display:none">
-          当前不是 Android 壳环境，后台运行功能不可用。
-        </div>
-
-        <div class="settings-row">
-          <div class="settings-copy">
-            <label class="settings-label" for="ykt-background-runtime">开启后台监听</label>
-            <small class="settings-hint">提高进程优先级；不代表 WebView 已连接，状态看下方心跳。</small>
-          </div>
-          <div class="settings-control">
-            <label class="settings-switch">
-              <input type="checkbox" id="ykt-background-runtime">
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-              <span class="switch-text">开启</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="settings-row">
-          <div class="settings-copy">
-            <label class="settings-label" for="ykt-background-strong">强力保活</label>
-            <small class="settings-hint">持有 Partial WakeLock / Wi-Fi Lock，更稳但更耗电；关闭监听会自动释放。</small>
-          </div>
-          <div class="settings-control">
-            <label class="settings-switch">
-              <input type="checkbox" id="ykt-background-strong">
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-              <span class="switch-text">开启</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="settings-row settings-row-stack">
-          <div class="settings-copy">
-            <label class="settings-label">电池优化</label>
-            <small class="settings-hint">允许后台运行可减少系统休眠时回收；需要你在系统页面确认。</small>
-          </div>
-          <div class="settings-control settings-control-full">
-            <div class="settings-inline">
-              <span id="ykt-background-battery-status" class="settings-hint">检查中…</span>
-              <button id="ykt-background-battery-request" type="button">允许后台运行</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="settings-row settings-row-stack">
-          <div class="settings-copy">
-            <label class="settings-label">运行状态</label>
-            <small class="settings-hint">脚本心跳、WebSocket 和最后课堂事件。</small>
-          </div>
-          <div class="settings-control settings-control-full">
-            <div id="ykt-background-status" class="settings-runtime-status">未开启</div>
-          </div>
-        </div>
-      </section>
-
       <section id="ykt-settings-privacy" class="settings-section" data-settings-section="privacy">
         <div class="settings-section-head">
           <span class="settings-section-icon"><i class="fas fa-shield-halved"></i></span>
@@ -442,11 +376,11 @@
             <small class="settings-hint">默认开启，只上传匿名使用元数据，不含题目、答案、成绩、姓名、学号或 Cookie。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-telemetry">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">开启</span>
-            </label>
+            </span>
           </div>
         </div>
 
@@ -456,11 +390,11 @@
             <small class="settings-hint">会上传发送给模型的消息、模型回复、解析/提交结果和错误；已脱敏、截断，不含 API Key 和图片原始数据。默认关闭。</small>
           </div>
           <div class="settings-control">
-            <label class="settings-switch">
+            <span class="settings-switch" role="switch">
               <input type="checkbox" id="ykt-telemetry-enhanced">
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text">开启</span>
-            </label>
+            </span>
           </div>
         </div>
 

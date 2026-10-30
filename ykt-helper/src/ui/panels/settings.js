@@ -9,7 +9,6 @@ import { unlockDevMode, getDevConfigs } from '../../core/devmode.js';
 import * as telemetry from '../../core/telemetry.js';
 import { gm } from '../../core/env.js';
 import { makeChatUrl } from '../../ai/agnes.js';
-import * as runtime from '../../core/runtime.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
 let mounted = false;
@@ -115,12 +114,6 @@ export function mountSettingsPanel() {
   const $audioName = root.querySelector('#ykt-tip-audio-name');
   const $saveState = root.querySelector('#ykt-settings-save-state');
   const $notifyVolOut = root.querySelector('#ykt-notify-volume-out');
-  const $bgRuntime = root.querySelector('#ykt-background-runtime');
-  const $bgStrong = root.querySelector('#ykt-background-strong');
-  const $bgBatteryStatus = root.querySelector('#ykt-background-battery-status');
-  const $bgBatteryRequest = root.querySelector('#ykt-background-battery-request');
-  const $bgStatus = root.querySelector('#ykt-background-status');
-  const $bgUnsupported = root.querySelector('#ykt-background-unsupported');
 
   const setSaveState = (text, kind = 'muted') => {
     if (!$saveState) return;
@@ -137,7 +130,14 @@ export function mountSettingsPanel() {
       if (!target) return;
       root.querySelectorAll('#ykt-settings-nav a').forEach((x) => x.classList.remove('active'));
       link.classList.add('active');
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // scrollIntoView 在 Android WebView 的 fixed shell 内可能滚动宿主页面，
+      // 导致设置内容看似消失。这里只滚动设置面板自身。
+      const top = target.getBoundingClientRect().top
+        - root.getBoundingClientRect().top
+        + root.scrollTop
+        - 54;
+      // 直接赋值比 smooth scrollTo 在 Android WebView 里可靠。
+      root.scrollTop = Math.max(0, top);
     });
   });
   root.querySelector('#ykt-settings-nav a')?.classList.add('active');
@@ -147,71 +147,39 @@ export function mountSettingsPanel() {
   };
   $notifyVol?.addEventListener('input', syncVolumeOut);
 
-  const fmtRuntimeTime = (ms) => {
-    if (!ms) return '—';
-    try { return new Date(ms).toLocaleTimeString(); } catch { return '—'; }
-  };
-  const syncRuntimeState = () => {
-    const supported = runtime.hasAndroidRuntime();
-    const state = runtime.getState();
-    if ($bgUnsupported) $bgUnsupported.style.display = supported ? 'none' : '';
-    for (const el of [$bgRuntime, $bgStrong]) {
-      if (!el) continue;
-      el.disabled = !supported;
-    }
-    if ($bgRuntime) $bgRuntime.checked = !!state.enabled;
-    if ($bgStrong) $bgStrong.checked = !!state.strong;
-    if ($bgBatteryStatus) {
-      $bgBatteryStatus.textContent = state.batteryIgnored === true
-        ? '已允许后台运行'
-        : state.batteryIgnored === false
-          ? '未允许后台运行，建议设置'
-          : '电池优化状态未知';
-    }
-    if ($bgBatteryRequest) $bgBatteryRequest.disabled = !supported || state.batteryIgnored === true;
-    if ($bgStatus) {
-      if (!supported) {
-        $bgStatus.dataset.kind = 'warn';
-        $bgStatus.textContent = '仅 Android 壳支持后台监听';
-      } else if (!state.enabled) {
-        $bgStatus.dataset.kind = 'muted';
-        $bgStatus.textContent = '后台监听未开启';
-      } else {
-        const age = state.heartbeatAgeMs;
-        const ws = state.native?.lastWsState || state.lastWsState || 'unknown';
-        const lastEvent = state.native?.lastEventAt || state.lastEventAt;
-        if (!state.lastHeartbeatAt || age < 0) {
-          $bgStatus.dataset.kind = 'warn';
-          $bgStatus.textContent = `等待脚本心跳…\nWebSocket: ${ws}`;
-        } else if (age > 30000) {
-          $bgStatus.dataset.kind = 'warn';
-          $bgStatus.textContent = `脚本可能已停止（最后心跳 ${fmtRuntimeTime(state.lastHeartbeatAt)}）\nWebSocket: ${ws}`;
-        } else {
-          $bgStatus.dataset.kind = 'ok';
-          $bgStatus.textContent = `监听中 · 心跳 ${fmtRuntimeTime(state.lastHeartbeatAt)}\nWebSocket: ${ws} · 最后事件: ${fmtRuntimeTime(lastEvent)}`;
-        }
-        if (state.lastError) $bgStatus.textContent += `\n最近错误: ${state.lastError}`;
+  // Android WebView 对「label 内绝对定位隐藏 checkbox」的点击命中不稳定：
+  // 点轨道有时不切换，只点文字才生效。这里把开关改成 span 自己处理，
+  // input 仅保留状态与 change 事件，避免 label 原生激活和手动 toggle 互相抵消。
+  root.querySelectorAll('.settings-switch').forEach((sw) => {
+    const input = sw.querySelector('input[type="checkbox"]');
+    if (!input) return;
+    sw.setAttribute('tabindex', '0');
+    const syncAria = () => sw.setAttribute('aria-checked', input.checked ? 'true' : 'false');
+    syncAria();
+    input.addEventListener('change', syncAria);
+    const toggle = () => {
+      if (input.disabled) return;
+      input.checked = !input.checked;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    sw.addEventListener('click', (e) => {
+      e.preventDefault();
+      toggle();
+    });
+    // 轨道/滑块单独接管：部分 Android WebView 不会把轨道点击冒泡到 span。
+    sw.querySelectorAll('.switch-track, .switch-thumb').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggle();
+      });
+    });
+    sw.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
       }
-    }
-  };
-  window.addEventListener('ykt:runtime-state', syncRuntimeState);
-
-  $bgRuntime?.addEventListener('change', () => {
-    const ok = $bgRuntime.checked
-      ? runtime.startBackground(!!$bgStrong?.checked)
-      : runtime.stopBackground();
-    if (!ok) ui.toast?.('后台监听切换失败，请查看 Android 日志');
-    syncRuntimeState();
-  });
-  $bgStrong?.addEventListener('change', () => {
-    if (!runtime.setStrongMode(!!$bgStrong.checked)) {
-      ui.toast?.('强力模式切换失败');
-    }
-    syncRuntimeState();
-  });
-  $bgBatteryRequest?.addEventListener('click', () => {
-    runtime.requestBatteryOptimization();
-    setTimeout(syncRuntimeState, 800);
+    });
   });
 
   // Profile UI
@@ -561,7 +529,14 @@ export function mountSettingsPanel() {
   syncFormFromConfig();
 
   // 保存按钮
-  root.querySelector('#ykt-btn-settings-save').addEventListener('click', () => commitForm());
+  root.querySelector('#ykt-btn-settings-save').addEventListener('click', () => {
+    try {
+      commitForm();
+    } catch (e) {
+      log.warn('[Settings] 保存失败', e);
+      ui.toast?.('保存失败，请查看日志');
+    }
+  });
 
   // ===== 表单 → config 的唯一写入路径（保存按钮与自动保存共用，避免两套逻辑漂移） =====
   function commitForm({ silent = false } = {}) {
@@ -651,12 +626,15 @@ export function mountSettingsPanel() {
     if ($telemetry) $telemetry.checked = telemetry.enabled();
     syncEnhancedTelemetryState();
     fillPrompts();
-    syncRuntimeState();
   }
   // 暴露给面板外部（shell 切换 tab 时重新同步，避免显示陈旧值）
   root.__yksOnShow = () => {
-    syncFormFromConfig();
-    syncRuntimeState();
+    try {
+      syncFormFromConfig();
+    } catch (e) {
+      // 设置面板不能因为某一个字段同步失败而整页白屏；保留已渲染的 DOM。
+      log.warn('[Settings] 同步表单失败', e);
+    }
   };   // shell 切 tab 时刷新表单
 
   //--------------------------------------
@@ -762,7 +740,6 @@ export function mountSettingsPanel() {
   }
 
   // 关闭统一走 shell 右上角 ✕（面板自带 X 已删，见 html）
-  syncRuntimeState();
 
   mounted = true;
   return root;
