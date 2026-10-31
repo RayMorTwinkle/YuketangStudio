@@ -152,7 +152,9 @@ async function refreshCtxThumb() {
     img.title = source === 'repo' ? '当前 PPT 页（来自课件数据）' : '当前 PPT 页（来自页面）';
     span.appendChild(img);
   } else {
-    span.textContent = `（未取到 PPT：${reason || '未知原因'}）`;
+    // 手机端上下文条空间有限，和 AI 解答一样只显示「无图」，原因放 title。
+    span.textContent = '（无图）';
+    span.title = reason ? `未取到 PPT：${reason}` : '未取到 PPT';
   }
 }
 
@@ -353,13 +355,13 @@ async function sendCurrent({ retryText = null } = {}) {
     let attachFailed = '';
     if (attach) {
       const pending = addBubble('user', '⏳ 正在获取当前 PPT…');
-      const { dataUrl, reason } = await resolveCurrentSlideImage();
+      const { dataUrl } = await resolveCurrentSlideImage();
       pending.remove();
       if (dataUrl) {
         content.push({ type: 'image_url', image_url: { url: ensureImageUrl(dataUrl) } });
       } else {
         // 明确告知用户本条没有附图，而不是静默降级
-        attachFailed = reason || '未取到当前 PPT 页';
+        attachFailed = '无图';
       }
     }
     // 手动附件（加号添加的 PPT 页 / 上传图片）

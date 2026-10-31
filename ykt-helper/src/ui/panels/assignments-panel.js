@@ -1,8 +1,12 @@
 // src/ui/panels/assignments-panel.js
-// 工具箱「作业」tab：本课作业列表 + 当前试卷题目 + 批量下载/批量 AI + 单题 AI（复用 AI 解答面板）
+// 工具箱「作业」tab：本课作业列表 + 当前试卷逐题预览/单题 AI + 本篇批量 AI（答案暂存，不交卷）
 import { ui } from '../ui-api.js';
 import { confirmDialog } from '../confirm.js';
 import { askAnswer, getOverride } from './ai.js';
+import { runAnswer } from '../../answer/engine.js';
+import { submitAnswerTask } from '../../answer/submit.js';
+import { displayAnswer } from '../../answer/model.js';
+import { DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 import { log } from '../../core/log.js';
 import {
   getCourseContext, preferredCourse, rememberCourseSelection, subscribeCourseRoute,
@@ -21,7 +25,7 @@ import {
 } from '../../quiz/quiz-paper.js';
 import { agnesChat } from '../../ai/agnes.js';
 import { buildAssignmentTask } from '../../answer/adapters/assignment.js';
-import { buildExerciseTask, stripTags } from '../../answer/adapters/exercise.js';
+import { buildExerciseTask } from '../../answer/adapters/exercise.js';
 import { collectExamQuestions, fillExamAnswers } from '../../quiz/exam-fill.js';
 import { ensureExamConsent } from '../../core/exam-consent.js';
 import { normalizeType, typeLabel } from '../../answer/model.js';
@@ -95,7 +99,7 @@ function setStatus(text) {
 
 function setBusy(on) {
   busy = on;
-  ['#ykt-ap-zip', '#ykt-ap-ai', '#ykt-ap-refresh', '#ykt-ap-exam-fill'].forEach((s) => {
+  ['#ykt-ap-zip', '#ykt-ap-refresh', '#ykt-ap-exam-fill', '#ykt-ap-batch-current'].forEach((s) => {
     const b = $(s);
     if (b) b.disabled = on;
   });
@@ -128,6 +132,43 @@ function showQuestionsView(data, title, assignment) {
   renderQuestions();
 }
 
+function quizPreviewHtml(slide, data) {
+  const shapes = [...(slide?.Shapes || [])]
+    .filter((sh) => sh?.URL)
+    .sort((a, b) => (a.ZOrderPosition || 0) - (b.ZOrderPosition || 0));
+  if (!shapes.length) return '<div class="quiz-preview-empty">无图</div>';
+  const w = Number(data?.Width) > 0 ? Number(data.Width) : 450;
+  const h = Number(data?.Height) > 0 ? Number(data.Height) : 720;
+  const imgs = shapes.map((sh) => {
+    const left = Math.max(0, (Number(sh.Left) || 0) / w * 100);
+    const top = Math.max(0, (Number(sh.Top) || 0) / h * 100);
+    const width = Math.max(0, (Number(sh.Width) || 0) / w * 100);
+    const height = Math.max(0, (Number(sh.Height) || 0) / h * 100);
+    return `<img src="${escapeHtml(sh.URL)}" loading="lazy" alt="" style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%;width:${width.toFixed(2)}%;height:${height.toFixed(2)}%">`;
+  }).join('');
+  return `<div class="quiz-preview" style="aspect-ratio:${w}/${h}">${imgs}</div>`;
+}
+
+function questionPreviewRow(slide, data, i) {
+  const p = slide?.Problem;
+  if (!p) return '';
+  return `<div class="quiz-item quiz-card">
+    <div class="quiz-preview-wrap">${quizPreviewHtml(slide, data)}</div>
+    <div class="quiz-card-main">
+      ${p.Body ? `<div class="quiz-stem">${sanitizeHtml(p.Body)}</div>` : ''}
+      <div class="quiz-item-head">
+        <span class="quiz-idx">${i + 1}</span>
+        <b>${escapeHtml(typeText(p.Type))}</b>
+        <span class="quiz-score">${p.Score ?? 0} 分</span>
+      </div>
+      <div class="quiz-card-actions">
+        <button type="button" data-qact="dl" data-i="${i}">下载题图</button>
+        <button type="button" data-qact="ai" data-i="${i}">AI 解答</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderQuestions() {
   const box = $('#ykt-ap-questions');
   if (!box) return;
@@ -136,24 +177,20 @@ function renderQuestions() {
     return;
   }
   const slides = (viewData?.Slides || []);
-  const rows = slides.map((s, i) => {
-    if (!s?.Problem) return '';
-    const p = s.Problem;
-    return `<div class="quiz-item">
-      <div class="quiz-idx">${i + 1}</div>
-      <div class="quiz-info"><b>${typeText(p.Type)}</b> · ${p.Score ?? 0} 分</div>
-      <button type="button" data-qact="dl" data-i="${i}">下载</button>
-      <button type="button" data-qact="ai" data-i="${i}">AI 解答</button>
-    </div>`;
-  }).filter(Boolean).join('');
+  const rows = slides.map((s, i) => questionPreviewRow(s, viewData, i)).filter(Boolean).join('');
+  const count = slides.filter((s) => s?.Problem).length;
   box.innerHTML = `
     <div class="ap-qhead">
       <button type="button" id="ykt-ap-back">← 返回作业列表</button>
       <b>${escapeHtml(viewTitle || '当前试卷')}</b>
+      <span class="ap-head-meta">${count} 道题</span>
+      <button type="button" id="ykt-ap-batch-current" ${count ? '' : 'disabled'}>批量解答本篇（${count} 题）</button>
       ${viewAssignment?.oldId ? '<button type="button" id="ykt-ap-goto-submit">去交卷</button>' : ''}
     </div>
+    <div id="ykt-ap-batch-results" class="ap-batch-results"></div>
     <div class="quiz-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
   $('#ykt-ap-back')?.addEventListener('click', showListView);
+  $('#ykt-ap-batch-current')?.addEventListener('click', () => batchCurrentQuestions());
   $('#ykt-ap-goto-submit')?.addEventListener('click', () => {
     if (viewAssignment?.oldId) location.href = oldUrl(viewAssignment);
   });
@@ -263,10 +300,13 @@ function renderActiveQuestions() {
       <button type="button" id="ykt-ap-back">← 返回作业列表</button>
       <b>${escapeHtml(viewTitle || '详情')}</b>
       <span class="ap-head-meta">${head.map((s) => escapeHtml(String(s))).join(' · ')}</span>
+      <button type="button" id="ykt-ap-batch-current" ${(d.problems || []).length ? '' : 'disabled'}>批量解答本篇（${(d.problems || []).length} 题）</button>
     </div>
     ${desc ? `<div class="ap-desc">${desc}</div>` : ''}
+    <div id="ykt-ap-batch-results" class="ap-batch-results"></div>
     <div class="ap-active-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
   $('#ykt-ap-back')?.addEventListener('click', showListView);
+  $('#ykt-ap-batch-current')?.addEventListener('click', () => batchCurrentQuestions());
   injectActiveFont(d.fontUrl);
 }
 
@@ -738,33 +778,6 @@ async function batchZip() {
   }
 }
 
-function activeProblemPrompt(q) {
-  const opts = (q.options || []).map((o) => `${o.label}. ${stripTags(o.html || '')}`).join('\n');
-  return [
-    `第 ${q.index ?? '?'} 题（${q.typeText || ''}，${q.score ?? ''} 分）`,
-    stripTags(q.bodyHtml || ''),
-    opts,
-    (q.attachments || []).length ? `附件：${q.attachments.map((x) => x.name).join('、')}` : '',
-  ].filter(Boolean).join('\n');
-}
-
-async function answerOneProblem({ prompt, imageDataUrl, override }) {
-  const content = [{ type: 'text', text: prompt }];
-  if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
-  const res = await agnesChat({
-    messages: [
-      { role: 'system', content: '你是学习助手。请根据题目文字和图片给出答案和简要步骤。填空题/选择题请明确写出答案。' },
-      { role: 'user', content },
-    ],
-    stream: false,
-    thinking: true,
-    override,
-    traceKind: 'assignment',
-    traceMode: 'none',
-  });
-  return res.content || '（空回复）';
-}
-
 function currentExamContext() {
   const ctx = getCourseContext();
   const target = list.find((a) => Number(a.type) === 20 && (
@@ -858,123 +871,97 @@ async function examFillCurrent() {
   await fillCurrentExam();
 }
 
-async function batchAI() {
+function appendBatchResult(index, ok, text, state = '') {
+  const box = $('#ykt-ap-batch-results');
+  if (!box) return;
+  const row = document.createElement('div');
+  row.className = `ap-batch-row ${ok ? 'ok' : 'bad'}`;
+  row.innerHTML = `<b>第 ${index} 题</b><span>${escapeHtml(text || '')}${state ? ` · ${escapeHtml(state)}` : ''}</span>`;
+  box.appendChild(row);
+}
+
+/** 只处理当前打开的一篇作业/试卷，不跨作业；作业答案走暂存，不交卷。 */
+async function batchCurrentQuestions() {
   if (busy) return;
-  const items = selectedItems().filter((a) => [4, 19, 20].includes(Number(a.type)));
-  if (!items.length) { ui.toast?.('请先勾选作业或考试', 2500); return; }
+  const isOld = Array.isArray(viewData?.Slides);
+  const items = isOld
+    ? viewData.Slides.map((s, index) => (s?.Problem ? { slide: s, index } : null)).filter(Boolean)
+    : (viewData?.problems || []).map((q, index) => ({ q, index }));
+  if (!items.length) { ui.toast?.('当前没有可解答的题目', 2200); return; }
   const override = getOverride();
   if (!override) { ui.toast?.('请先在设置里配置 AI', 2500); return; }
-  const examCount = items.filter((a) => Number(a.type) === 20).length;
-  const inProgressCount = items.filter((a) => Number(a.type) === 20 && !a.canViewPaper).length;
-  const detail = [
-    `将依次对 ${items.length} 份作业/考试调用 AI 解答，题目较多时耗时和费用都会增加。`,
-    examCount ? `其中 ${examCount} 份是考试；AI 只生成参考，不自动提交。` : '',
-    inProgressCount ? `有 ${inProgressCount} 份进行中/不可回顾考试：只有当前打开的考试页能自动填入，其余会被跳过。` : '',
-    '考试规则风险请自行承担。确定继续吗？',
-  ].filter(Boolean).join('\n');
-  const ok = await confirmDialog(detail, { okText: '开始解答', danger: true });
+  const ok = await confirmDialog(
+    `将依次解答本篇 ${items.length} 道题。\n作业答案只会暂存，不会交卷；请逐题核对后自行交卷。\n题目较多时耗时和费用会增加。`,
+    { okText: '开始解答', danger: true },
+  );
   if (!ok) return;
 
   setBusy(true);
-  const md = [];
+  const box = $('#ykt-ap-batch-results');
+  if (box) box.innerHTML = '';
   let done = 0;
+  let staged = 0;
+  let failed = 0;
+  const baseSystem = String(ui.config.systemPromptAI || '').trim() || DEFAULT_SYSTEM_PROMPT_AI;
   try {
-    for (const a of items) {
-      md.push(`# ${a.title}\n`);
-      setStatus(`正在读取「${a.title}」…`);
+    for (let n = 0; n < items.length; n++) {
+      const item = items[n];
+      const displayIndex = isOld ? item.index + 1 : (item.q?.index ?? item.index + 1);
+      setStatus(`正在解答第 ${displayIndex} 题（${n + 1}/${items.length}）…`);
       try {
-        if (Number(a.type) === 4) {
-          if (!a.oldId) { md.push('> 缺少老版作业入口，已跳过。\n'); continue; }
-          const data = await fetchQuizDataById(a.oldId);
-          const slides = data.Slides || [];
-          for (let i = 0; i < slides.length; i++) {
-            if (!slides[i]?.Problem) continue;
-            done++;
-            setStatus(`正在解答「${a.title}」第 ${i + 1} 题（已完成 ${done} 题）…`);
-            try {
-              const imageDataUrl = await quizQuestionDataUrl(data, i, 2);
-              const p = slides[i].Problem;
-              const answer = await answerOneProblem({
-                prompt: `第 ${i + 1} 题（${p.Type || ''}，${p.Score ?? ''} 分）`,
-                imageDataUrl,
-                override,
-              });
-              md.push(`## 第 ${i + 1} 题\n\n${answer}\n`);
-            } catch (e) {
-              md.push(`## 第 ${i + 1} 题\n\n> 解答失败：${e?.message || e}\n`);
-            }
-          }
-        } else if (Number(a.type) === 19) {
-          const detail = await fetchExerciseDetail({
-            leafTypeId: a.leafTypeId,
-            classroomId: a.classroomId,
-            uvId: uvIdFromCookie(document.cookie),
+        let imageDataUrl = '';
+        let task = null;
+        if (isOld) {
+          imageDataUrl = await quizQuestionDataUrl(viewData, item.index, 2);
+          task = buildAssignmentTask({
+            quizData: viewData,
+            index: item.index,
+            assignment: viewAssignment,
+            quizId: String(viewAssignment?.oldId || window.quizID || ''),
+            imageDataUrl,
           });
-          await injectActiveFont(detail.fontUrl);
-          for (const q of (detail.problems || [])) {
-            done++;
-            setStatus(`正在解答「${a.title}」第 ${q.index ?? done} 题（已完成 ${done} 题）…`);
-            try {
-              const imageDataUrl = await captureProblemCard(q);
-              const answer = await answerOneProblem({
-                prompt: activeProblemPrompt(q),
-                imageDataUrl,
-                override,
-              });
-              md.push(`## 第 ${q.index ?? done} 题\n\n${answer}\n`);
-            } catch (e) {
-              md.push(`## 第 ${q.index ?? done} 题\n\n> 解答失败：${e?.message || e}\n`);
-            }
-          }
-        } else if (Number(a.type) === 20) {
-          if (!a.canViewPaper) {
-            const current = currentExamContext();
-            const samePage = current.isExam && current.examId && (
-              (a.newId && String(current.examId) === String(a.newId))
-              || (a.oldId && String(current.examId) === String(a.oldId))
-            );
-            if (samePage) {
-              // 进行中考试只能在当前打开的考试页读取并填入；不后台抓题、不提交。
-              const r = await fillCurrentExam({ fromBatch: true });
-              if (r) {
-                done += r.filled;
-                md.push(`> 已在当前考试页自动填入 ${r.filled} 题，跳过 ${r.skipped} 题；未提交，请核对后手动交卷。\n`);
-              } else {
-                md.push('> 当前考试页自动填入已取消或失败；未提交。\n');
-              }
-            } else {
-              md.push('> 进行中或不可回顾的考试需要先打开考试页；本工具不后台抓题、不自动提交。\n');
-            }
-            continue;
-          }
-          const detail = await fetchExamReview(a);
-          if (detail.mode !== 'exam-review') {
-            md.push(`> 暂不可回顾：${detail.progress?.statusMessage || '未出分或未公布'}\n`);
-            continue;
-          }
-          await injectActiveFont(detail.fontUrl);
-          for (const q of (detail.problems || [])) {
-            done++;
-            setStatus(`正在解答「${a.title}」第 ${q.index ?? done} 题（已完成 ${done} 题）…`);
-            try {
-              const imageDataUrl = await captureProblemCard(q);
-              const answer = await answerOneProblem({
-                prompt: activeProblemPrompt(q),
-                imageDataUrl,
-                override,
-              });
-              md.push(`## 第 ${q.index ?? done} 题\n\n${answer}\n`);
-            } catch (e) {
-              md.push(`## 第 ${q.index ?? done} 题\n\n> 解答失败：${e?.message || e}\n`);
-            }
+        } else {
+          imageDataUrl = await captureProblemCard(item.q);
+          task = buildExerciseTask({
+            problem: item.q,
+            assignment: viewAssignment,
+            imageDataUrl,
+          });
+        }
+        if (!task) throw new Error('题目信息不完整');
+
+        const run = await runAnswer(task, {
+          transport: task.target?.allowSubmit ? (ui.config.regexToolCall ? 'regex' : 'tools') : 'text',
+          baseSystem,
+          stream: false,
+          thinking: true,
+          override,
+          allowLegacyText: true,
+          traceKind: 'assignment',
+          traceMode: 'none',
+        });
+        if (!run.ok) throw run.error || new Error('AI 没有生成答案');
+
+        let state = '仅展示';
+        if (task.target?.kind === 'quiz' && task.target?.allowSubmit) {
+          const submit = await submitAnswerTask(task, run.answer, { runId: run.runId || '' });
+          if (submit.route === 'cache') {
+            staged++;
+            state = '已暂存';
+          } else {
+            state = submit.route;
           }
         }
+        done++;
+        appendBatchResult(displayIndex, true, displayAnswer(run.answer) || '已生成', state);
       } catch (e) {
-        md.push(`> 读取失败：${e?.message || e}\n`);
+        failed++;
+        appendBatchResult(displayIndex, false, e?.message || String(e), '失败');
+        log.warn('[assign] batch question failed', item.index, e);
       }
     }
-    await saveBlob(new Blob([md.join('\n')], { type: 'text/markdown;charset=utf-8' }), `作业解答_${stamp()}.md`);
-    setStatus(`已完成 ${done} 题，解答已保存为 Markdown`);
+    setStatus(`本篇完成 ${done} 题${staged ? `，已暂存 ${staged} 题` : ''}${failed ? `，失败 ${failed} 题` : ''}；未交卷。`);
+    ui.toast?.(`已完成 ${done} 题${staged ? `，暂存 ${staged} 题` : ''}；请核对后自行交卷`, 4500);
   } catch (e) {
     setStatus('批量解答中断：' + (e?.message || e));
   } finally {
@@ -1000,7 +987,6 @@ export function mountAssignmentsPanel() {
       <div class="ap-actions">
         <label class="ap-all"><input type="checkbox" id="ykt-ap-all"> 全选</label>
         <button type="button" id="ykt-ap-zip">批量下载（ZIP）</button>
-        <button type="button" id="ykt-ap-ai">批量 AI 解答</button>
         <button type="button" id="ykt-ap-exam-fill" style="display:none;border-color:#f59e0b;color:#92400e;">考试 AI 自动填入（不提交）</button>
       </div>
       <div id="ykt-ap-status" class="ap-status"></div>
@@ -1020,7 +1006,6 @@ export function mountAssignmentsPanel() {
     renderList();
   });
   $('#ykt-ap-zip')?.addEventListener('click', batchZip);
-  $('#ykt-ap-ai')?.addEventListener('click', batchAI);
   $('#ykt-ap-exam-fill')?.addEventListener('click', examFillCurrent);
 
   $('#ykt-ap-list')?.addEventListener('click', (e) => {
@@ -1112,4 +1097,9 @@ export function mountAssignmentsPanel() {
     }, 900);
   }
   return root;
+}
+
+/** 仅测试：把注入的 old quizData 渲染到作业面板。 */
+export function __testShowQuestions(data, title, assignment = null) {
+  showQuestionsView(data, title, assignment);
 }

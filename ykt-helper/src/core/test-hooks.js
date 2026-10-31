@@ -15,6 +15,8 @@ import { collectExamQuestions, fillExamAnswers } from '../quiz/exam-fill.js';
 import * as Shell from '../ui/panels/shell.js';
 import * as telemetry from './telemetry.js';
 import { __testRunClassCard } from '../ui/panels/brush.js';
+import { __testShowQuestions } from '../ui/panels/assignments-panel.js';
+import { compressImageDataUrl, imageDataUrlBytes, prepareMessagesForRequest } from './image.js';
 
 const L = (...a) => log.info('[test]', ...a);
 
@@ -306,6 +308,25 @@ export function installTestHooks() {
       if (!problem) throw new Error('请先 injectProblem()');
       try { ui.showAIPanel?.(true); } catch {}
       return askAIForProblem(problem, { autoSubmit: true });
+    },
+
+    /** 渲染注入的老版作业题图（仅测试模式） */
+    showOldQuiz(data, title, assignment = null) {
+      __testShowQuestions(data, title, assignment);
+      Shell.openTab('assign');
+    },
+
+    /** 图片压缩 / 请求体预处理（仅测试模式） */
+    compressImage(dataUrl, opts = {}) {
+      return compressImageDataUrl(dataUrl, opts);
+    },
+
+    imageBytes(dataUrl) {
+      return imageDataUrlBytes(dataUrl);
+    },
+
+    prepareImages(messages, opts = {}) {
+      return prepareMessagesForRequest(messages, opts);
     },
 
     /** 清空注入的测试题目 */

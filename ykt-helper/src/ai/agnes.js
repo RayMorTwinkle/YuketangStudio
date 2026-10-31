@@ -4,6 +4,7 @@
 import { gm } from '../core/env.js';
 import { log } from '../core/log.js';
 import { ensureImageUrl } from '../core/dom.js';
+import { prepareMessagesForRequest } from '../core/image.js';
 import { getDevConfig } from '../core/devmode.js';
 import * as telemetry from '../core/telemetry.js';
 import { getTestMock } from '../core/test-mode.js';
@@ -139,7 +140,10 @@ export async function agnesChat(opts) {
   // 硬编码 effort 会让不支持该参数的端点报 400
   const effort = thinking ? (ov.reasoningEffort || dev.reasoningEffort || 'medium') : null;
 
-  const body = { model, messages: opts.messages };
+  // 图片体积控制：大于 500KB 的 data URL 先压到 500KB 内再发给上游。
+  // 这一步只改请求副本，不改用户界面里的原图。
+  const messages = await prepareMessagesForRequest(opts.messages);
+  const body = { model, messages };
   if (thinking && effort && effort !== 'off') body.reasoning_effort = effort;
   if (opts.tools && opts.tools.length) {
     body.tools = opts.tools;
@@ -187,7 +191,7 @@ export async function agnesChat(opts) {
     source: opts.traceSource || '',
     attempt: opts.traceAttempt || 0,
     provider: { url, model, cloud: isCloud, stream, thinking },
-    request: { messages: opts.messages, tools: opts.tools?.length || 0, bodyBytes: JSON.stringify(body).length },
+    request: { messages, tools: opts.tools?.length || 0, bodyBytes: JSON.stringify(body).length },
   };
   const traceResult = (r) => {
     telemetry.trace({

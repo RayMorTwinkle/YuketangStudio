@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
 
 // ego 的 nodejs（stdin 模式）会清洗自定义 env 且 cwd=/，但保留 PWD（npm 调用目录）。
 // 依次尝试：ykt-helper 根 → 仓库根，兼容从任意一层 npm run。
-const ROOT = process.env.YKS_ROOT || process.env.PWD || process.cwd();
+const ROOT = process.env.YKS_ROOT || '/Users/Ray/Desktop/AI工作台/YuketangStudio-main/ykt-helper';
 const CANDIDATES = [
   resolve(ROOT, 'dist/YuketangStudio-latest.user.js'),
   resolve(ROOT, 'ykt-helper/dist/YuketangStudio-latest.user.js'),

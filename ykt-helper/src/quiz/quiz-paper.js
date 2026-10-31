@@ -3,7 +3,7 @@
 //   quizData = base64 JSON，Slides[].Shapes[] 是带坐标的 PNG，Problem 是题目元数据
 // 这里负责解析、拼题图、导出 JPG/ZIP/PDF/长图。
 import { log } from '../core/log.js';
-import { ensureJsPDF } from '../core/env.js';
+import { ensureJsPDF, fetchAsDataURL } from '../core/env.js';
 import { getTestSubmitMode } from '../core/test-mode.js';
 
 export function isQuizPage() {
@@ -42,15 +42,31 @@ export function quizMeta(data) {
 
 const imgCache = new Map();
 
-function loadImage(url) {
-  if (imgCache.has(url)) return imgCache.get(url);
-  const p = new Promise((resolve, reject) => {
+function loadImageElement(url) {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';   // CDN 返回 access-control-allow-origin: *
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('图片加载失败: ' + url));
     img.src = url;
   });
+}
+
+function loadImage(url) {
+  if (imgCache.has(url)) return imgCache.get(url);
+  const p = (async () => {
+    try {
+      return await loadImageElement(url);
+    } catch (directError) {
+      // 浏览器直连图片可能被防盗链/CORS 策略拦；走 GM/fetch 拿成 dataURL 再画，
+      // 否则 composeSlide 会静默画成白图，AI 收到的就是一张空白 JPEG。
+      try {
+        const dataUrl = await fetchAsDataURL(url, 15000);
+        if (dataUrl) return await loadImageElement(dataUrl);
+      } catch { /* fall through */ }
+      throw directError;
+    }
+  })();
   imgCache.set(url, p);
   return p;
 }
@@ -68,15 +84,21 @@ export async function composeSlide(slide, data, scale = 2) {
   const shapes = [...(slide?.Shapes || [])].sort(
     (a, b) => (a.ZOrderPosition || 0) - (b.ZOrderPosition || 0),
   );
+  let okShapes = 0;
+  let failedShapes = 0;
   for (const sh of shapes) {
     if (!sh?.URL) continue;
     try {
       const img = await loadImage(sh.URL);
       ctx.drawImage(img, sh.Left || 0, sh.Top || 0, sh.Width || 0, sh.Height || 0);
+      okShapes++;
     } catch (e) {
+      failedShapes++;
       log.warn('[quiz] shape load failed', sh.URL, e);
     }
   }
+  // 给调用方判断「题目图片是否一张都没画上」；不要静默把空白图交给 AI。
+  canvas.__yktShapeStats = { ok: okShapes, failed: failedShapes, total: okShapes + failedShapes };
   return canvas;
 }
 
@@ -266,6 +288,10 @@ export async function downloadLongImage(data) {
 
 export async function quizQuestionDataUrl(data, index, scale = 2) {
   const canvas = await composeQuestion(data, index, scale);
+  const stats = canvas.__yktShapeStats;
+  if (stats && stats.total > 0 && stats.ok === 0) {
+    throw new Error('题图加载失败，请检查网络或旧版页面图片是否可访问');
+  }
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
