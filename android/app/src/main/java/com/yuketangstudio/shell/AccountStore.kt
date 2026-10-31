@@ -27,6 +27,9 @@ object AccountStore {
 
         /** 登录凭证摘要（比较两个 session 是否同账号） */
         fun authFingerprint(): String = fingerprint(localStorage)
+
+        /** 稳定身份：优先 user_profile.user_id，避免 token 轮换造成同账号误判 */
+        fun stableIdentity(): String = stableIdentity(localStorage)
     }
 
     private const val PREF = "accounts"
@@ -75,24 +78,35 @@ object AccountStore {
         save(ctx, list)
     }
 
-    /** 从 localStorage JSON 提取登录凭证指纹（Authorization/token 系） */
+    /** 解析可能被 JSON 编码过一次的 user_profile。 */
+    private fun parseObject(raw: String): JSONObject? {
+        val v = raw.trim()
+        if (!v.startsWith("{")) return null
+        return runCatching { JSONObject(v) }.getOrNull()
+    }
+
+    /** 稳定用户身份：user_profile.user_id。没有则返回空，绝不使用轮换 token。 */
+    fun stableIdentity(ls: JSONObject): String {
+        val o = parseObject(ls.optString("user_profile")) ?: return ""
+        for (key in listOf("user_id", "userId", "uid", "id")) {
+            val uid = o.optString(key).trim()
+            if (uid.isNotEmpty() && uid != "0" && !uid.startsWith("{")) return "uid:$uid"
+        }
+        return ""
+    }
+
+    /** 从 localStorage JSON 提取登录凭证指纹（优先稳定 uid，token 仅作兜底）。 */
     fun fingerprint(ls: JSONObject): String {
         // ① 雨课堂把登录态放 Cookie（HttpOnly），localStorage 里只有 user_profile
-        //    之前只扫 authorization/token 键，导致永远判定「未登录」——账号功能实际不可用
-        val rawProfile = ls.optString("user_profile")
-        if (rawProfile.startsWith("{")) {
-            runCatching {
-                val o = JSONObject(rawProfile)
-                val uid = o.optString("user_id")
-                if (uid.isNotBlank() && uid != "0") return "uid:$uid"
-            }
-        }
-        // ② 通用 token 扫描（兼容其它站点/旧版本）
+        val stable = stableIdentity(ls)
+        if (stable.isNotEmpty()) return stable
+        // ② 通用 token 扫描（兼容其它站点/旧版本）；只能作为最后兜底，
+        //    因为 token 会轮换，不能把它当成长期账号身份。
         for (k in ls.keys()) {
             val kl = k.lowercase()
             if (kl.contains("authorization") || kl.contains("token")) {
                 val v = ls.optString(k)
-                if (v.length > 8) return v.takeLast(16)
+                if (v.length > 8) return "token:${v.takeLast(16)}"
             }
         }
         return ""

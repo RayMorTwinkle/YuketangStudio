@@ -177,6 +177,7 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
 
 /* ===== 设置面板 (#ykt-settings-panel) ===== */
 #ykt-settings-panel{
+  overscroll-behavior: contain;
   --settings-border: #e5e9f2;
   --settings-muted: #64748b;
   --settings-soft: #f6f8fc;
@@ -778,7 +779,7 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
   #ykt-settings-panel .settings-control-wide,
   #ykt-settings-panel .settings-control-range{ width: 100%; flex: 1 1 auto; justify-content: flex-start; }
   #ykt-settings-panel .settings-control-inline{ width: auto; flex: 0 0 auto; }
-  #ykt-settings-panel .settings-switch{ align-self: flex-start; }
+  #ykt-settings-panel .settings-switch{ align-self: flex-end; margin-left: auto; }
   #ykt-settings-panel .settings-heading h3{ font-size: 16px; }
   #ykt-settings-panel .setting-actions{ width: 100%; flex: 1 1 100%; }
   #ykt-settings-panel .setting-actions button{ flex: 1; white-space: nowrap; }

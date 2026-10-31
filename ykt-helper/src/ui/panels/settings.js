@@ -159,19 +159,24 @@ export function mountSettingsPanel() {
     input.addEventListener('change', syncAria);
     const toggle = () => {
       if (input.disabled) return;
+      // 某些 Android WebView 点击隐藏 checkbox 会把焦点滚到面板外；
+      // 记录并恢复设置面板滚动位置，避免用户看到一片空白。
+      const top = root.scrollTop;
       input.checked = !input.checked;
       input.dispatchEvent(new Event('change', { bubbles: true }));
+      requestAnimationFrame(() => { root.scrollTop = top; });
     };
     sw.addEventListener('click', (e) => {
       e.preventDefault();
-      toggle();
+      e.stopPropagation();
+      try { toggle(); } catch (err) { log.warn('[Settings] toggle failed', err); }
     });
     // 轨道/滑块单独接管：部分 Android WebView 不会把轨道点击冒泡到 span。
     sw.querySelectorAll('.switch-track, .switch-thumb').forEach((el) => {
       el.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        toggle();
+        try { toggle(); } catch (err) { log.warn('[Settings] toggle failed', err); }
       });
     });
     sw.addEventListener('keydown', (e) => {

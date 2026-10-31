@@ -136,6 +136,7 @@ class MainActivity : AppCompatActivity() {
     private var currentAccountId: String?
         get() = prefs.getString("account.currentId", null)
         set(v) { prefs.edit().putString("account.currentId", v).apply() }
+    private var accountPromptDialog: AlertDialog? = null
 
     /** 用户点过「暂不」的账号指纹：同一账号不再反复弹窗 */
     private fun ignoredFps(): MutableSet<String> =
@@ -143,6 +144,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun ignoreFp(fp: String) {
         prefs.edit().putStringSet("account.ignoredFps", ignoredFps().apply { add(fp) }).apply()
+    }
+
+    /** 已经提示过保存的身份：即使匹配失败也只提示一次，避免每个页面都弹。 */
+    private fun promptedFps(): MutableSet<String> =
+        prefs.getStringSet("account.promptedFps", mutableSetOf())!!.toMutableSet()
+
+    private fun markPrompted(fp: String) {
+        if (fp.isBlank()) return
+        prefs.edit().putStringSet("account.promptedFps", promptedFps().apply { add(fp) }).apply()
     }
 
     companion object {
@@ -1857,9 +1867,34 @@ class MainActivity : AppCompatActivity() {
     // 账号
     // ============================================================
 
+    /** 在同一账号的多个快照里找匹配：稳定 uid 优先，旧 token 指纹只作兼容。 */
+    private fun findAccount(
+        profiles: List<AccountStore.Profile>,
+        ls: JSONObject,
+        guessName: String? = null,
+    ): AccountStore.Profile? {
+        val fp = AccountStore.fingerprint(ls)
+        val stable = AccountStore.stableIdentity(ls)
+        val legacyToken = fp.removePrefix("token:")
+        val exact = profiles.find { p ->
+            p.authFingerprint() == fp
+                || (fp.startsWith("token:") && p.authFingerprint() == legacyToken)
+                || (stable.isNotEmpty() && p.stableIdentity() == stable)
+        }
+        if (exact != null) return exact
+        // 旧版本可能把同一账号按轮换 token 存成多个同名 profile：优先取最新的一份，
+        // 后续 refreshProfileSession 会把它补成稳定 uid，不再反复提示。
+        if (!guessName.isNullOrBlank()) {
+            return profiles.filter { it.name == guessName }.maxByOrNull { it.savedAt }
+        }
+        return null
+    }
+
     /** 页面加载完成后探测登录态：有 token 且不属于任何已存 profile → 提示保存 */
     private fun detectAccount(view: WebView, origin: String?) {
         if (origin == null) return
+        // 页面连续触发 onPageFinished 时，避免叠多个相同对话框。
+        if (accountPromptDialog?.isShowing == true) return
         view.evaluateJavascript(
             "try{btoa(unescape(encodeURIComponent(JSON.stringify(localStorage))))}catch(e){''}"
         ) { raw ->
@@ -1870,39 +1905,63 @@ class MainActivity : AppCompatActivity() {
             }.getOrNull() ?: return@evaluateJavascript
             val fp = AccountStore.fingerprint(ls)
             if (fp.isEmpty()) return@evaluateJavascript  // 未登录
-            if (fp in ignoredFps()) return@evaluateJavascript  // 用户明确说过「暂不」
-
+            val stable = AccountStore.stableIdentity(ls)
             val profiles = AccountStore.all(this)
-            val matched = profiles.find { it.authFingerprint() == fp }
+            val guess = AccountStore.guessName(ls, "账号${profiles.size + 1}")
+            // 没有 user_profile 时 token 会轮换，用「环境+显示名」作为提示去重键，
+            // 避免同一账号每打开一个页面都弹一次。
+            val ignoreKey = stable.ifEmpty { "name:${origin}:$guess" }
+            if (fp in ignoredFps() || ignoreKey in ignoredFps()) return@evaluateJavascript
+            if (ignoreKey in promptedFps()) return@evaluateJavascript
+            // token 会轮换，旧版本保存的 profile 可能只有 token 指纹；
+            // 同名单账号兜底为同一账号，直接刷新快照，不再重复提示。
+            val matched = findAccount(profiles, ls, guess)
             if (matched != null) {
-                // 已存账号：静默刷新 snapshot + 记为当前
                 if (currentAccountId != matched.id) {
                     currentAccountId = matched.id
-                    Log.i(TAG, "识别账号: ${matched.name}")
+                    Log.i(TAG, "识别账号: ${matched.name}（稳定身份 ${stable.ifEmpty { fp }.takeLast(8)}）")
                     status(matched.name.take(8))
                 }
                 refreshProfileSession(matched, ls)
                 return@evaluateJavascript
             }
-            // 新账号 → 提示保存
-            val guess = AccountStore.guessName(ls, "账号${profiles.size + 1}")
+
+            // 新账号 → 每个稳定身份只提示一次
+            markPrompted(ignoreKey)
             Log.i(TAG, "检测到新账号 guess=$guess fp=${fp.takeLast(6)}…")
-            AlertDialog.Builder(this)
+            val dialog = AlertDialog.Builder(this)
                 .setTitle("检测到新登录账号")
                 .setMessage("是否保存为「$guess」？之后可一键切换。")
                 .setPositiveButton("保存") { _, _ ->
-                    val p = AccountStore.Profile(
-                        id = "acc_${System.currentTimeMillis()}",
-                        name = guess, env = env.name, origin = origin,
-                        cookies = allCookies(), localStorage = ls,
-                        savedAt = System.currentTimeMillis())
+                    val existing = findAccount(AccountStore.all(this), ls, guess)
+                    val p = if (existing != null) {
+                        existing.apply {
+                            name = guess
+                            env = this@MainActivity.env.name
+                            this.origin = origin
+                            cookies = allCookies()
+                            localStorage = ls
+                            savedAt = System.currentTimeMillis()
+                        }
+                    } else {
+                        AccountStore.Profile(
+                            id = "acc_${System.currentTimeMillis()}",
+                            name = guess, env = this@MainActivity.env.name, origin = origin,
+                            cookies = allCookies(), localStorage = ls,
+                            savedAt = System.currentTimeMillis())
+                    }
                     AccountStore.upsert(this, p)
                     currentAccountId = p.id
                     status(guess.take(8))
-                    toast("账号「$guess」已保存")
+                    toast(if (existing != null) "账号「$guess」已更新" else "账号「$guess」已保存")
                 }
-                .setNegativeButton("暂不") { _, _ -> ignoreFp(fp) }
-                .show()
+                .setNegativeButton("暂不") { _, _ -> ignoreFp(ignoreKey) }
+                .create()
+            dialog.setOnDismissListener {
+                if (accountPromptDialog === dialog) accountPromptDialog = null
+            }
+            accountPromptDialog = dialog
+            dialog.show()
         }
     }
 
@@ -2054,16 +2113,28 @@ class MainActivity : AppCompatActivity() {
             if (AccountStore.fingerprint(ls).isEmpty()) { toast("当前未登录"); return@evaluateJavascript }
             val profiles = AccountStore.all(this)
             val guess = AccountStore.guessName(ls, "账号${profiles.size + 1}")
-            val p = AccountStore.Profile(
-                id = "acc_${System.currentTimeMillis()}",
-                name = guess, env = env.name, origin = o,
-                cookies = allCookies(), localStorage = ls,
-                savedAt = System.currentTimeMillis())
+            val existing = findAccount(profiles, ls, guess)
+            val p = if (existing != null) {
+                existing.apply {
+                    name = guess
+                    env = this@MainActivity.env.name
+                    origin = o
+                    cookies = allCookies()
+                    localStorage = ls
+                    savedAt = System.currentTimeMillis()
+                }
+            } else {
+                AccountStore.Profile(
+                    id = "acc_${System.currentTimeMillis()}",
+                    name = guess, env = this@MainActivity.env.name, origin = o,
+                    cookies = allCookies(), localStorage = ls,
+                    savedAt = System.currentTimeMillis())
+            }
             AccountStore.upsert(this, p)
             currentAccountId = p.id
-            toast("账号「$guess」已保存")
+            toast(if (existing != null) "账号「$guess」已更新" else "账号「$guess」已保存")
             status(guess.take(8))
-            Log.i(TAG, "手动保存账号 $guess")
+            Log.i(TAG, "手动保存账号 $guess existing=${existing != null}")
         }
     }
 
