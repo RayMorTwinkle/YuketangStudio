@@ -6,6 +6,7 @@ import { isCloudProfile } from './telemetry.js';
 const STATUS_URL = 'https://api.raymor.top/yuketangstudio/status';
 const CACHE_MS = 15_000;
 const cache = new Map();
+const inflight = new Map();
 
 /** 从当前 AI 配置里取云端 profile；不是云端模型时返回 null。 */
 export function getCloudProfile(config) {
@@ -16,47 +17,64 @@ export function getCloudProfile(config) {
   return { id: p.id, baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model || '' };
 }
 
-function requestStatus(code, timeout = 6000) {
-  return new Promise((resolve, reject) => {
-    const url = `${STATUS_URL}?code=${encodeURIComponent(code)}`;
-    const onload = (status, text) => {
-      let data = null;
-      try { data = JSON.parse(text || '{}'); } catch { /* ignore */ }
-      if (status >= 200 && status < 300 && data) resolve(data);
-      else reject(new Error(data?.error || `HTTP ${status}`));
-    };
-    try {
-      gm.xhr({
-        method: 'GET',
-        url,
-        timeout,
-        onload: (r) => onload(r.status, r.responseText),
-        onerror: () => reject(new Error('网络错误')),
-        ontimeout: () => reject(new Error('状态查询超时')),
-      });
-    } catch {
-      fetch(url, { method: 'GET', credentials: 'omit', signal: AbortSignal.timeout?.(timeout) })
-        .then(async (r) => onload(r.status, await r.text()))
-        .catch(reject);
-    }
-  });
+async function requestStatus(code, timeout = 10000) {
+  const url = `${STATUS_URL}?code=${encodeURIComponent(code)}`;
+  // fetch 优先：状态接口已放开 CORS；比部分 GM_xhr 实现更快。
+  try {
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), timeout) : null;
+    const res = await fetch(url, { method: 'GET', credentials: 'omit', signal: ctrl?.signal });
+    if (timer) clearTimeout(timer);
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text || '{}'); } catch { /* ignore */ }
+    if (res.ok && data) return data;
+    throw new Error(data?.error || `HTTP ${res.status}`);
+  } catch (fetchErr) {
+    return new Promise((resolve, reject) => {
+      try {
+        gm.xhr({
+          method: 'GET',
+          url,
+          timeout,
+          onload: (r) => {
+            let data = null;
+            try { data = JSON.parse(r.responseText || '{}'); } catch { /* ignore */ }
+            if (r.status >= 200 && r.status < 300 && data) resolve(data);
+            else reject(new Error(data?.error || `HTTP ${r.status}`));
+          },
+          onerror: () => reject(fetchErr || new Error('网络错误')),
+          ontimeout: () => reject(new Error('状态查询超时')),
+        });
+      } catch {
+        reject(fetchErr || new Error('状态查询失败'));
+      }
+    });
+  }
 }
 
 /** 查询指定解锁码的云端上游状态；15 秒内缓存，force=true 强制刷新。 */
-export async function fetchCloudStatus(code, { force = false, timeout = 6000 } = {}) {
+export async function fetchCloudStatus(code, { force = false, timeout = 10000 } = {}) {
   const key = String(code || '');
   if (!key) return { ok: false, error: '没有云端解锁码' };
   const hit = cache.get(key);
   if (!force && hit && Date.now() - hit.at < CACHE_MS) return hit.data;
-  try {
-    const data = await requestStatus(key, timeout);
-    cache.set(key, { at: Date.now(), data });
-    return data;
-  } catch (e) {
-    const data = { ok: false, error: String(e?.message || e || '状态查询失败') };
-    cache.set(key, { at: Date.now(), data });
-    return data;
-  }
+  if (!force && inflight.has(key)) return inflight.get(key);
+  const pending = (async () => {
+    try {
+      const data = await requestStatus(key, timeout);
+      cache.set(key, { at: Date.now(), data });
+      return data;
+    } catch (e) {
+      const data = { ok: false, error: String(e?.message || e || '状态查询失败') };
+      cache.set(key, { at: Date.now(), data });
+      return data;
+    } finally {
+      inflight.delete(key);
+    }
+  })();
+  inflight.set(key, pending);
+  return pending;
 }
 
 /** 给 UI 用的简短结论。 */

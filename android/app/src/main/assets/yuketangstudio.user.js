@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.9.11
+// @version      0.9.12
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档、班级课件下载、刷课
@@ -912,7 +912,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.9.11" !== "undefined" && "0.9.11") return String("0.9.11");
+      if (typeof "0.9.12" !== "undefined" && "0.9.12") return String("0.9.12");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -4671,7 +4671,7 @@
       timerLagMs: state.timerLagMs,
       lessonId: String(repo.currentLessonId || ""),
       page: location.pathname,
-      scriptVersion: String("0.9.11"),
+      scriptVersion: String("0.9.12"),
       autoAnswer: !!cfg.autoAnswer,
       autoJoin: !!cfg.autoJoinEnabled,
       autoAnswerOnAutoJoin: !!cfg.autoAnswerOnAutoJoin,
@@ -4967,6 +4967,7 @@
     const STATUS_URL = "https://api.raymor.top/yuketangstudio/status";
   const CACHE_MS = 15e3;
   const cache = new Map;
+  const inflight = new Map;
   /** 从当前 AI 配置里取云端 profile；不是云端模型时返回 null。 */  function getCloudProfile(config) {
     const ai = config?.ai;
     const profiles = Array.isArray(ai?.profiles) ? ai.profiles : [];
@@ -4979,35 +4980,49 @@
       model: p.model || ""
     };
   }
-  function requestStatus(code, timeout = 6e3) {
-    return new Promise((resolve, reject) => {
-      const url = `${STATUS_URL}?code=${encodeURIComponent(code)}`;
-      const onload = (status, text) => {
-        let data = null;
+  async function requestStatus(code, timeout = 1e4) {
+    const url = `${STATUS_URL}?code=${encodeURIComponent(code)}`;
+    // fetch 优先：状态接口已放开 CORS；比部分 GM_xhr 实现更快。
         try {
-          data = JSON.parse(text || "{}");
-        } catch {/* ignore */}
-        if (status >= 200 && status < 300 && data) resolve(data); else reject(new Error(data?.error || `HTTP ${status}`));
-      };
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), timeout) : null;
+      const res = await fetch(url, {
+        method: "GET",
+        credentials: "omit",
+        signal: ctrl?.signal
+      });
+      if (timer) clearTimeout(timer);
+      const text = await res.text();
+      let data = null;
       try {
-        gm.xhr({
-          method: "GET",
-          url: url,
-          timeout: timeout,
-          onload: r => onload(r.status, r.responseText),
-          onerror: () => reject(new Error("网络错误")),
-          ontimeout: () => reject(new Error("状态查询超时"))
-        });
-      } catch {
-        fetch(url, {
-          method: "GET",
-          credentials: "omit",
-          signal: AbortSignal.timeout?.(timeout)
-        }).then(async r => onload(r.status, await r.text())).catch(reject);
-      }
-    });
+        data = JSON.parse(text || "{}");
+      } catch {/* ignore */}
+      if (res.ok && data) return data;
+      throw new Error(data?.error || `HTTP ${res.status}`);
+    } catch (fetchErr) {
+      return new Promise((resolve, reject) => {
+        try {
+          gm.xhr({
+            method: "GET",
+            url: url,
+            timeout: timeout,
+            onload: r => {
+              let data = null;
+              try {
+                data = JSON.parse(r.responseText || "{}");
+              } catch {/* ignore */}
+              if (r.status >= 200 && r.status < 300 && data) resolve(data); else reject(new Error(data?.error || `HTTP ${r.status}`));
+            },
+            onerror: () => reject(fetchErr || new Error("网络错误")),
+            ontimeout: () => reject(new Error("状态查询超时"))
+          });
+        } catch {
+          reject(fetchErr || new Error("状态查询失败"));
+        }
+      });
+    }
   }
-  /** 查询指定解锁码的云端上游状态；15 秒内缓存，force=true 强制刷新。 */  async function fetchCloudStatus(code, {force: force = false, timeout: timeout = 6e3} = {}) {
+  /** 查询指定解锁码的云端上游状态；15 秒内缓存，force=true 强制刷新。 */  async function fetchCloudStatus(code, {force: force = false, timeout: timeout = 1e4} = {}) {
     const key = String(code || "");
     if (!key) return {
       ok: false,
@@ -5015,24 +5030,31 @@
     };
     const hit = cache.get(key);
     if (!force && hit && Date.now() - hit.at < CACHE_MS) return hit.data;
-    try {
-      const data = await requestStatus(key, timeout);
-      cache.set(key, {
-        at: Date.now(),
-        data: data
-      });
-      return data;
-    } catch (e) {
-      const data = {
-        ok: false,
-        error: String(e?.message || e || "状态查询失败")
-      };
-      cache.set(key, {
-        at: Date.now(),
-        data: data
-      });
-      return data;
-    }
+    if (!force && inflight.has(key)) return inflight.get(key);
+    const pending = (async () => {
+      try {
+        const data = await requestStatus(key, timeout);
+        cache.set(key, {
+          at: Date.now(),
+          data: data
+        });
+        return data;
+      } catch (e) {
+        const data = {
+          ok: false,
+          error: String(e?.message || e || "状态查询失败")
+        };
+        cache.set(key, {
+          at: Date.now(),
+          data: data
+        });
+        return data;
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, pending);
+    return pending;
   }
   /** 给 UI 用的简短结论。 */  function cloudStatusSummary(status, {needVision: needVision = false, includeDegraded: includeDegraded = false} = {}) {
     if (!status) return {
@@ -11142,7 +11164,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.9.11";
+      return "0.9.12";
     } catch {}
     return "0.0.0";
   }
@@ -11317,8 +11339,8 @@
   function mountAboutPanel() {
     if (mounted$3) return root$3;
     const host = document.createElement("div");
-    // "0.9.11" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.11"}<`);
+    // "0.9.12" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.12"}<`);
     document.body.appendChild(host.firstElementChild);
     root$3 = document.getElementById("ykt-about-panel");
     const $btn = root$3.querySelector("#ykt-about-check");
