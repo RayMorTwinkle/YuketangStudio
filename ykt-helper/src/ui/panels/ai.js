@@ -21,6 +21,8 @@ import { answerLog, getAnswerLog } from '../../answer/debug.js';
 import * as telemetry from '../../core/telemetry.js';
 import { getState as getRuntimeState } from '../../core/runtime.js';
 import { renderAnswerCard } from './answer-card.js';
+import { confirmDialog } from '../confirm.js';
+import { fetchCloudStatus, getCloudProfile, cloudStatusSummary } from '../../core/cloud-status.js';
 import { mdToHtml, renderRich, StreamRenderer, warmupRichAssets } from '../rich.js';
 
 export { mdToHtml, renderRich, StreamRenderer, warmupRichAssets };
@@ -39,6 +41,19 @@ let lastThumbKey = '';
 let ctxPollTimer = null;
 
 const systemPrompt = () => String(ui?.config?.systemPromptAI || '').trim() || DEFAULT_SYSTEM_PROMPT_AI;
+
+/** 云端模型请求前检查上游状态；异常时提示，但允许用户继续尝试。 */
+async function cloudPreflight(task, action = '解答') {
+  const profile = getCloudProfile(ui.config);
+  if (!profile) return true;
+  const status = await fetchCloudStatus(profile.apiKey);
+  const summary = cloudStatusSummary(status, { needVision: !!task?.question?.image?.dataUrl });
+  if (summary.kind === 'ok') return true;
+  return confirmDialog(
+    `云端模型状态：${summary.title}\n${summary.detail}\n\n${action}很可能失败。推荐改用你自己的 API Key。\n\n仍要继续尝试吗？`,
+    { okText: '继续尝试', cancelText: '取消', danger: true },
+  );
+}
 
 function $(sel) { return root?.querySelector(sel); }
 
@@ -734,6 +749,7 @@ export async function askAnswer(task, { autoSubmit = false, userText = '', soft 
   if (!mounted) mountAIPanel();
   if (!task) { ui.toast?.('没有题目', 2000); return null; }
   if (streaming) { ui.toast?.('AI 正在作答，请稍候', 1500); return null; }
+  if (!(await cloudPreflight(task))) return null;
   streaming = true;
   setStreamingFlag(true);
   const sendBtn = $('#ykt-ai-send');
@@ -843,6 +859,7 @@ export async function sendCurrent({ retryText = null } = {}) {
     }
 
     const task = ctx.task;
+    if (!(await cloudPreflight(task))) return null;
     if ($input) $input.value = '';
     lastTask = null;
     lastRequest = { task, userText: text, historyMessages: [...history], soft: !!text };

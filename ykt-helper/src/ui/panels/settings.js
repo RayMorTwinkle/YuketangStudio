@@ -9,6 +9,7 @@ import { unlockDevMode, getDevConfigs } from '../../core/devmode.js';
 import * as telemetry from '../../core/telemetry.js';
 import { gm } from '../../core/env.js';
 import { makeChatUrl } from '../../ai/agnes.js';
+import { fetchCloudStatus, getCloudProfile, cloudStatusSummary } from '../../core/cloud-status.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
 
 let mounted = false;
@@ -114,6 +115,10 @@ export function mountSettingsPanel() {
   const $audioName = root.querySelector('#ykt-tip-audio-name');
   const $saveState = root.querySelector('#ykt-settings-save-state');
   const $notifyVolOut = root.querySelector('#ykt-notify-volume-out');
+  const $cloudStatus = root.querySelector('#ykt-cloud-status');
+  const $cloudStatusText = root.querySelector('#ykt-cloud-status-text');
+  const $cloudProviders = root.querySelector('#ykt-cloud-provider-list');
+  const $cloudRefresh = root.querySelector('#ykt-cloud-refresh');
 
   const setSaveState = (text, kind = 'muted') => {
     if (!$saveState) return;
@@ -200,6 +205,34 @@ export function mountSettingsPanel() {
     });
   }
 
+  let cloudSeq = 0;
+  async function syncCloudStatus(force = false) {
+    const profile = getCloudProfile(ui.config);
+    if (!$cloudStatus) return;
+    if (!profile) {
+      $cloudStatus.style.display = 'none';
+      return;
+    }
+    $cloudStatus.style.display = '';
+    const seq = ++cloudSeq;
+    if ($cloudStatusText) $cloudStatusText.textContent = force ? '刷新中…' : '检查中…';
+    const status = await fetchCloudStatus(profile.apiKey, { force });
+    if (seq !== cloudSeq || !$cloudStatus) return;
+    const summary = cloudStatusSummary(status, { includeDegraded: true });
+    if ($cloudStatusText) {
+      $cloudStatusText.textContent = summary.title + ' · ' + summary.detail;
+      $cloudStatusText.dataset.kind = summary.kind;
+    }
+    if ($cloudProviders) {
+      const list = Array.isArray(status.providers) ? status.providers : [];
+      $cloudProviders.innerHTML = list.map((p) => {
+        const state = p.status === 'ok' ? '正常' : p.status === 'text-only' ? '仅文本' : '异常';
+        const vision = p.vision ? (p.visionHealthy ? '视觉正常' : '视觉异常') : '无视觉';
+        return `<span class="settings-cloud-chip" data-kind="${p.status === 'ok' ? 'ok' : 'warn'}">${escapeHtml(p.name)} · ${state} · ${vision}</span>`;
+      }).join('');
+    }
+  }
+
   function loadProfileToForm(profileId) {
     const p = ui.config.ai.profiles.find(x => x.id === profileId);
     if (!p) return;
@@ -215,11 +248,13 @@ export function mountSettingsPanel() {
     if ($effort) $effort.value = p.reasoningEffort || 'medium';
     if ($modelOptions) $modelOptions.style.display = 'none';
     applyCloudModelState();
+    syncCloudStatus();
   }
 
   // 初始化 Profile 下拉框
   refreshProfileSelect();
   loadProfileToForm(ui.config.ai.activeProfileId);
+  $cloudRefresh?.addEventListener('click', () => syncCloudStatus(true));
 
   // === 提示词设置（空 = 内置默认；可编辑可恢复） ===
   const $promptChat = root.querySelector('#ykt-prompt-chat');
@@ -636,6 +671,7 @@ export function mountSettingsPanel() {
   root.__yksOnShow = () => {
     try {
       syncFormFromConfig();
+      syncCloudStatus();
     } catch (e) {
       // 设置面板不能因为某一个字段同步失败而整页白屏；保留已渲染的 DOM。
       log.warn('[Settings] 同步表单失败', e);

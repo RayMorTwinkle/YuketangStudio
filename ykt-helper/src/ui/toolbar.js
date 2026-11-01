@@ -2,6 +2,8 @@
 // 精简版工具栏：主面板开关 + 提醒/自动作答快捷开关（其余功能全部收进主面板 tab）
 // 手机端可收起为左侧窄轨：点 ‹ 收起、点 › 展开；纯 Web，不依赖安卓外壳。
 import { ui } from './ui-api.js';
+import { fetchCloudStatus, getCloudProfile, cloudStatusSummary } from '../core/cloud-status.js';
+import { confirmDialog } from './confirm.js';
 
 const COLLAPSED_KEY = 'ykt.toolbar.collapsed';
 const HINT_KEY = 'ykt.toolbar.collapseHintShown';
@@ -146,8 +148,23 @@ export function installToolbar() {
   });
 
   // 自动作答开关
-  bar.querySelector('#ykt-btn-auto-answer')?.addEventListener('click', () => {
-    ui.config.autoAnswer = !ui.config.autoAnswer;
+  bar.querySelector('#ykt-btn-auto-answer')?.addEventListener('click', async () => {
+    const next = !ui.config.autoAnswer;
+    if (next) {
+      const profile = getCloudProfile(ui.config);
+      if (profile) {
+        const status = await fetchCloudStatus(profile.apiKey);
+        const summary = cloudStatusSummary(status, { needVision: true });
+        if (summary.kind !== 'ok') {
+          const go = await confirmDialog(
+            `云端模型状态：${summary.title}\n${summary.detail}\n\n你确定还要打开自动答题？很可能无法答题。\n推荐使用自己的 API Key。`,
+            { okText: '仍然打开', cancelText: '取消', danger: true },
+          );
+          if (!go) return;
+        }
+      }
+    }
+    ui.config.autoAnswer = next;
     ui.saveConfig();
     ui.toast(`自动作答：${ui.config.autoAnswer ? '开' : '关'}`);
     ui.updateAutoAnswerBtn();

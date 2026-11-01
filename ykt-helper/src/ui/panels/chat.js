@@ -11,6 +11,8 @@ import { getOverride } from './ai.js';
 import { escapeHtml, ensureImageUrl } from '../../core/dom.js';
 import { resolveCurrentSlideImage, slideImageUrl } from '../slide-image.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT } from '../../core/types.js';
+import { confirmDialog } from '../confirm.js';
+import { fetchCloudStatus, getCloudProfile, cloudStatusSummary } from '../../core/cloud-status.js';
 
 let mounted = false;
 let root;
@@ -345,6 +347,20 @@ async function sendCurrent({ retryText = null } = {}) {
   if (retryText !== null && history.length && history[history.length - 1]?.role === 'user') history.pop();
   if (!text) { ui.toast?.('先输入问题'); return; }
   const attach = $sel('#ykt-chat-attach')?.checked;
+
+  // 云端模型异常时先提醒，但允许继续尝试。
+  const cloudProfile = getCloudProfile(ui.config);
+  if (cloudProfile) {
+    const status = await fetchCloudStatus(cloudProfile.apiKey);
+    const summary = cloudStatusSummary(status, { needVision: !!(attach || attachments.length) });
+    if (summary.kind !== 'ok') {
+      const go = await confirmDialog(
+        `云端模型状态：${summary.title}\n${summary.detail}\n\n本轮对话很可能失败。推荐改用你自己的 API Key。\n\n仍要继续尝试吗？`,
+        { okText: '继续尝试', cancelText: '取消', danger: true },
+      );
+      if (!go) return;
+    }
+  }
 
   lastSendText = text;
   streaming = true;
