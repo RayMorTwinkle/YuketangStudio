@@ -190,7 +190,7 @@ if [ "$DO_GH" = 1 ]; then
     gh release upload "v$VER" "${ASSETS[@]}" --clobber
     [ "$CHANNEL" = "beta" ] && gh release edit "v$VER" --prerelease >/dev/null || true
   else
-    gh release create "v$VER" "${ASSETS[@]}" --title "v$VER" --notes "${NOTES:-v$VER 更新}" "${PRE_ARGS[@]}"
+    gh release create "v$VER" "${ASSETS[@]}" --title "v$VER" --notes "${NOTES:-v$VER 更新}" ${PRE_ARGS[@]+"${PRE_ARGS[@]}"}
   fi
   ok "GitHub Release：https://github.com/RayMorTwinkle/YuketangStudio/releases/tag/v$VER"
   rm -rf "$TMP"
@@ -202,7 +202,7 @@ if [ "$DO_DOMESTIC" = 1 ]; then
   ARGS=()
   [ -f "$APK" ] && ARGS+=("$APK")
   [ "$CHANNEL" = "stable" ] && ARGS+=("--stable")
-  ( cd "$ROOT/ykt-helper" && PUBLISH_NOTES="${NOTES:-v$VER 更新}" bash scripts/publish-domestic.sh "${ARGS[@]}" )
+  ( cd "$ROOT/ykt-helper" && PUBLISH_NOTES="${NOTES:-v$VER 更新}" bash scripts/publish-domestic.sh ${ARGS[@]+"${ARGS[@]}"} )
 fi
 
 echo
