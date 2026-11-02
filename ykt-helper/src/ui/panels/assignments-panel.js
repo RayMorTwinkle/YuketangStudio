@@ -144,18 +144,52 @@ function quizPreviewHtml(slide, data) {
     const top = Math.max(0, (Number(sh.Top) || 0) / h * 100);
     const width = Math.max(0, (Number(sh.Width) || 0) / w * 100);
     const height = Math.max(0, (Number(sh.Height) || 0) / h * 100);
-    return `<img src="${escapeHtml(sh.URL)}" loading="lazy" alt="" style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%;width:${width.toFixed(2)}%;height:${height.toFixed(2)}%">`;
+    return `<img src="${escapeHtml(sh.URL)}" data-quiz-src="${escapeHtml(sh.URL)}" alt="" style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%;width:${width.toFixed(2)}%;height:${height.toFixed(2)}%">`;
   }).join('');
   return `<div class="quiz-preview" style="aspect-ratio:${w}/${h}">${imgs}</div>`;
+}
+
+/**
+ * 预览图直连失败时，用与 AI 相同的 GM/native fetch 转 dataURL。
+ * 这样不会出现「预览空白但 AI 以为有图」或「用户看到图但 canvas 是白图」。
+ */
+function hydrateQuizPreviews(container) {
+  if (!container) return;
+  container.querySelectorAll('.quiz-preview img[data-quiz-src]').forEach((img) => {
+    if (img.dataset.fallbackBound) return;
+    img.dataset.fallbackBound = '1';
+    const fallback = async () => {
+      if (img.dataset.fallbackTried) return;
+      img.dataset.fallbackTried = '1';
+      try {
+        const src = img.dataset.quizSrc || '';
+        const dataUrl = src ? await fetchAsDataURL(src, 12000) : '';
+        if (dataUrl) {
+          img.src = dataUrl;
+          return;
+        }
+      } catch (e) {
+        log.warn('[assign] preview image fallback failed', img.dataset.quizSrc, e?.message || e);
+      }
+      const preview = img.closest('.quiz-preview');
+      img.remove();
+      if (preview && !preview.querySelector('img')) {
+        preview.outerHTML = '<div class="quiz-preview-empty">无图</div>';
+      }
+    };
+    img.addEventListener('error', fallback);
+    if (img.complete && img.naturalWidth === 0) void fallback();
+  });
 }
 
 function questionPreviewRow(slide, data, i) {
   const p = slide?.Problem;
   if (!p) return '';
+  const stem = p.Body || p.BodyText || p.Content || p.Question || p.Stem || '';
   return `<div class="quiz-item quiz-card">
     <div class="quiz-preview-wrap">${quizPreviewHtml(slide, data)}</div>
     <div class="quiz-card-main">
-      ${p.Body ? `<div class="quiz-stem">${sanitizeHtml(p.Body)}</div>` : ''}
+      ${stem ? `<div class="quiz-stem">${sanitizeHtml(stem)}</div>` : ''}
       <div class="quiz-item-head">
         <span class="quiz-idx">${i + 1}</span>
         <b>${escapeHtml(typeText(p.Type))}</b>
@@ -189,11 +223,49 @@ function renderQuestions() {
     </div>
     <div id="ykt-ap-batch-results" class="ap-batch-results"></div>
     <div class="quiz-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
+  hydrateQuizPreviews(box);
   $('#ykt-ap-back')?.addEventListener('click', showListView);
   $('#ykt-ap-batch-current')?.addEventListener('click', () => batchCurrentQuestions());
   $('#ykt-ap-goto-submit')?.addEventListener('click', () => {
     if (viewAssignment?.oldId) location.href = oldUrl(viewAssignment);
   });
+}
+
+function examStatusLabel(status) {
+  return ({
+    submitted: '已交卷',
+    absent: '缺考',
+    invalid: '已作废',
+    'in-progress': '进行中',
+    'not-started': '未开始',
+    'not-submitted': '未交卷',
+  })[status] || '';
+}
+
+function examStatusMessage(progress) {
+  if (!progress) return '考试状态读取失败，请在官网查看。';
+  if (progress.statusMessage) return progress.statusMessage;
+  if (progress.examStatus === 'in-progress') return '考试进行中，尚未交卷；可在官网考试页使用 AI 参考。';
+  if (progress.examStatus === 'not-started') return '考试尚未开始；开考后可在官网考试页使用 AI 参考。';
+  if (progress.examStatus === 'submitted') return '考试已交卷，但当前不可查看试卷。';
+  if (progress.examStatus === 'absent') return '缺考，无法查看试卷。';
+  if (progress.examStatus === 'invalid') return '考试已作废，无法查看试卷。';
+  return '该考试暂不可查看；进行中考试可打开考试页使用 AI 参考。';
+}
+
+/** 把最新 cover 状态回填到列表行，避免“读取前先写死已交卷”。 */
+function applyExamProgress(row, progress) {
+  if (!row || !progress) return;
+  row.examStatus = progress.examStatus;
+  row.status = progress.status;
+  row.graded = progress.graded;
+  row.answeredCount = progress.answeredCount;
+  row.totalCount = progress.totalCount;
+  row.statusMessage = progress.statusMessage || '';
+  if (progress.totalCount !== null) row.problemCount = progress.totalCount;
+  if (progress.totalScore !== null) row.totalScore = progress.totalScore;
+  if (progress.score !== null) row.score = progress.score;
+  else if (progress.examStatus !== 'submitted') row.score = null;
 }
 
 /** 列表行 meta：类型 + 截止 + 题数/分值 + enrich 出的作答状态。 */
@@ -207,10 +279,9 @@ function rowMetaParts(a) {
   }
   if (a.score != null) parts.push(`得分 ${a.score}`);
   if (a.type === 20) {
-    if (a.examStatus === 'submitted') parts.push('已交卷');
+    const label = examStatusLabel(a.examStatus);
+    if (label) parts.push(label);
     if (a.examStatus === 'submitted' && a.graded === false) parts.push('待批改');
-    else if (a.examStatus === 'absent') parts.push('缺考');
-    else if (a.examStatus === 'invalid') parts.push('已作废');
   } else if (a.type === 19 && a.graded === false && (a.answeredCount ?? 0) > 0) {
     parts.push('待批改');
   }
@@ -343,10 +414,15 @@ async function openActiveDetail(a) {
   setBusy(true);
   try {
     if (a.type === 20) {
-      setStatus(`正在读取「${a.title}」回顾…`);
+      setStatus(`正在读取「${a.title}」状态…`);
       const detail = await fetchExamReview(a);
+      if (detail.progress) applyExamProgress(a, detail.progress);
+      if (detail.title) a.title = detail.title;
+      a.canViewPaper = detail.mode === 'exam-review';
+      a.canReview = detail.mode === 'exam-review';
+      renderList();
       if (detail.mode !== 'exam-review') {
-        setStatus(detail.progress?.statusMessage || '该考试暂不可回顾（未出分或未公布），请在官网查看。');
+        setStatus(examStatusMessage(detail.progress));
         return;
       }
       showQuestionsView(detail, detail.title || a.title, a);
@@ -361,6 +437,10 @@ async function openActiveDetail(a) {
     }
   } catch (e) {
     log.warn('[assign] active detail failed', e);
+    if (a.type === 20) {
+      a.statusMessage = '考试状态读取失败，请在官网查看。';
+      renderList();
+    }
     setStatus('读取失败：' + (e?.message || e));
   } finally {
     setBusy(false);
@@ -496,6 +576,7 @@ function renderList() {
   box.innerHTML = list.map((a) => {
     const oldU = oldUrl(a);
     const newU = newUrl(a, cid);
+    const directU = String(a.examUrl || '');
     const actions = [];
 
     // 脚本内查看：可回顾考试 / 新版作业 / 老版作业。
@@ -508,6 +589,10 @@ function renderList() {
     }
 
     // 官方页面入口始终保留，脚本内查看不再是唯一入口。
+    // type=5 旧版考试没有新版路由，直接给考试域作答页。
+    if (directU) {
+      actions.push(`<button type="button" data-link="${escapeHtml(directU)}" title="在雨课堂考试页打开">打开考试</button>`);
+    }
     // type=4 的 newId 实际是 courseware_id，不能当作新版入口；只有确实不同的 newId 才显示。
     const hasDistinctNew = !!newU && !(a.type === 4 && String(a.newId) === String(a.oldId));
     if (hasDistinctNew) {
@@ -643,14 +728,15 @@ async function loadCurrentExamPage() {
     leafTypeId: examId,
     classroomId: '',
     canReview: false,
-    canViewPaper: true,
-    examStatus: 'submitted',
-    statusMessage: '当前考试页',
+    canViewPaper: false,
+    // 真实状态只能由 cover 决定；读取前先标未知，避免任何情况下误显示“已交卷”。
+    examStatus: 'unknown',
+    statusMessage: '',
   };
   list = [row];
   loaded = true;
   renderList();
-  setStatus('当前考试页');
+  setStatus('当前考试页 · 正在读取考试状态…');
   await openActiveDetail(row);
 }
 
@@ -780,15 +866,17 @@ async function batchZip() {
 
 function currentExamContext() {
   const ctx = getCourseContext();
+  const examPageId = currentExamPageId();
   const target = list.find((a) => Number(a.type) === 20 && (
-    (ctx.newId && String(a.newId) === String(ctx.newId))
+    (examPageId && String(a.leafTypeId) === String(examPageId))
+    || (ctx.newId && String(a.newId) === String(ctx.newId))
     || (ctx.oldQuizId && String(a.oldId) === String(ctx.oldQuizId))
   )) || null;
   const byTitle = /考试|exam/i.test(String(document.title || ''));
-  const isExam = ctx.kind === 'exam' || !!target || (!!ctx.oldQuizId && byTitle);
+  const isExam = !!examPageId || ctx.kind === 'exam' || !!target || (!!ctx.oldQuizId && byTitle);
   return {
     isExam,
-    examId: ctx.newId || ctx.oldQuizId || target?.newId || target?.oldId || '',
+    examId: examPageId || ctx.newId || ctx.oldQuizId || target?.newId || target?.oldId || target?.leafTypeId || '',
     courseId: ctx.classId || cid,
     target,
   };

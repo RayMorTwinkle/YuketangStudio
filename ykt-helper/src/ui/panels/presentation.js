@@ -10,6 +10,12 @@ import { saveBlob } from '../../quiz/quiz-paper.js';
 import { renderProblemCard } from '../problem-card.js';
 import { log } from '../../core/log.js';
 import { waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
+import {
+  clamp,
+  computeRailThumb,
+  scrollTopForRailPoint,
+  scrollTopForDrag,
+} from '../rail-geometry.js';
 
 let mounted = false;
 let host;
@@ -17,6 +23,8 @@ let staticReportReady = false; //已结束课程
 let followCurrent = true;
 let classCardLoading = false;
 let classCardLoadedKey = '';
+let railThumbRaf = 0;
+let railThumbTimer = 0;
 const expandedProblemEditors = new Set();
 
 function findSlideAcrossPresentations(idStr) {
@@ -264,6 +272,19 @@ export function mountPresentationPanel() {
     if (slideId) selectSlide(presentationId, slideId, null, { navigate: false });
   });
 
+  bindRailInteractions();
+  if (typeof ResizeObserver === 'function') {
+    const listEl = $('#ykt-presentation-list');
+    if (listEl) new ResizeObserver(() => queueRailThumbSync()).observe(listEl);
+  }
+  let railResizeTimer = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(railResizeTimer);
+    railResizeTimer = setTimeout(() => {
+      if (host?.classList.contains('visible')) updateRailMarkers();
+    }, 120);
+  });
+
   mounted = true;
   L('mountPresentationPanel 完成');
   // shell 切到本 tab 时刷新列表（课件数据可能晚于挂载到达）
@@ -306,11 +327,164 @@ function renderPresentationPicker() {
   sel.disabled = repo.presentations.size <= 1;
 }
 
+function railElements() {
+  const rail = $('#ykt-slide-rail');
+  const listEl = $('#ykt-presentation-list');
+  const thumb = $('#ykt-slide-thumb');
+  if (!rail || !listEl || !thumb) return null;
+  return { rail, listEl, thumb };
+}
+
+/** 同步右侧滑块；只在列表滚动/尺寸变化时调用，不重建标记。 */
+function syncRailThumb() {
+  const els = railElements();
+  if (!els) return;
+  const { rail, listEl, thumb } = els;
+  const g = computeRailThumb({
+    trackHeight: rail.clientHeight,
+    viewportHeight: listEl.clientHeight,
+    contentHeight: listEl.scrollHeight,
+    scrollTop: listEl.scrollTop,
+  });
+  if (!g.visible) {
+    thumb.style.display = 'none';
+    thumb.setAttribute('aria-valuenow', '0');
+    thumb.setAttribute('aria-valuetext', '内容不足一屏');
+    return;
+  }
+  thumb.style.display = 'block';
+  thumb.style.height = `${g.height}px`;
+  thumb.style.top = `${g.top}px`;
+  const pct = Math.round(g.ratio * 100);
+  thumb.setAttribute('aria-valuenow', String(pct));
+  const total = listEl.querySelectorAll('.cw-slide').length;
+  const page = total ? Math.min(total, Math.floor(g.ratio * (total - 1)) + 1) : 0;
+  thumb.setAttribute('aria-valuetext', total ? `约第 ${page} / ${total} 页` : '');
+}
+
+function queueRailThumbSync() {
+  if (railThumbRaf || railThumbTimer) return;
+  const finish = () => {
+    if (railThumbRaf) cancelAnimationFrame(railThumbRaf);
+    if (railThumbTimer) clearTimeout(railThumbTimer);
+    railThumbRaf = 0;
+    railThumbTimer = 0;
+    syncRailThumb();
+  };
+  railThumbRaf = requestAnimationFrame(finish);
+  // 后台/隐藏标签页里 rAF 可能不回调；不能让状态永久卡在 pending。
+  railThumbTimer = setTimeout(finish, 120);
+}
+
+function bindRailInteractions() {
+  const els = railElements();
+  if (!els) return;
+  const { rail, listEl, thumb } = els;
+
+  let drag = null;
+  const maxScroll = () => Math.max(0, listEl.scrollHeight - listEl.clientHeight);
+
+  const onPointerMove = (e) => {
+    if (!drag) return;
+    if (drag.pointerId != null && e.pointerId !== drag.pointerId) return;
+    e.preventDefault();
+    listEl.scrollTop = scrollTopForDrag({
+      startScroll: drag.startScroll,
+      deltaY: e.clientY - drag.startY,
+      maxTop: drag.maxTop,
+      maxScroll: drag.maxScroll,
+    });
+    queueRailThumbSync();
+  };
+
+  const onPointerUp = (e) => {
+    if (!drag) return;
+    if (drag.pointerId != null && e?.pointerId != null && e.pointerId !== drag.pointerId) return;
+    drag = null;
+    thumb.classList.remove('dragging');
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerUp);
+    window.removeEventListener('blur', onPointerUp);
+  };
+
+  rail.addEventListener('pointerdown', (e) => {
+    if (drag) return;
+    if (e.button != null && e.button !== 0) return;
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target || target.closest('.cw-marker')) return;   // 彩色标记仍走自己的 click
+    const max = maxScroll();
+    if (max <= 0) return;
+    e.preventDefault();
+
+    if (target.closest('#ykt-slide-thumb')) {
+      const g = computeRailThumb({
+        trackHeight: rail.clientHeight,
+        viewportHeight: listEl.clientHeight,
+        contentHeight: listEl.scrollHeight,
+        scrollTop: listEl.scrollTop,
+      });
+      if (!g.visible || g.maxTop <= 0) return;
+      drag = {
+        pointerId: e.pointerId,
+        startY: e.clientY,
+        startScroll: listEl.scrollTop,
+        maxTop: g.maxTop,
+        maxScroll: g.maxScroll,
+      };
+      thumb.classList.add('dragging');
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+      window.addEventListener('blur', onPointerUp);
+      return;
+    }
+
+    const rect = rail.getBoundingClientRect();
+    listEl.scrollTop = scrollTopForRailPoint({
+      clientY: e.clientY,
+      railTop: rect.top,
+      trackHeight: rail.clientHeight,
+      maxScroll: max,
+    });
+    syncRailThumb();
+  });
+
+  thumb.addEventListener('keydown', (e) => {
+    const max = maxScroll();
+    if (max <= 0) return;
+    const page = Math.max(80, Math.round(listEl.clientHeight * 0.85));
+    let next = null;
+    if (e.key === 'ArrowDown') next = listEl.scrollTop + 40;
+    else if (e.key === 'ArrowUp') next = listEl.scrollTop - 40;
+    else if (e.key === 'PageDown') next = listEl.scrollTop + page;
+    else if (e.key === 'PageUp') next = listEl.scrollTop - page;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = max;
+    if (next == null) return;
+    e.preventDefault();
+    listEl.scrollTop = clamp(next, 0, max);
+    syncRailThumb();
+  });
+
+  rail.addEventListener('wheel', (e) => {
+    if (maxScroll() <= 0 || !e.deltaY) return;
+    e.preventDefault();
+    listEl.scrollTop += e.deltaY;
+    queueRailThumbSync();
+  }, { passive: false });
+}
+
 function updateRailMarkers() {
   const rail = $('#ykt-slide-rail');
   const listEl = $('#ykt-presentation-list');
   if (!rail || !listEl) return;
-  rail.innerHTML = '<div class="cw-rail-track"></div>';
+  for (const marker of rail.querySelectorAll('.cw-marker')) marker.remove();
+  if (!rail.querySelector('.cw-rail-track')) {
+    const track = document.createElement('div');
+    track.className = 'cw-rail-track';
+    rail.prepend(track);
+  }
   const total = Math.max(1, listEl.scrollHeight);
   const listRect = listEl.getBoundingClientRect();
   for (const card of listEl.querySelectorAll('.cw-slide')) {
@@ -333,6 +507,7 @@ function updateRailMarkers() {
     });
     rail.appendChild(btn);
   }
+  syncRailThumb();
 }
 
 function scrollToSlide(slideId) {
@@ -469,7 +644,7 @@ export function updatePresentationList() {
   }
 
   if (!slides.length) listEl.innerHTML = `<div class="cw-empty">${filter ? '当前课件没有识别到题目页' : '当前课件没有页面'}</div>`;
-  listEl.onscroll = updateRailMarkers;
+  listEl.onscroll = queueRailThumbSync;
   updateRailMarkers();
 }
 

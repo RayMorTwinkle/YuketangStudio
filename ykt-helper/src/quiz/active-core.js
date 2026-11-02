@@ -176,13 +176,21 @@ export function parseExamProgress(data) {
   const code = result.status;
   const submitted = code === 4 || code === 5;
   const invalid = (record(cover.face_auth_status) ?? {}).monitor_status === 2;
+  // status=1 是官方 cover 里“已开考/未交卷”的常见状态。之前把它归为 unknown，
+  // 列表会误显示“暂无法获取考试状态”；这里按开考时间细分为“未开始/进行中”。
+  const pending = code === 1;
+  const startTime = nonnegativeNumber(cover.start_time);
+  const serverTime = nonnegativeNumber(cover.server_time);
+  const notStarted = pending && startTime !== null && serverTime !== null && startTime > serverTime;
   const examStatus = invalid
     ? 'invalid'
     : submitted
       ? 'submitted'
       : code === 6
         ? 'absent'
-        : 'unknown';
+        : pending
+          ? (notStarted ? 'not-started' : 'in-progress')
+          : 'unknown';
   const total = nonnegativeInteger(cover.problem_count);
   const unfinished = nonnegativeInteger(result.unfinished_count);
   const totalCount = total !== null && total > 0 ? total : null;
@@ -210,13 +218,15 @@ export function parseExamProgress(data) {
     score: graded ? score : null,
     totalScore: graded ? totalScore : null,
     status:
-      answeredCount === null
-        ? 'unknown'
-        : answeredCount === totalCount
-          ? 'answered'
-          : answeredCount > 0
-            ? 'partial'
-            : 'unanswered',
+      pending
+        ? 'not-submitted'
+        : answeredCount === null
+          ? 'unknown'
+          : answeredCount === totalCount
+            ? 'answered'
+            : answeredCount > 0
+              ? 'partial'
+              : 'unanswered',
     answeredCount,
     totalCount,
     // cover 只有总题数与未答数，无逐题明细。

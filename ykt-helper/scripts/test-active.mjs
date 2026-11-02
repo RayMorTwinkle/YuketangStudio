@@ -228,6 +228,29 @@ ok('未知状态带提示；result 缺失 → unknown', () => {
   assert.equal(parseExamProgress({ problem_count: 10 }).examStatus, 'unknown');
   assert.equal(parseExamProgress({ problem_count: 10 }).statusMessage !== null, true);
 });
+ok('status=1 未交卷：进行中/未开始，不再提示“无法获取状态”', () => {
+  const ongoing = parseExamProgress({
+    problem_count: 5,
+    start_time: 1793577600000,
+    server_time: 1793579989869,
+    result: { status: 1, unfinished_count: null, score: null, score_finish: null },
+  });
+  assert.equal(ongoing.examStatus, 'in-progress');
+  assert.equal(ongoing.status, 'not-submitted');
+  assert.equal(ongoing.graded, false);
+  assert.equal(ongoing.answeredCount, null);
+  assert.equal(ongoing.statusMessage, null);
+
+  const future = parseExamProgress({
+    problem_count: 5,
+    start_time: 2000,
+    server_time: 1000,
+    result: { status: 1 },
+  });
+  assert.equal(future.examStatus, 'not-started');
+  assert.equal(future.status, 'not-submitted');
+  assert.equal(future.statusMessage, null);
+});
 ok('monitor_status=2 覆盖为作废，即使已交卷', () => {
   const p = parseExamProgress({ ...examCoverBase, face_auth_status: { monitor_status: 2 } });
   assert.equal(p.examStatus, 'invalid');

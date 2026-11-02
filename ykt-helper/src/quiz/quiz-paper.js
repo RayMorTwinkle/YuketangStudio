@@ -42,29 +42,48 @@ export function quizMeta(data) {
 
 const imgCache = new Map();
 
-function loadImageElement(url) {
+function loadImageElement(url, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { img.src = ''; } catch { /* ignore */ }
+      reject(new Error('图片加载超时: ' + url));
+    }, timeoutMs);
+    const done = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
     img.crossOrigin = 'anonymous';   // CDN 返回 access-control-allow-origin: *
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('图片加载失败: ' + url));
+    img.onload = () => done(resolve, img);
+    img.onerror = () => done(reject, new Error('图片加载失败: ' + url));
     img.src = url;
   });
 }
 
+/**
+ * 题图加载顺序：先走 GM / Android 原生桥拿 dataURL，再回落浏览器直连。
+ * 直连图片即使能在预览里显示，也可能因 CORS 让 canvas 变白；统一成 dataURL
+ * 可以保证预览和 AI 看到的真的是同一张图。
+ */
 function loadImage(url) {
   if (imgCache.has(url)) return imgCache.get(url);
   const p = (async () => {
+    let fetchError = null;
     try {
-      return await loadImageElement(url);
+      const dataUrl = await fetchAsDataURL(url, 15000);
+      if (dataUrl) return await loadImageElement(dataUrl, 8000);
+    } catch (e) {
+      fetchError = e;
+    }
+    try {
+      return await loadImageElement(url, 8000);
     } catch (directError) {
-      // 浏览器直连图片可能被防盗链/CORS 策略拦；走 GM/fetch 拿成 dataURL 再画，
-      // 否则 composeSlide 会静默画成白图，AI 收到的就是一张空白 JPEG。
-      try {
-        const dataUrl = await fetchAsDataURL(url, 15000);
-        if (dataUrl) return await loadImageElement(dataUrl);
-      } catch { /* fall through */ }
-      throw directError;
+      throw fetchError || directError;
     }
   })();
   imgCache.set(url, p);

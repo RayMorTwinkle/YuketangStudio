@@ -26,6 +26,26 @@ export async function fetchCourses() {
 const PAGE_SIZE = 200;
 const MAX_PAGES = 50;
 
+/**
+ * type=5 旧版“试卷/考试”没有 /ai-workspace 的新版入口；
+ * 长江雨课堂的作答页在 changjiang-exam 域。其他平台没有可靠映射时返回空，
+ * 至少先让考试出现在列表里，用户仍可从官方学习日志进入。
+ */
+export function examPageUrl(examId) {
+  const id = String(examId || '').trim();
+  if (!id) return '';
+  try {
+    const host = location.hostname;
+    if (/^changjiang\.yuketang\.cn$/i.test(host)) {
+      return `https://changjiang-exam.yuketang.cn/exam/${encodeURIComponent(id)}?isFrom=2`;
+    }
+    if (/^tsinghua\.yuketang\.cn$/i.test(host)) {
+      return `https://tsinghua-exam.yuketang.cn/exam/${encodeURIComponent(id)}?isFrom=2`;
+    }
+  } catch { /* non-browser */ }
+  return '';
+}
+
 export async function fetchAssignments(cid) {
   const acts = [];
   const seenPages = new Set();
@@ -48,33 +68,44 @@ export async function fetchAssignments(cid) {
   for (const a of acts) {
     if (!a) continue;
     const type = Number(a.type);
-    if (![4, 19, 20].includes(type)) continue;
+    // type=5 是旧版学习日志里的“考试/试卷”，courseware_id 就是考试 ID。
+    // 之前只收 4/19/20，导致题目里这种考试在课程列表中完全消失。
+    if (![4, 5, 19, 20].includes(type)) continue;
     const c = a.content || {};
+    const isExam = type === 20 || type === 5;
     const oldId = type === 4 ? String(a.courseware_id || '') : '';
     const newId = type === 4
       ? String(a.courseware_id || '')
-      : String(c.leaf_id || '');
-    const leafTypeId = type === 4 ? '' : String(c.leaf_type_id || '');
+      : (type === 19 || type === 20)
+        ? String(c.leaf_id || '')
+        : '';
+    const leafTypeId = isExam
+      ? String(c.leaf_type_id || a.courseware_id || '')
+      : '';
     const skuId = type === 4 ? '' : String(c.sku_id || '');
     const id = String(a.id || a.courseware_id || newId || leafTypeId || '');
     if (!id) continue;
     const row = {
       id,
-      type,
-      kind: type === 20 ? 'exam' : 'homework',
-      title: a.title || (type === 20 ? '考试' : '作业'),
+      type: isExam ? 20 : type,
+      sourceType: type,
+      kind: isExam ? 'exam' : 'homework',
+      title: a.title || (isExam ? '考试' : '作业'),
       deadline: Number(a.deadline || c.score_d || 0) || 0,
-      totalScore: a.total_score ?? null,
+      totalScore: a.total_score ?? c.total_score ?? null,
       score: a.score ?? null,
-      problemCount: a.problem_count ?? null,
+      problemCount: a.problem_count ?? c.problem_count ?? null,
       status: a.status ?? null,
       oldId,
       newId,
       leafTypeId,
       skuId,
       classroomId: String(a.classroom_id || cid || ''),
+      examUrl: type === 5 ? examPageUrl(leafTypeId) : '',
     };
-    rows.set(`${type}:${id}`, row);
+    // 同一场考试可能同时出现在 20/5 两条链路里，按考试 ID 去重。
+    const key = isExam ? `exam:${leafTypeId || id}` : `homework:${id}`;
+    rows.set(key, row);
   }
   return [...rows.values()]
     .filter((r) => r.type === 4 || isAssignmentRetained({ deadline: r.deadline || null }))
@@ -148,8 +179,9 @@ async function enrichExamRow(row) {
     examStatus: p.examStatus,
     status: p.status,
     graded: p.graded,
-    score: p.score,
-    totalScore: p.totalScore,
+    score: p.score !== null ? p.score : (p.examStatus === 'submitted' ? null : row.score),
+    // 未交卷时 parseExamProgress 不给分数，但日志行本身有 total_score，别丢掉。
+    totalScore: p.totalScore !== null ? p.totalScore : row.totalScore,
     answeredCount: p.answeredCount,
     totalCount: p.totalCount,
     statusMessage: p.statusMessage,

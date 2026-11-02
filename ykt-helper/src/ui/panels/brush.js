@@ -24,6 +24,12 @@ let busy = false;
 
 const BRUSHABLE = new Set([0, 1, 3, 7]);
 
+// 官方班级课件约每 5 秒才把当前页写入 view_depth；1.8 秒连点会“看起来翻了但没记录”。
+const CLASS_CARD_LOAD_TIMEOUT = 30000;
+const CLASS_CARD_PAGE_SETTLE = 5200;
+const CLASS_CARD_PAGE_TIMEOUT = 12000;
+const CLASS_CARD_MAX_PASSES = 3;
+
 function $(sel) { return root?.querySelector(sel); }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 function fmt(v) { return Number.isFinite(v) ? (Math.round(v * 100) / 100).toString() : '—'; }
@@ -517,7 +523,7 @@ function cardUrl(it) {
   return `${location.origin}/v2/web/studentCards/${encodeURIComponent(cid)}/${encodeURIComponent(it.cardsId)}/${encodeURIComponent(it.activityId)}/ppt?${qs}`;
 }
 
-async function waitViewerReady(viewer, timeout = 12000, selector = '.swiper-slide .page') {
+async function waitViewerReady(viewer, timeout = CLASS_CARD_LOAD_TIMEOUT, selector = '.swiper-slide .page') {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
     try {
@@ -527,6 +533,54 @@ async function waitViewerReady(viewer, timeout = 12000, selector = '.swiper-slid
     await sleep(400);
   }
   return null;
+}
+
+/** 首次加载失败时重载一次；大课件/慢网络下 12 秒经常不够。 */
+async function openClassCardViewer(viewer, url) {
+  viewer.src = 'about:blank';
+  await sleep(200);
+  viewer.src = url;
+  let d = await waitViewerReady(viewer, CLASS_CARD_LOAD_TIMEOUT);
+  if (d) return d;
+  logLine('课件加载超时，正在重试一次…', 'warn');
+  viewer.src = 'about:blank';
+  await sleep(500);
+  viewer.src = url;
+  d = await waitViewerReady(viewer, CLASS_CARD_LOAD_TIMEOUT);
+  return d;
+}
+
+/**
+ * 官方 viewer 的 Vue 组件有 thumbSwiperClick(index)；
+ * 比直接点 .page 更稳，旧版结构没有时再回退到 DOM 点击。
+ */
+function activateClassCardPage(d, pageNo) {
+  const index = Number(pageNo) - 1;
+  const comp = d.querySelector('.basePPT__component')?.__vue__;
+  if (comp && typeof comp.thumbSwiperClick === 'function') {
+    try { comp.thumbSwiperClick(index); return 'method'; } catch { /* fallback */ }
+  }
+  const fresh = collectViewerPages(d).find((t) => t.page === Number(pageNo));
+  const el = fresh?.pageEl || fresh?.el;
+  if (!el) return '';
+  try { el.click(); return 'click'; } catch { return ''; }
+}
+
+/** 等官方 view_depth 真正包含这一页，返回最新快照。 */
+async function waitClassCardPageRecorded(cid, cardsId, pageIndex, timeout = CLASS_CARD_PAGE_TIMEOUT) {
+  const end = Date.now() + timeout;
+  let last = null;
+  await sleep(CLASS_CARD_PAGE_SETTLE);
+  while (Date.now() < end) {
+    if (stopped) return last;
+    try {
+      last = await fetchClassCardProgress(cid, cardsId);
+      const detail = (last.depthDetail || []).map((x) => Number(x));
+      if (detail.includes(Number(pageIndex))) return last;
+    } catch { /* 下一次再查 */ }
+    await sleep(1200);
+  }
+  return last;
 }
 
 /** 班级课件当前 DOM 里的页面缩略图；Swiper 会重复渲染，按页码去重。 */
@@ -695,12 +749,13 @@ async function processClassCard(it) {
   const close = () => { viewer.src = 'about:blank'; viewer.style.display = 'none'; };
   logLine(`打开班级课件：${it.title}`);
   viewer.style.display = 'block';
-  viewer.src = url;
   try {
-    const d = await waitViewerReady(viewer);
+    const d = await openClassCardViewer(viewer, url);
     if (!d) {
       updateItemState(it, 'fail');
-      logLine(`课件加载失败：${it.title}`, 'bad');
+      let pageHint = '';
+      try { pageHint = String(viewer.contentDocument?.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 100); } catch { /* ignore */ }
+      logLine(`课件加载失败：${it.title}${pageHint ? `（${pageHint}）` : ''}`, 'bad');
       return false;
     }
 
@@ -710,7 +765,15 @@ async function processClassCard(it) {
     let read = (it.completed && includeCompleted())
       ? new Set()
       : new Set((before?.depth_detail || before?.depthDetail || []).map((x) => Number(x)));
-    const initialPages = collectViewerPages(d);
+    let initialPages = collectViewerPages(d);
+    // 大纲缩略图可能分批渲染；先等它至少接近接口给的总页数，避免只点到前几页。
+    if (it.total > 0 && initialPages.length < it.total) {
+      const pageWaitEnd = Date.now() + 6000;
+      while (!stopped && initialPages.length < it.total && Date.now() < pageWaitEnd) {
+        await sleep(300);
+        initialPages = collectViewerPages(d);
+      }
+    }
     if (!initialPages.length) {
       updateItemState(it, 'fail');
       logLine(`课件没有可识别的页面：「${it.title}」`, 'bad');
@@ -718,29 +781,36 @@ async function processClassCard(it) {
     }
     const total = Math.max(it.total || 0, initialPages.length, before?.depth || 0);
     let processed = 0;
+    let confirmed = 0;
+    let missed = 0;
     let lastDepth = Number(before?.depth) || 0;
     let pass = 0;
 
-    // 不能只点一次一开始抓到的缩略图：Swiper/Vue 会在翻页后替换 DOM，
-    // 旧节点会失效，表现为“一次只刷十几页”。每页重新查当前 DOM，并按官方
-    // depth_detail 复查；最多做几轮，直到没有未读页或进度不再增长。
-    while (!stopped && pass < 4) {
+    // 官方 viewer 约 5 秒才记录当前页；每页必须等 view_depth 确认后才能算完成。
+    // 不能只按本地点击次数伪造“已翻”，否则会重复点、进度却停住。
+    while (!stopped && pass < CLASS_CARD_MAX_PASSES) {
       const targets = collectViewerPages(d).filter((t) => !read.has(t.page - 1));
       if (!targets.length) break;
       for (const target of targets) {
         if (stopped) break;
         while (paused && !stopped) await sleep(500);
         if (stopped) break;
-        // 关键：每次点击前重新取当前 DOM 中同一页的节点，避免点击已被替换的旧节点。
+        // 每次点击前重新取当前 DOM，避免 Swiper/Vue 替换后的旧节点失效。
         const fresh = collectViewerPages(d).find((t) => t.page === target.page);
         if (!fresh) continue;
-        try {
-          (fresh.pageEl || fresh.el).click();
-          processed++;
-          await sleep(1800);
+        const activated = activateClassCardPage(d, target.page);
+        if (!activated) continue;
+        processed++;
+        const snapshot = await waitClassCardPageRecorded(cid, it.cardsId, target.page - 1);
+        const recorded = !!(snapshot && (snapshot.depthDetail || []).map((x) => Number(x)).includes(target.page - 1));
+        if (recorded) {
           read.add(target.page - 1);
-        } catch { /* continue */ }
-        if (processed % 4 === 0) logLine(`「${it.title}」已翻 ${processed} 页`);
+          confirmed++;
+          lastDepth = Math.max(lastDepth, Number(snapshot.depth) || 0);
+          if (confirmed % 4 === 0) logLine(`「${it.title}」已确认 ${confirmed} 页`);
+        } else {
+          missed++;
+        }
       }
 
       // 以官方 view_depth 为准，不用本地点击次数伪造完成。
@@ -776,7 +846,13 @@ async function processClassCard(it) {
     it.total = it.schedule.total;
     it.completed = it.total > 0 && it.schedule.done >= it.total;
     updateItemState(it, ok || it.completed ? 'ok' : 'fail');
-    logLine(`${it.completed ? '已完成' : '未确认'}：${it.title}（${it.schedule.done}/${it.total}，点击 ${processed} 页）`, ok || it.completed ? 'info' : 'warn');
+    const detail = it.completed
+      ? ''
+      : `，确认 ${confirmed} 页，尝试 ${processed} 页，未确认 ${missed} 页`;
+    logLine(
+      `${it.completed ? '已完成' : '未确认'}：${it.title}（${it.schedule.done}/${it.total}${detail}）`,
+      ok || it.completed ? 'info' : 'warn',
+    );
     renderQueue();
     return ok || it.completed;
   } finally {

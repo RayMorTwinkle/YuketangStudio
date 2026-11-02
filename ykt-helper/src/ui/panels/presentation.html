@@ -1,25 +1,42 @@
 <div id="ykt-presentation-panel" class="ykt-panel">
   <style>
+    #ykt-presentation-panel {
+      flex-direction: column;
+      min-height: 0;
+    }
+    #ykt-presentation-panel.visible { display: flex; }
+    #ykt-presentation-panel .panel-header { flex: 0 0 auto; }
     #ykt-presentation-panel .cw-slide.active {
       outline: 2px solid #3b82f6;
       outline-offset: 2px;
     }
     #ykt-presentation-panel #ykt-presentation-picker {
-      max-width: 260px; min-width: 120px; height: 30px;
+      flex: 1 1 120px; width: auto; max-width: 260px; min-width: 0; height: 30px;
       border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; background: #fff;
+    }
+    #ykt-presentation-panel .panel-controls {
+      flex: 1 1 0; min-width: 0; justify-content: flex-end;
     }
     #ykt-presentation-panel .cw-single-column-body {
       display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 8px;
-      height: 100%; min-height: 0; overflow: hidden;
+      flex: 1 1 auto; height: auto; min-height: 0; overflow: hidden;
     }
     #ykt-presentation-panel .cw-rail {
       position: relative; width: 30px; min-height: 180px; background: #f8fafc;
       border: 1px solid var(--ykt-border, #ddd); border-radius: 8px; overflow: hidden;
     }
-    #ykt-presentation-panel .cw-rail-track { position:absolute; left:13px; top:8px; bottom:8px; width:3px; background:#dbe3ef; border-radius:3px; }
+    #ykt-presentation-panel .cw-rail-track { position:absolute; left:13px; top:8px; bottom:8px; width:3px; background:#dbe3ef; border-radius:3px; z-index:0; }
+    #ykt-presentation-panel .cw-rail-thumb {
+      position:absolute; left:5px; width:19px; min-height:24px; box-sizing:border-box;
+      border:1px solid rgba(29,99,223,.55); border-radius:9px;
+      background:rgba(29,99,223,.26); cursor:grab; touch-action:none;
+      user-select:none; z-index:1; transition:background .15s, border-color .15s;
+    }
+    #ykt-presentation-panel .cw-rail-thumb:hover { background:rgba(29,99,223,.38); border-color:rgba(29,99,223,.75); }
+    #ykt-presentation-panel .cw-rail-thumb.dragging { cursor:grabbing; background:rgba(29,99,223,.48); border-color:#1d63df; }
     #ykt-presentation-panel .cw-marker {
       position:absolute; left:5px; width:19px; height:7px; border:0; border-radius:4px; padding:0;
-      cursor:pointer; background:#c8d2e2;
+      cursor:pointer; background:#c8d2e2; z-index:2;
     }
     #ykt-presentation-panel .cw-marker.problem { background:#f59e0b; }
     #ykt-presentation-panel .cw-marker.teacher { background:#1d63df; }
@@ -83,6 +100,10 @@
       font-weight: 500;
       vertical-align: middle;
     }
+    @media (max-width: 560px) {
+      #ykt-presentation-panel .panel-header h3 { flex: 0 0 auto; }
+      #ykt-presentation-panel .panel-controls { flex: 1 1 100%; justify-content: flex-start; }
+    }
   </style>
   <div class="panel-header">
     <h3>课件</h3>
@@ -104,8 +125,9 @@
 
   <div class="panel-body cw-single-column-body">
     <div id="ykt-presentation-list" class="presentation-list cw-list" tabindex="0"></div>
-    <div id="ykt-slide-rail" class="cw-rail" aria-label="课件快速导航">
+    <div id="ykt-slide-rail" class="cw-rail" aria-label="课件快速导航" title="拖动滑块浏览课件；彩色标记为题目页/老师当前页/选中页">
       <div class="cw-rail-track"></div>
+      <div id="ykt-slide-thumb" class="cw-rail-thumb" role="scrollbar" aria-controls="ykt-presentation-list" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="课件滚动位置" tabindex="0"></div>
     </div>
   </div>
 </div>

@@ -355,8 +355,12 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
    气泡的 markdown 排版样式见文件底部（作用于 .ykt-ai-msg.ai / .ykt-chat-msg.ai） */
 
 /* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */
-#ykt-presentation-panel{ width: 900px; }
-#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#ykt-presentation-panel{ width: 900px; min-height: 0; }
+#ykt-presentation-panel .panel-header{ flex: 0 0 auto; }
+#ykt-presentation-panel .panel-controls{
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  flex: 1 1 0; min-width: 0; justify-content: flex-end;
+}
 #ykt-presentation-panel .presentation-list{
   border: 1px solid var(--ykt-border);
   border-radius: 8px;
@@ -487,9 +491,10 @@ body.ykt-narrow #ykt-helper-toolbar.collapsed.has-active #ykt-toolbar-badge{
   --ykt-panel-max-h: 72vh;
 }
 #ykt-presentation-panel .cw-single-column-body{
-  height: 100%; min-height: 0; overflow: hidden;
+  flex: 1 1 auto; height: auto; min-height: 0; overflow: hidden;
 }
 #ykt-presentation-panel .cw-list{
+  height: auto; min-height: 0;
   max-height: var(--ykt-panel-max-h);
   overflow: auto;
   overscroll-behavior: contain;
@@ -1161,6 +1166,10 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
 #ykt-shell-content #ykt-presentation-panel .panel-controls { gap: 7px; }
 #ykt-shell-content #ykt-presentation-panel .panel-controls select,
 #ykt-shell-content #ykt-presentation-panel #ykt-presentation-picker {
+  flex: 1 1 120px;
+  width: auto;
+  min-width: 0;
+  max-width: 260px;
   height: var(--ykt-control-h);
   padding: 0 9px;
   border: 1px solid var(--ykt-border);
@@ -1573,10 +1582,14 @@ html.ykt-in-iframe body.ykt-debug-outline .ykt-panel::after { background: #f9731
 }
 
 /* ---------- 对话上下文：无图文字不挤压 ---------- */
-#ykt-shell-content #ykt-chat-ctx { flex-wrap: wrap; min-width: 0; }
-#ykt-shell-content #ykt-chat-ctx-thumb { flex: 0 0 auto; white-space: nowrap; color: var(--ykt-text-secondary); font-size: 11px; }
-#ykt-shell-content #ykt-chat-ctx .ykt-slide-source-toggle { flex: 0 0 auto; }
-#ykt-shell-content #ykt-chat-ctx label { flex: 0 0 auto; white-space: nowrap; }
+#ykt-shell-content #ykt-chat-ctx,
+#ykt-shell-content #ykt-ai-ctx { flex-wrap: wrap; min-width: 0; }
+#ykt-shell-content #ykt-chat-ctx-thumb,
+#ykt-shell-content #ykt-ai-ctx-thumb { flex: 0 0 auto; white-space: nowrap; color: var(--ykt-text-secondary); font-size: 11px; }
+#ykt-shell-content #ykt-chat-ctx .ykt-slide-source-toggle,
+#ykt-shell-content #ykt-ai-ctx .ykt-slide-source-toggle { flex: 0 0 auto; }
+#ykt-shell-content #ykt-chat-ctx label,
+#ykt-shell-content #ykt-ai-ctx label { flex: 0 0 auto; white-space: nowrap; }
 #ykt-shell-content #ykt-assign-tab .quiz-stem {
   color: var(--ykt-text);
   font-size: 13px;
