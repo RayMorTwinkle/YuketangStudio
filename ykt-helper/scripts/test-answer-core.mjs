@@ -192,6 +192,28 @@ ok('填空按行 → 两空', () => {
 ok('填空空数不匹配 → 报错', () => {
   throwsCode(() => normalizeAnswer(fillTask, { answers: ['2'] }), ERROR.INVALID_ANSWER);
 });
+ok('填空允许普通数学写法 x^2 / 1/2', () => {
+  assert.deepEqual(normalizeAnswer(fillTask, { answers: ['x^2', '1/2'] }).values, ['x^2', '1/2']);
+});
+for (const [name, value] of [
+  ['LaTeX $...$', '$x^2$'],
+  ['LaTeX \\frac', '\\frac{1}{2}'],
+  ['LaTeX x^{}', 'x^{2}'],
+  ['Markdown 加粗', '**2**'],
+  ['Markdown 代码', '`2`'],
+]) {
+  ok(`填空拒绝${name}，并给出重答提示`, () => {
+    assert.throws(
+      () => normalizeAnswer(fillTask, { answers: [value, '4'] }),
+      (e) => e instanceof AnswerError
+        && e.code === ERROR.INVALID_ANSWER
+        && /LaTeX|Markdown|普通文本/.test(e.message),
+    );
+  });
+}
+ok('regex 填空拒绝 LaTeX', () => {
+  throwsCode(() => parseRegex(fillTask, '<answer>\\frac{1}{2}</answer>\n<answer>4</answer>'), ERROR.INVALID_ANSWER);
+});
 const subjTask = buildClassroomTask({
   problem: { problemId: 401, problemType: 5, body: '简述' },
   status: classroomStatus,

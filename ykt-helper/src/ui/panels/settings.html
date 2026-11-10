@@ -211,6 +211,20 @@
 
         <div class="settings-row">
           <div class="settings-copy">
+            <label class="settings-label" for="ykt-input-auto-skip-fill">自动作答时不答填空题</label>
+            <small class="settings-hint">填空题答案必须为普通文本；开启后遇到填空题直接跳过，不提交。</small>
+          </div>
+          <div class="settings-control">
+            <span class="settings-switch" role="switch">
+              <input type="checkbox" id="ykt-input-auto-skip-fill">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">开启</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-copy">
             <label class="settings-label" for="ykt-input-fallback-answer">无 Key 时提交兜底答案</label>
             <small class="settings-hint">未配置 AI 时提交占位答案；默认关闭，宁缺答不误答。</small>
           </div>

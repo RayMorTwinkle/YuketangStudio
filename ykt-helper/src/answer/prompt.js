@@ -11,7 +11,7 @@ export const SUBMIT_ANSWER_TOOL = {
     description:
       '把本题的最终答案提交/暂存到雨课堂。确定答案后必须调用本工具；只输出文字不算完成。'
       + '选择题传选项标签；判断题传选项标签（A/B 或 √/×）；填空题按空位顺序每空一项；主观题传完整作答文本。'
-      + '填空答案必须是普通文本：不要带 TeX/LaTeX 或 Markdown 格式，数学式写成普通文字（如 1/2、x^2，不要写 \\frac{1}{2}、$x^2$、**加粗**）。',
+      + '填空答案必须是普通文本：不要带 TeX/LaTeX 或 Markdown 格式，数学式写成普通文字（如 1/2、x^2，不要写 \\frac{1}{2}、$x^2$、**加粗**）。解析器会拒绝带这些格式的填空答案，并要求模型重答。',
     parameters: {
       type: 'object',
       properties: {
@@ -102,7 +102,7 @@ export function buildAnswerContract(task, transport, { autoSubmit = false, soft 
       '- 单选/多选/投票：选项标签数组，例如 ["A"] 或 ["A","C"]；',
       '- 判断题：必须是选项标签（如 ["A"]/["B"]，或题目选项本身就是 √/× 时用 ["√"]/["×"]）；',
       '- 如果题目只给了 A/B 标签，只能输出 A/B，不要输出 √/× 或解释；',
-      '- 填空：按空位顺序，每个空一项；每空必须是普通文本，不要用 TeX/LaTeX 或 Markdown 格式（数学式写 1/2、x^2，不写 \\frac{1}{2}、$x^2$、**加粗**）；',
+      '- 填空：按空位顺序，每个空一项；每空必须是普通文本，不要用 TeX/LaTeX 或 Markdown 格式（数学式写 1/2、x^2，不写 \\frac{1}{2}、$x^2$、**加粗**）；带格式会被解析器拒绝并重答；',
       '- 主观/问答：一个元素，内容为完整作答文本。',
     );
     if (autoSubmit) lines.push('本次为自动作答：必须调用 submit_answer，否则本次作答视为失败。');
@@ -207,7 +207,7 @@ export function buildNudge(task, error, transport) {
   } else if (transport === 'tools') {
     lines.push('请现在调用 submit_answer 工具；answers 必须是数组，不要只输出文字。');
     if (q.type === QTYPE.JUDGE) lines.push('判断题 answers 只放选项标签（如 ["A"] 或 ["B"]），不要放解释。');
-    if (q.type === QTYPE.FILL) lines.push(`填空题按空位顺序放 ${q.blanks || '每'} 项。`);
+    if (q.type === QTYPE.FILL) lines.push(`填空题按空位顺序放 ${q.blanks || '每'} 项；绝对不能带 LaTeX/Markdown，数学式写普通文本（1/2、x^2）。`);
   } else {
     lines.push('请重新给出答案，并在最后一行写「答案：...」。');
   }

@@ -11,6 +11,7 @@ import { gm } from '../../core/env.js';
 import { makeChatUrl } from '../../ai/agnes.js';
 import { fetchCloudStatus, getCloudProfile, cloudStatusSummary } from '../../core/cloud-status.js';
 import { DEFAULT_SYSTEM_PROMPT_CHAT, DEFAULT_SYSTEM_PROMPT_AI } from '../../core/types.js';
+import { ensureAutoAnswerAgreement } from '../auto-answer-agreement.js';
 
 let mounted = false;
 let root;
@@ -97,6 +98,7 @@ export function mountSettingsPanel() {
 
   // === 其他 UI 原有字段 ===
   const $auto = root.querySelector('#ykt-input-auto-answer');
+  const $autoSkipFill = root.querySelector('#ykt-input-auto-skip-fill');
   const $fallbackAns = root.querySelector('#ykt-input-fallback-answer');
   const $autoJoin = root.querySelector('#ykt-input-auto-join');
   const $autoJoinAutoAnswer = root.querySelector('#ykt-input-auto-join-auto-answer');
@@ -565,6 +567,24 @@ export function mountSettingsPanel() {
     loadProfileToForm(ai.activeProfileId);
   });
 
+  // 首次启用自动作答前签署君子协定；AI 手动答题不经过这里。
+  const gateAutoAnswerAgreement = async (input, key) => {
+    if (!input?.checked) return;
+    if (ui.config.autoAnswerAgreementAccepted) return;
+    input.checked = false;
+    const accepted = await ensureAutoAnswerAgreement(ui);
+    if (!accepted) {
+      ui.toast?.('未签署君子协定，自动作答未开启', 2800);
+      return;
+    }
+    input.checked = true;
+    ui.config[key] = true;
+    ui.saveConfig?.();
+    ui.updateAutoAnswerBtn?.();
+  };
+  $auto?.addEventListener('change', () => { void gateAutoAnswerAgreement($auto, 'autoAnswer'); });
+  $autoJoinAutoAnswer?.addEventListener('change', () => { void gateAutoAnswerAgreement($autoJoinAutoAnswer, 'autoAnswerOnAutoJoin'); });
+
   // 初始化表单（后续所有刷新统一走 syncFormFromConfig）
   syncFormFromConfig();
 
@@ -602,6 +622,7 @@ export function mountSettingsPanel() {
     ui.config.autoJoinEnabled = !!$autoJoin.checked;
     ui.config.autoAnswerOnAutoJoin = !!$autoJoinAutoAnswer.checked;
     ui.config.autoAnswer = !!$auto.checked;
+    ui.config.autoAnswerSkipFill = !!$autoSkipFill?.checked;
     ui.config.autoAnswerFallbackDefault = !!$fallbackAns?.checked;
     ui.config.aiAutoAnalyze = !!$autoAnalyze.checked;
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
@@ -647,6 +668,7 @@ export function mountSettingsPanel() {
     $autoJoin.checked = !!ui.config.autoJoinEnabled;
     $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
     $auto.checked = !!ui.config.autoAnswer;
+    if ($autoSkipFill) $autoSkipFill.checked = !!ui.config.autoAnswerSkipFill;
     if ($fallbackAns) $fallbackAns.checked = !!ui.config.autoAnswerFallbackDefault;
     $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
     $iftex.checked = !!ui.config.iftex;

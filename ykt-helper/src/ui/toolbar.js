@@ -4,6 +4,7 @@
 import { ui } from './ui-api.js';
 import { fetchCloudStatus, getCloudProfile, cloudStatusSummary } from '../core/cloud-status.js';
 import { confirmDialog } from './confirm.js';
+import { ensureAutoAnswerAgreement } from './auto-answer-agreement.js';
 
 const COLLAPSED_KEY = 'ykt.toolbar.collapsed';
 const HINT_KEY = 'ykt.toolbar.collapseHintShown';
@@ -150,6 +151,13 @@ export function installToolbar() {
   // 自动作答开关
   bar.querySelector('#ykt-btn-auto-answer')?.addEventListener('click', async () => {
     const next = !ui.config.autoAnswer;
+    if (next && !ui.config.autoAnswerAgreementAccepted) {
+      const accepted = await ensureAutoAnswerAgreement(ui);
+      if (!accepted) {
+        ui.toast?.('未签署君子协定，自动作答未开启', 2800);
+        return;
+      }
+    }
     if (next) {
       const profile = getCloudProfile(ui.config);
       if (profile) {

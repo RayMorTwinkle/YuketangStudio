@@ -19,6 +19,7 @@ import { getOverride } from '../ui/panels/ai.js';
 import { captureSlideImage } from '../capture/screenshoot.js';
 import { normalizeTimestamp, deadlineFromLimit, isDeadlineReached } from '../core/problem-timing.js';
 import { answerLog } from '../answer/debug.js';
+import { ensureAutoAnswerAgreement } from '../ui/auto-answer-agreement.js';
 import { trace } from '../core/telemetry.js';
 
 let _autoLoopStarted = false;
@@ -128,6 +129,32 @@ async function handleAutoAnswerInternal(problem) {
       problemId: String(problem.problemId || ''),
       problemType: Number(problem.problemType) || 0,
     });
+    return;
+  }
+
+  // 自动作答首次使用：先签署君子协定；AI 手动答题不经过这里。
+  if (!ui.config.autoAnswerAgreementAccepted) {
+    const accepted = await ensureAutoAnswerAgreement(ui);
+    if (!accepted) {
+      recordAuto('auto_answer_skip', {
+        reason: 'agreement_declined',
+        problemId: String(problem.problemId || ''),
+        problemType: Number(problem.problemType) || 0,
+      });
+      ui.toast('未签署君子协定，已跳过自动作答', 3000);
+      return;
+    }
+  }
+
+  // 用户可选择让自动作答跳过填空题，避免格式不合规的答案被提交。
+  if (ui.config.autoAnswerSkipFill && Number(problem.problemType) === 4) {
+    recordAuto('auto_answer_skip', {
+      reason: 'fill_disabled',
+      problemId: String(problem.problemId || ''),
+      problemType: 4,
+    });
+    log.dbg('[AutoAnswer] 跳过填空题（用户设置）');
+    ui.toast('已按设置跳过填空题', 2200);
     return;
   }
 

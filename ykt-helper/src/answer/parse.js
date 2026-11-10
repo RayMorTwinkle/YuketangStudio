@@ -129,15 +129,39 @@ function parseJudge(task, answers) {
   return unique;
 }
 
+/**
+ * 填空题答案必须是普通文本。
+ * 允许 x^2、1/2 这类普通写法；拒绝 TeX/LaTeX 命令、$...$、^{}、_{}、
+ * Markdown 强调/代码/标题/链接/列表等格式。返回命中的格式说明，未命中返回空字符串。
+ */
+export function fillFormatReason(raw) {
+  const s = String(raw ?? '');
+  if (!s) return '';
+  const latex = /(?:\$[^$\n]+\$|\\\(|\\\)|\\\[|\\\]|\\[A-Za-z]+|\^\{|_\{|\\(?:frac|sqrt|text|begin|end)\b)/;
+  if (latex.test(s)) return 'LaTeX/TeX 数学格式';
+  const markdown = /(?:\*\*|__|`|~~|^\s{0,3}#{1,6}\s|^\s*[-*+]\s|!\[[^\]]*\]\([^)]*\)|\[[^\]]+\]\([^)]*\))/m;
+  if (markdown.test(s)) return 'Markdown 格式';
+  return '';
+}
+
 function parseFill(task, answers) {
   const values = [];
   for (const a of answers) {
     const s = String(a ?? '');
     if (!s.trim()) continue;
+    const rawReason = fillFormatReason(s);
+    if (rawReason) {
+      fail(ERROR.INVALID_ANSWER, `填空题答案不能包含${rawReason}；请只输出普通文本（数学式写 1/2、x^2，不要写 \\frac{1}{2}、$x^2$、**加粗**）`);
+    }
     if (/[\n|｜]/.test(s)) {
       for (const part of s.split(/[\n|｜]+/)) {
         const v = part.trim();
-        if (v) values.push(v);
+        if (!v) continue;
+        const reason = fillFormatReason(v);
+        if (reason) {
+          fail(ERROR.INVALID_ANSWER, `填空题答案不能包含${reason}；请只输出普通文本（数学式写 1/2、x^2，不要写 \\frac{1}{2}、$x^2$、**加粗**）`);
+        }
+        values.push(v);
       }
     } else {
       values.push(s.trim());

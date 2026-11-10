@@ -26,12 +26,16 @@ export const DEFAULT_SYSTEM_PROMPT_AI = [
   '1) 用户消息附带课件截图与题目文本——文本来自课堂系统、比截图识别更可靠，优先依据文本、结合图片作答；',
   '2) 优先确保答案快速且准确：选择题先给答案再给理由（格式：答案: [字母] / 解释: [理由]）；填空/主观题直接给完整答案与必要思路；',
   '3) 回答简洁直接，避免冗长铺垫；',
-  '4) 所有数学符号与公式必须用 \\(...\\)（行内）与 \\[...\\]（独立成行）包裹——含简单记号（例：写 \\(x_0\\) 不写 (x_0)）；不要用 $...$ / $$...$$ 定界符；无法识别时直接说明，不要编造。',
+  '4) 解释和主观题中的数学符号可以用 \\(...\\) / \\[...\\]；但填空题的 answers 必须是普通文本，禁止 TeX/LaTeX 或 Markdown（数学式写 1/2、x^2，不要写 \\frac{1}{2}、$x^2$、**加粗**）；无法识别时直接说明，不要编造。',
 ].join('\n');
 
 export const DEFAULT_CONFIG = {
   notifyProblems: true,
   autoAnswer: false,
+  // 自动作答时跳过填空题：填空题格式要求严格，默认仍由模型尝试；开启后只跳过不提交
+  autoAnswerSkipFill: false,
+  // 首次启用自动作答前的君子协定；与 AI 手动答题无关
+  autoAnswerAgreementAccepted: false,
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
   // 未配置 API Key 时是否提交兜底答案（A/略）。默认关——宁缺答不误答
