@@ -22,6 +22,8 @@
 #   bash scripts/release.sh --check
 #   bash scripts/release.sh --build-only --only userscript
 #   bash scripts/release.sh --version 0.6.3 --channel stable --notes "稳定版发布"
+#
+# 版本号规则：只允许纯数字 X.Y.Z（例如 0.9.15），禁止 alpha/beta/rc 等后缀。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -57,6 +59,14 @@ done
 
 case "$ONLY" in userscript|android|all) ;; *) echo "--only 只能是 userscript/android/all"; exit 1 ;; esac
 case "$CHANNEL" in stable|beta) ;; *) echo "--channel 只能是 stable/beta"; exit 1 ;; esac
+
+validate_version() {
+  if ! [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "❌ 版本号必须为纯数字 X.Y.Z（不带 alpha/beta/rc 等字母）：$1" >&2
+    exit 1
+  fi
+}
+if [ -n "$VERSION" ]; then validate_version "$VERSION"; fi
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; }
@@ -97,6 +107,7 @@ if [ "$ONLY" != "userscript" ]; then
 fi
 
 VER="$(node -p "require('$ROOT/ykt-helper/package.json').version")"
+validate_version "$VER"
 ok "当前版本：v$VER"
 
 if [ "$FAIL" = 1 ]; then echo; echo "❌ 前置检查未通过"; exit 1; fi

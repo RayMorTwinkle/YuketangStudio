@@ -13,6 +13,13 @@
 set -eu
 cd "$(dirname "$0")/.."
 
+validate_version() {
+  if ! [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "❌ 版本号必须为纯数字 X.Y.Z（不带 alpha/beta/rc 等字母）：$1" >&2
+    exit 1
+  fi
+}
+
 CHANNEL="beta"
 APK=""
 APK_ONLY=0
@@ -31,6 +38,7 @@ fi
 H="${AXOOO_HOST:-http://10.126.126.1:3005}"
 K="${AXOOO_API_KEY:?需要 AXOOO_API_KEY（见 ServerX/敏感/axooo-pan.md）}"
 VER=$(node -p "require('./package.json').version")
+validate_version "$VER"
 JS="dist/YuketangStudio-${VER}.user.js"
 LATEST_JS="dist/YuketangStudio-latest.user.js"
 [ -f "$JS" ] || { echo "先 npm run build 产出 $JS"; exit 1; }
