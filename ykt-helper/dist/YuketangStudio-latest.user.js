@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.9.14-beta.2
+// @version      0.9.14
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档、班级课件下载、刷课
@@ -916,7 +916,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.9.14-beta.2" !== "undefined" && "0.9.14-beta.2") return String("0.9.14-beta.2");
+      if (typeof "0.9.14" !== "undefined" && "0.9.14") return String("0.9.14");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -4713,7 +4713,7 @@
       timerLagMs: state.timerLagMs,
       lessonId: String(repo.currentLessonId || ""),
       page: location.pathname,
-      scriptVersion: String("0.9.14-beta.2"),
+      scriptVersion: String("0.9.14"),
       autoAnswer: !!cfg.autoAnswer,
       autoJoin: !!cfg.autoJoinEnabled,
       autoAnswerOnAutoJoin: !!cfg.autoAnswerOnAutoJoin,
@@ -11511,12 +11511,33 @@
   function latestUrl(channel) {
     return LATEST_URL + "?channel=" + channel;
   }
-  /** 语义化版本比较：a>b → 1；a<b → -1；等 → 0（容忍非数字段） */  function cmpVer(a, b) {
-    const pa = String(a).split(".").map(n => parseInt(n, 10) || 0);
-    const pb = String(b).split(".").map(n => parseInt(n, 10) || 0);
-    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-      const d = (pa[i] || 0) - (pb[i] || 0);
+  /** 语义化版本比较：a>b → 1；a<b → -1；等 → 0。支持 0.9.14-beta.2 预发布段。 */  function cmpVer(a, b) {
+    const parse = v => {
+      const s = String(v ?? "").trim().replace(/^v/i, "").split("+")[0];
+      const [core, pre = ""] = s.split("-", 2);
+      return {
+        nums: core.split(".").map(n => parseInt(n, 10) || 0),
+        pre: pre ? pre.split(".").map(x => /^\d+$/.test(x) ? Number(x) : x) : null
+      };
+    };
+    const A = parse(a);
+    const B = parse(b);
+    for (let i = 0; i < Math.max(A.nums.length, B.nums.length); i++) {
+      const d = (A.nums[i] || 0) - (B.nums[i] || 0);
       if (d) return d > 0 ? 1 : -1;
+    }
+    // 正式版 > 同一 core 的预发布版
+        if (A.pre === null && B.pre !== null) return 1;
+    if (A.pre !== null && B.pre === null) return -1;
+    if (A.pre === null && B.pre === null) return 0;
+    for (let i = 0; i < Math.max(A.pre.length, B.pre.length); i++) {
+      const x = A.pre[i];
+      const y = B.pre[i];
+      if (x === void 0) return -1;
+      if (y === void 0) return 1;
+      if (typeof x === "number" && typeof y === "number") {
+        if (x !== y) return x > y ? 1 : -1;
+      } else if (typeof x === "number") return -1; else if (typeof y === "number") return 1; else if (x !== y) return x > y ? 1 : -1;
     }
     return 0;
   }
@@ -11526,7 +11547,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.9.14-beta.2";
+      return "0.9.14";
     } catch {}
     return "0.0.0";
   }
@@ -11701,8 +11722,8 @@
   function mountAboutPanel() {
     if (mounted$3) return root$3;
     const host = document.createElement("div");
-    // "0.9.14-beta.2" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.14-beta.2"}<`);
+    // "0.9.14" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.14"}<`);
     document.body.appendChild(host.firstElementChild);
     root$3 = document.getElementById("ykt-about-panel");
     const $btn = root$3.querySelector("#ykt-about-check");
