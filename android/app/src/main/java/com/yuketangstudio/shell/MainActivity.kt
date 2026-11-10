@@ -1395,16 +1395,45 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    /** 语义化版本比较：a 比 b 新 → true（与前缀非数字段容错，与脚本 cmpVer 一致） */
-    private fun isNewer(a: String, b: String): Boolean {
-        val pa = a.split(".").map { it.toIntOrNull() ?: 0 }
-        val pb = b.split(".").map { it.toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(pa.size, pb.size)) {
-            val d = (pa.getOrNull(i) ?: 0) - (pb.getOrNull(i) ?: 0)
-            if (d != 0) return d > 0
-        }
-        return false
+    /**
+     * 语义化版本比较，支持 0.9.14 / 0.9.14-beta.2 预发布段。
+     * 同一 core 下正式版大于预发布版；预发布数字段按数值比较。
+     */
+    private fun parseVersion(v: String): Pair<List<Int>, List<String>?> {
+        val s = v.trim().removePrefix("v").substringBefore('+')
+        val core = s.substringBefore('-')
+        val pre = s.substringAfter('-', "")
+        return core.split('.').map { it.toIntOrNull() ?: 0 } to
+            if (pre.isBlank()) null else pre.split('.')
     }
+
+    private fun compareVersion(a: String, b: String): Int {
+        val (an, ap) = parseVersion(a)
+        val (bn, bp) = parseVersion(b)
+        for (i in 0 until maxOf(an.size, bn.size)) {
+            val d = (an.getOrNull(i) ?: 0) - (bn.getOrNull(i) ?: 0)
+            if (d != 0) return if (d > 0) 1 else -1
+        }
+        if (ap == null && bp != null) return 1
+        if (ap != null && bp == null) return -1
+        if (ap == null && bp == null) return 0
+        val aPre = ap!!
+        val bPre = bp!!
+        for (i in 0 until maxOf(aPre.size, bPre.size)) {
+            val x = aPre.getOrNull(i) ?: return -1
+            val y = bPre.getOrNull(i) ?: return 1
+            val xn = x.toIntOrNull()
+            val yn = y.toIntOrNull()
+            if (xn != null && yn != null) {
+                if (xn != yn) return if (xn > yn) 1 else -1
+            } else if (xn != null) return -1
+            else if (yn != null) return 1
+            else if (x != y) return if (x > y) 1 else -1
+        }
+        return 0
+    }
+
+    private fun isNewer(a: String, b: String): Boolean = compareVersion(a, b) > 0
 
     /**
      * 注册 APK 下载完成广播：下载成功后弹窗询问是否立即安装。

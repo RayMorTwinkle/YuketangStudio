@@ -30,13 +30,36 @@ function latestUrl(channel) {
   return LATEST_URL + '?channel=' + channel;
 }
 
-/** 语义化版本比较：a>b → 1；a<b → -1；等 → 0（容忍非数字段） */
+/** 语义化版本比较：a>b → 1；a<b → -1；等 → 0。支持 0.9.14-beta.2 预发布段。 */
 export function cmpVer(a, b) {
-  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
-  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0);
+  const parse = (v) => {
+    const s = String(v ?? '').trim().replace(/^v/i, '').split('+')[0];
+    const [core, pre = ''] = s.split('-', 2);
+    return {
+      nums: core.split('.').map(n => parseInt(n, 10) || 0),
+      pre: pre ? pre.split('.').map(x => (/^\d+$/.test(x) ? Number(x) : x)) : null,
+    };
+  };
+  const A = parse(a);
+  const B = parse(b);
+  for (let i = 0; i < Math.max(A.nums.length, B.nums.length); i++) {
+    const d = (A.nums[i] || 0) - (B.nums[i] || 0);
     if (d) return d > 0 ? 1 : -1;
+  }
+  // 正式版 > 同一 core 的预发布版
+  if (A.pre === null && B.pre !== null) return 1;
+  if (A.pre !== null && B.pre === null) return -1;
+  if (A.pre === null && B.pre === null) return 0;
+  for (let i = 0; i < Math.max(A.pre.length, B.pre.length); i++) {
+    const x = A.pre[i];
+    const y = B.pre[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    if (typeof x === 'number' && typeof y === 'number') {
+      if (x !== y) return x > y ? 1 : -1;
+    } else if (typeof x === 'number') return -1;
+    else if (typeof y === 'number') return 1;
+    else if (x !== y) return x > y ? 1 : -1;
   }
   return 0;
 }
