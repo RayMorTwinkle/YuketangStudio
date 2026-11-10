@@ -14,6 +14,7 @@ import { ensureFontAwesome } from './core/env.js';
 import { checkForUpdate } from './core/update-check.js';
 import { installTestHooks } from './core/test-hooks.js';
 import { initRuntimeMonitor } from './core/runtime.js';
+import { showAutoAnswerAgreementAtStartup } from './ui/auto-answer-agreement.js';
 
 // Font Awesome：内嵌 css（字体 data-URI）优先；CSP 拦时 env.js 里退回 CDN
 ensureFontAwesome();
@@ -159,6 +160,10 @@ function whenBodyReady(fn) {
       try { ui._mountAll?.(); } catch (e) { log.err('[mount] panels failed', e); }
       try { installToolbar(); } catch (e) { log.err('[mount] toolbar failed', e); }
       try { maybeShowOnboarding(); } catch (e) { log.err('[onboarding] failed', e); }
+      // 应用启动时显示君子协定；已同意过则不显示，暂不同意的用户可在设置中再次同意。
+      window.setTimeout(() => {
+        try { showAutoAnswerAgreementAtStartup(ui); } catch (e) { log.err('[agreement] startup failed', e); }
+      }, 500);
     } else {
       log.dbg('[mount] iframe 内跳过 UI 挂载:', window.location.pathname);
     }

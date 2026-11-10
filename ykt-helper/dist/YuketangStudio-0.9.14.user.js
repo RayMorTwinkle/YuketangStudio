@@ -10597,13 +10597,42 @@
   // src/ui/auto-answer-agreement.js
   // 自动作答首次使用前的「君子协定」。
   // 只约束自动作答；AI 手动答题/工具调用不触发本协议。
-    let pending = null;
-  function ensureAutoAnswerAgreement(ui) {
+    const STORAGE_KEY = "autoAnswerAgreementAccepted";
+  let pending = null;
+  function accepted(ui) {
     try {
-      if (ui?.config?.autoAnswerAgreementAccepted) return Promise.resolve(true);
+      return !!(ui?.config?.autoAnswerAgreementAccepted || storage.get(STORAGE_KEY, false));
     } catch {
-      return Promise.resolve(false);
+      return false;
     }
+  }
+  function persistAccepted(ui) {
+    try {
+      if (ui?.config) ui.config.autoAnswerAgreementAccepted = true;
+      storage.set(STORAGE_KEY, true);
+      ui?.saveConfig?.();
+    } catch {}
+  }
+  function deferAndDisable(ui) {
+    try {
+      if (ui?.config) {
+        ui.config.autoAnswer = false;
+        ui.config.autoAnswerOnAutoJoin = false;
+      }
+      ui?.saveConfig?.();
+      ui?.updateAutoAnswerBtn?.();
+    } catch {}
+  }
+  function showAutoAnswerAgreementAtStartup(ui) {
+    if (accepted(ui)) return;
+    try {
+      if (sessionStorage.getItem("ykt-auto-agreement-shown") === "1") return;
+      sessionStorage.setItem("ykt-auto-agreement-shown", "1");
+    } catch {}
+    void ensureAutoAnswerAgreement(ui);
+  }
+  function ensureAutoAnswerAgreement(ui) {
+    if (accepted(ui)) return Promise.resolve(true);
     if (pending) return pending;
     pending = new Promise(resolve => {
       if (!document?.body) {
@@ -10620,56 +10649,35 @@
       title.textContent = "君子协定 · 使用自动作答前";
       title.style.cssText = "font-weight:700;font-size:16px;color:#111827;margin-bottom:9px;";
       const body = document.createElement("div");
-      body.textContent = [ "自动作答是辅助功能，答案不保证正确，可能造成误提交，风险由使用者自行承担。", "", "我承诺：", "1. 不向任何人透露此功能的存在、名称、截图、使用方法或效果；", "2. 不把自动作答用于违反学校、课程或平台规定的场景；", "3. 使用前自行核对题目与答案，不把自动结果当作唯一依据。" ].join("\n");
+      body.textContent = [ "自动作答是辅助功能，答案不保证正确，可能造成误提交，风险由使用者自行承担。", "", "我承诺：", "1. 不向任何人透露此功能的存在、名称、截图、使用方法或效果；", "2. 不把自动作答用于违反学校、课程或平台规定的场景；", "3. 使用前自行核对题目与答案，不把自动结果当作唯一依据。", "", "如果暂不同意，将暂时关闭自动作答；之后仍可在设置中重新开启并再次同意。" ].join("\n");
       body.style.cssText = "white-space:pre-wrap;color:#334155;";
-      const label = document.createElement("label");
-      label.style.cssText = "display:flex;align-items:flex-start;gap:8px;margin-top:14px;cursor:pointer;color:#111827;";
-      const check = document.createElement("input");
-      check.type = "checkbox";
-      check.id = "ykt-auto-agreement-check";
-      check.style.cssText = "margin-top:3px;flex:0 0 auto;";
-      const checkText = document.createElement("span");
-      checkText.textContent = "我已阅读并同意以上约定";
-      label.appendChild(check);
-      label.appendChild(checkText);
       const bar = document.createElement("div");
-      bar.style.cssText = "display:flex;gap:10px;justify-content:flex-end;margin-top:16px;";
+      bar.style.cssText = "display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px;";
       const no = document.createElement("button");
       no.type = "button";
-      no.textContent = "取消";
-      no.style.cssText = "padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;cursor:pointer;";
+      no.textContent = "暂不同意并暂时关闭自动开关";
+      no.style.cssText = "padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;cursor:pointer;font-size:12px;";
       const ok = document.createElement("button");
       ok.type = "button";
-      ok.textContent = "同意并开启";
-      ok.disabled = true;
-      ok.style.cssText = "padding:8px 14px;border:none;border-radius:8px;color:#fff;cursor:pointer;background:#9ca3af;";
-      const close = accepted => {
+      ok.textContent = "同意";
+      ok.style.cssText = "padding:8px 18px;border:none;border-radius:8px;color:#fff;cursor:pointer;background:#1d63df;font-size:12px;";
+      const close = isAccepted => {
         mask.remove();
         pending = null;
-        resolve(!!accepted);
+        resolve(!!isAccepted);
       };
-      check.addEventListener("change", () => {
-        ok.disabled = !check.checked;
-        ok.style.background = check.checked ? "#1d63df" : "#9ca3af";
-        ok.style.cursor = check.checked ? "pointer" : "not-allowed";
+      no.addEventListener("click", () => {
+        deferAndDisable(ui);
+        close(false);
       });
-      no.addEventListener("click", () => close(false));
       ok.addEventListener("click", () => {
-        if (!check.checked) return;
-        try {
-          ui.config.autoAnswerAgreementAccepted = true;
-          ui.saveConfig?.();
-        } catch {}
+        persistAccepted(ui);
         close(true);
-      });
-      mask.addEventListener("click", e => {
-        if (e.target === mask) close(false);
       });
       bar.appendChild(no);
       bar.appendChild(ok);
       box.appendChild(title);
       box.appendChild(body);
-      box.appendChild(label);
       box.appendChild(bar);
       mask.appendChild(box);
       document.body.appendChild(mask);
@@ -17489,6 +17497,14 @@
         } catch (e) {
           log$1.err("[onboarding] failed", e);
         }
+        // 应用启动时显示君子协定；已同意过则不显示，暂不同意的用户可在设置中再次同意。
+                window.setTimeout(() => {
+          try {
+            showAutoAnswerAgreementAtStartup(ui);
+          } catch (e) {
+            log$1.err("[agreement] startup failed", e);
+          }
+        }, 500);
       } else log$1.dbg("[mount] iframe 内跳过 UI 挂载:", window.location.pathname);
     });
     // 遥测：旧版默认关 → 0.6.2 一次性打开；每次启动上报一次（60s 内合并）
