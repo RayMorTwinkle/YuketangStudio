@@ -47,7 +47,16 @@ let autoOpening = false;
 let lastCourseContextKey = '';
 let examPageLoadedId = '';
 
+// 临时关闭批量 AI：已确认使用后可能导致考试被服务端锁死。
+// 修复根因并重新验证前保持 true；单题 AI 与手动作答不受影响。
+const BATCH_AI_HIDDEN = true;
+
 function $(sel) { return root?.querySelector(sel); }
+
+function batchAnswerButton(count) {
+  if (BATCH_AI_HIDDEN) return '';
+  return `<button type="button" id="ykt-ap-batch-current" ${count ? '' : 'disabled'}>批量解答本篇（${count} 题）</button>`;
+}
 
 function isExamPageHost() {
   try {
@@ -218,7 +227,7 @@ function renderQuestions() {
       <button type="button" id="ykt-ap-back">← 返回作业列表</button>
       <b>${escapeHtml(viewTitle || '当前试卷')}</b>
       <span class="ap-head-meta">${count} 道题</span>
-      <button type="button" id="ykt-ap-batch-current" ${count ? '' : 'disabled'}>批量解答本篇（${count} 题）</button>
+      ${batchAnswerButton(count)}
       ${viewAssignment?.oldId ? '<button type="button" id="ykt-ap-goto-submit">去交卷</button>' : ''}
     </div>
     <div id="ykt-ap-batch-results" class="ap-batch-results"></div>
@@ -371,7 +380,7 @@ function renderActiveQuestions() {
       <button type="button" id="ykt-ap-back">← 返回作业列表</button>
       <b>${escapeHtml(viewTitle || '详情')}</b>
       <span class="ap-head-meta">${head.map((s) => escapeHtml(String(s))).join(' · ')}</span>
-      <button type="button" id="ykt-ap-batch-current" ${(d.problems || []).length ? '' : 'disabled'}>批量解答本篇（${(d.problems || []).length} 题）</button>
+      ${batchAnswerButton((d.problems || []).length)}
     </div>
     ${desc ? `<div class="ap-desc">${desc}</div>` : ''}
     <div id="ykt-ap-batch-results" class="ap-batch-results"></div>
@@ -885,7 +894,7 @@ function currentExamContext() {
 function syncExamFillButton() {
   const btn = $('#ykt-ap-exam-fill');
   if (!btn) return;
-  btn.style.display = currentExamContext().isExam ? '' : 'none';
+  btn.style.display = !BATCH_AI_HIDDEN && currentExamContext().isExam ? '' : 'none';
 }
 
 /**
@@ -893,6 +902,10 @@ function syncExamFillButton() {
  * 第一次使用前弹免责确认；同意后永久记住。
  */
 async function fillCurrentExam({ fromBatch = false } = {}) {
+  if (BATCH_AI_HIDDEN) {
+    ui.toast?.('考试 AI 自动填入暂时关闭', 2600);
+    return null;
+  }
   const ctx = currentExamContext();
   if (!ctx.isExam) { ui.toast?.('当前页面不是考试页', 2200); return null; }
   const questions = collectExamQuestions(document);
@@ -970,6 +983,10 @@ function appendBatchResult(index, ok, text, state = '') {
 
 /** 只处理当前打开的一篇作业/试卷，不跨作业；作业答案走暂存，不交卷。 */
 async function batchCurrentQuestions() {
+  if (BATCH_AI_HIDDEN) {
+    ui.toast?.('批量解答暂时关闭', 2600);
+    return;
+  }
   if (busy) return;
   const isOld = Array.isArray(viewData?.Slides);
   const items = isOld

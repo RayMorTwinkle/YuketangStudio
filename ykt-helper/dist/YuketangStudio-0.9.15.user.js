@@ -672,7 +672,7 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$8 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-weight: 500; position: relative; padding-left: 12px; }\n    #ykt-ai-ctx .ctx-status::before { content: \'\'; position: absolute; left: 2px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: currentColor; }\n    #ykt-ai-ctx .ctx-status:hover { text-decoration: underline dotted; }\n    #ykt-ai-ctx .ctx-status.st-ok { color: #1a7f37; }\n    #ykt-ai-ctx .ctx-status.st-warn { color: #b45309; }\n    #ykt-ai-ctx .ctx-status.st-info { color: #1d63df; }\n    #ykt-ai-ctx .ctx-status.st-busy { color: #a16207; }\n    #ykt-ai-ctx .ctx-status.st-idle { color: #64748b; }\n    #ykt-ai-ctx .ctx-status.st-err { color: #b42318; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-ctx .ykt-slide-source-toggle { display:flex; gap:4px; flex:0 0 auto; }\n    #ykt-ai-ctx .ykt-slide-source-toggle button { padding:3px 8px;font-size:11px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer; }\n    #ykt-ai-ctx .ykt-slide-source-toggle button.active { border-color:#1d63df;background:#1d63df;color:#fff; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n    /* 工具调用：提交答案卡片 */\n    .ykt-tool-card { margin-top: 8px; border: 1px solid #cfe0ff; background: #f5f9ff; border-radius: 8px; padding: 8px 10px; }\n    .ykt-tool-card.done { border-color: #b7e4c7; background: #f0fbf4; }\n    .ykt-tool-title { font-size: 12px; font-weight: 600; color: #1d63df; margin-bottom: 4px; }\n    .ykt-tool-answer { font-size: 15px; font-weight: 600; color: #111827; word-break: break-word; white-space: pre-wrap; }\n    .ykt-tool-reason { font-size: 12px; color: #607190; margin-top: 4px; white-space: pre-wrap; }\n    .ykt-tool-actions { margin-top: 8px; }\n    .ykt-tool-submit { padding: 5px 14px; border: none; border-radius: 6px; background: #1d63df; color: #fff; cursor: pointer; font-size: 13px; }\n    .ykt-tool-submit:disabled { opacity: .6; cursor: not-allowed; }\n    .ykt-tool-status { margin-top: 6px; font-size: 12px; color: #2e7d32; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-report" title="上传诊断报告到服务器">诊断</button>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <div class="ykt-slide-source-toggle" role="group" aria-label="PPT 附图来源">\n        <button type="button" data-slide-source="teacher">老师当前页</button>\n        <button type="button" data-slide-source="selected">课件选中页</button>\n      </div>\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附图</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
+  var tpl$8 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\n  <style>\n    #ykt-ai-ctx input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 14px; height: 14px; margin: 0 4px 0 0; flex: 0 0 auto; vertical-align: -2px; }\n    #ykt-ai-answer-panel { display: none; flex-direction: column; }\n    #ykt-ai-answer-panel.visible { display: flex; }\n    #ykt-ai-answer-panel .panel-header { display: flex; align-items: center; gap: 8px; }\n    #ykt-ai-answer-panel .panel-header h3 { margin: 0; flex: 1; }\n    #ykt-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 44vh; }\n    .ykt-ai-msg { max-width: 92%; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.55; }\n    .ykt-ai-msg.user { align-self: flex-end; background: #1d63df; color: #fff; border-bottom-right-radius: 2px; }\n    .ykt-ai-msg.user img { max-width: 220px; max-height: 130px; border-radius: 6px; display: block; margin-top: 6px; }\n    .ykt-ai-msg.ai { align-self: flex-start; background: #f2f4f8; color: var(--ykt-fg, #222); border-bottom-left-radius: 2px; }\n    .ykt-ai-msg.ai p { margin: 0 0 6px; }\n    .ykt-ai-msg.ai p:last-child { margin-bottom: 0; }\n    .ykt-ai-msg.ai details { margin-bottom: 6px; }\n    .ykt-ai-msg.ai summary { cursor: pointer; color: #607190; font-size: 12px; user-select: none; }\n    .ykt-ai-msg.ai .reasoning-body { color: #607190; font-size: 12px; white-space: pre-wrap; border-left: 3px solid #d8dee9; padding-left: 8px; margin: 4px 0; max-height: 160px; overflow-y: auto; }\n    .ykt-ai-msg .err { color: #c0392b; }\n    .ykt-ai-msg .muted { color: #607190; font-size: 12px; }\n    .ykt-ai-msg.user .ykt-chat-warn { margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 6px; }\n    #ykt-ai-ctx { padding: 4px 10px; font-size: 12px; color: #607190; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ykt-border, #ddd); }\n    #ykt-ai-ctx img { height: 34px; border-radius: 4px; border: 1px solid #ddd; }\n    #ykt-ai-ctx .ctx-status { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-weight: 500; position: relative; padding-left: 12px; }\n    #ykt-ai-ctx .ctx-status::before { content: \'\'; position: absolute; left: 2px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: currentColor; }\n    #ykt-ai-ctx .ctx-status:hover { text-decoration: underline dotted; }\n    #ykt-ai-ctx .ctx-status.st-ok { color: #1a7f37; }\n    #ykt-ai-ctx .ctx-status.st-warn { color: #b45309; }\n    #ykt-ai-ctx .ctx-status.st-info { color: #1d63df; }\n    #ykt-ai-ctx .ctx-status.st-busy { color: #a16207; }\n    #ykt-ai-ctx .ctx-status.st-idle { color: #64748b; }\n    #ykt-ai-ctx .ctx-status.st-err { color: #b42318; }\n    #ykt-ai-custom { display: flex; gap: 6px; padding: 4px 10px; align-items: center; }\n    #ykt-ai-ctx .ykt-slide-source-toggle { display:flex; gap:4px; flex:0 0 auto; }\n    #ykt-ai-ctx .ykt-slide-source-toggle button { padding:3px 8px;font-size:11px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer; }\n    #ykt-ai-ctx .ykt-slide-source-toggle button.active { border-color:#1d63df;background:#1d63df;color:#fff; }\n    #ykt-ai-custom input { flex: 1; font-size: 12px; padding: 4px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; }\n    .ykt-ai-inputbar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--ykt-border, #ddd); align-items: flex-end; }\n    #ykt-ai-input { flex: 1; resize: none; font-size: 13px; padding: 6px 8px; border: 1px solid var(--ykt-border-strong, #ccc); border-radius: 6px; font-family: inherit; }\n    #ykt-ai-input:focus { outline: none; border-color: var(--ykt-accent, #1d63df); }\n    #ykt-ai-send { padding: 7px 14px; border: none; border-radius: 6px; background: var(--ykt-accent, #1d63df); color: #fff; cursor: pointer; white-space: nowrap; }\n    #ykt-ai-send:disabled { opacity: .5; cursor: not-allowed; }\n    #ykt-ai-clear { padding: 3px 8px; font-size: 12px; }\n    /* 工具调用：提交答案卡片 */\n    .ykt-tool-card { margin-top: 8px; border: 1px solid #cfe0ff; background: #f5f9ff; border-radius: 8px; padding: 8px 10px; }\n    .ykt-tool-card.done { border-color: #b7e4c7; background: #f0fbf4; }\n    .ykt-tool-title { font-size: 12px; font-weight: 600; color: #1d63df; margin-bottom: 4px; }\n    .ykt-tool-answer { font-size: 15px; font-weight: 600; color: #111827; word-break: break-word; white-space: pre-wrap; }\n    .ykt-tool-reason { font-size: 12px; color: #607190; margin-top: 4px; white-space: pre-wrap; }\n    .ykt-tool-actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }\n    .ykt-tool-submit, .ykt-tool-secondary, .ykt-tool-retry { padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }\n    .ykt-tool-submit { border: none; background: #1d63df; color: #fff; }\n    .ykt-tool-secondary { border: 1px solid #9db8e8; background: #fff; color: #1d63df; }\n    .ykt-tool-retry { border: none; background: #b45309; color: #fff; }\n    .ykt-tool-submit:disabled, .ykt-tool-secondary:disabled, .ykt-tool-retry:disabled { opacity: .6; cursor: not-allowed; }\n    .ykt-tool-status { margin-top: 6px; font-size: 12px; color: #2e7d32; }\n  </style>\n  <div class="panel-header">\n    <h3>🤖 AI 解答</h3>\n    <button id="ykt-ai-report" title="上传诊断报告到服务器">诊断</button>\n    <button id="ykt-ai-clear">清空会话</button>\n    \n  </div>\n  <div class="panel-body" style="display:flex;flex-direction:column;padding:0;">\n    <div id="ykt-ai-log"></div>\n    <div id="ykt-ai-ctx">\n      <div class="ykt-slide-source-toggle" role="group" aria-label="PPT 附图来源">\n        <button type="button" data-slide-source="teacher">老师当前页</button>\n        <button type="button" data-slide-source="selected">课件选中页</button>\n      </div>\n      <label><input type="checkbox" id="ykt-ai-attach" checked> 附图</label>\n      <span class="ctx-status" id="ykt-ai-text-status">正在检测页面信息...</span>\n      <span id="ykt-ai-ctx-thumb"></span>\n    </div>\n    <div id="ykt-ai-custom">\n      <input type="text" id="ykt-ai-custom-prompt" placeholder="自定义要求（可选，每轮生效）：如「只给思路不给答案」">\n    </div>\n    <div class="ykt-ai-inputbar">\n      <textarea id="ykt-ai-input" rows="2" placeholder="留空发送 = 解答此页题目；输入内容 = 针对题目追问（Enter 发送）"></textarea>\n      <button id="ykt-ai-send">发送</button>\n    </div>\n  </div>\n</div>\n';
   // src/core/dom.js
   // 轻量 DOM 工具——escapeHtml 此前在 ai.js / chat.js / auto-answer-popup.js 各抄了一份
     function escapeHtml$1(s) {
@@ -844,7 +844,7 @@
   // 匿名使用统计：installId（首启生成 UUID）+ 平台 + 版本 + 是否用码 +
   // 当日调用次数 + 首字时间/总时长聚合 → POST /yuketangstudio/telemetry
   // 开关存 storage['telemetry.enabled']（0.6.2 起默认开，可在设置里关闭）；启动时上报一次
-    const ENDPOINT$1 = "https://api.raymor.top/yuketangstudio/telemetry";
+    const ENDPOINT = "https://api.raymor.top/yuketangstudio/telemetry";
   const K_ENABLED = "telemetry.enabled";
   const K_ID = "telemetry.installId";
   const K_DAY = "telemetry.day";
@@ -897,9 +897,6 @@
     storage.set(K_ENHANCED, !!v);
     if (v) scheduleTraceFlush(1e3);
     return true;
-  }
-  function getInstallId() {
-    return installId();
   }
   function installId() {
     let id = storage.get(K_ID);
@@ -1019,7 +1016,7 @@
     await new Promise((resolve, reject) => {
       gm.xhr({
         method: "POST",
-        url: ENDPOINT$1,
+        url: ENDPOINT,
         headers: {
           "Content-Type": "application/json"
         },
@@ -1044,7 +1041,7 @@
     const str = String(s ?? "");
     return str.length > n ? str.slice(0, n) + `…[${str.length}]` : str;
   }
-  function hash32$1(s) {
+  function hash32(s) {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) {
       h ^= s.charCodeAt(i);
@@ -1076,7 +1073,7 @@
                     return {
             type: "image",
             bytes: url.length,
-            hash: hash32$1(url.slice(0, 65536))
+            hash: hash32(url.slice(0, 65536))
           };
         }
         return {
@@ -4890,6 +4887,8 @@
     card.className = "ykt-tool-card";
     const isQuiz = task?.target?.kind === "quiz";
     const displayOnly = !task?.target?.allowSubmit || task?.target?.kind === "display";
+    // 补交只对课堂实时题开放；作业/考试回顾没有课堂补交接口。
+        const canRetry = !autoSubmit && task?.target?.kind === "classroom" && !!task?.target?.allowSubmit;
     const title = document.createElement("div");
     title.className = "ykt-tool-title";
     title.textContent = displayOnly ? "💡 参考答案（不提交）" : isQuiz ? "📥 暂存答案（作业）" : "📤 提交答案";
@@ -4945,15 +4944,37 @@
       parent.appendChild(card);
       return card;
     }
+    const submitLabel = task.target.submitLabel || (isQuiz ? "暂存" : "提交");
     const btn = document.createElement("button");
     btn.className = "ykt-tool-submit";
-    btn.textContent = autoSubmit ? "自动提交中…" : task.target.submitLabel || (isQuiz ? "暂存" : "提交");
+    btn.textContent = autoSubmit ? "自动提交中…" : submitLabel;
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "ykt-tool-secondary";
+    copyBtn.textContent = "复制答案";
+    copyBtn.addEventListener("click", copy);
+    if (!autoSubmit) bar.appendChild(copyBtn);
     bar.appendChild(btn);
+    const retryBtn = canRetry ? document.createElement("button") : null;
+    if (retryBtn) {
+      retryBtn.className = "ykt-tool-retry";
+      retryBtn.textContent = "补交";
+      bar.appendChild(retryBtn);
+    }
     parent.appendChild(card);
-    const doSubmit = async () => {
-      if (btn.disabled) return null;
-      let forceRetry = false;
-      if (!autoSubmit) if (!isQuiz) {
+    let busy = false;
+    const setBusy = (on, mode = "submit") => {
+      copyBtn.disabled = on;
+      btn.disabled = on;
+      if (retryBtn) retryBtn.disabled = on;
+      if (on) if (mode === "retry") retryBtn.textContent = "补交中…"; else btn.textContent = autoSubmit ? "自动提交中…" : isQuiz ? "暂存中…" : "提交中…"; else {
+        btn.textContent = submitLabel;
+        if (retryBtn) retryBtn.textContent = "补交";
+      }
+    };
+    const doSubmit = async ({forceRetry: forceRetry = false, viaRetry: viaRetry = false} = {}) => {
+      if (busy) return null;
+      let finalForceRetry = !!forceRetry;
+      if (!autoSubmit && !isQuiz && !viaRetry) {
         const ok = await confirmDialog$1(`确认提交答案：${toDisplayAnswer(answer)}？`, {
           okText: "提交"
         });
@@ -4967,40 +4988,50 @@
             danger: true
           });
           if (!ok2) return null;
-          forceRetry = true;
+          finalForceRetry = true;
         }
       }
-      btn.disabled = true;
-      btn.textContent = isQuiz ? "暂存中…" : "提交中…";
+      busy = true;
+      setBusy(true, viaRetry ? "retry" : "submit");
       stEl.textContent = "";
       try {
         const r = await submitAnswerTask(task, answer, {
-          forceRetry: forceRetry,
+          forceRetry: finalForceRetry,
           runId: runId
         });
         card.classList.add("done");
         if (r.route === "cache") {
-          btn.textContent = "已暂存";
           stEl.textContent = "✅ 已暂存（未交卷）";
           ui.toast?.("✅ 已暂存，未交卷", 2500);
-        } else if (r.route === "display") {
-          btn.textContent = "仅展示";
-          stEl.textContent = "本题仅展示，不会提交";
+        } else if (r.route === "display") stEl.textContent = "本题仅展示，不会提交"; else if (r.route === "retry") {
+          stEl.textContent = "✅ 补交成功（可再次补交，后一次覆盖前一次）";
+          ui.toast?.("✅ 补交成功", 2500);
         } else {
-          btn.textContent = "已提交";
-          stEl.textContent = r.route === "retry" ? "✅ 补交成功" : "✅ 提交成功";
-          ui.toast?.(r.route === "retry" ? "✅ 补交成功" : "✅ 提交成功", 2500);
+          stEl.textContent = "✅ 提交成功";
+          ui.toast?.("✅ 提交成功", 2500);
         }
         onSubmitted?.(r);
         return r;
       } catch (e) {
-        btn.disabled = false;
-        btn.textContent = isQuiz ? "重试暂存" : "重试提交";
-        stEl.textContent = `❌ ${isQuiz ? "暂存" : "提交"}失败：${e?.message || e}`;
+        stEl.textContent = `❌ ${viaRetry ? "补交" : isQuiz ? "暂存" : "提交"}失败：${e?.message || e}`;
         return null;
+      } finally {
+        busy = false;
+        setBusy(false);
       }
     };
-    btn.addEventListener("click", doSubmit);
+    btn.addEventListener("click", () => doSubmit());
+    if (retryBtn) retryBtn.addEventListener("click", async () => {
+      const ok = await confirmDialog$1("将以补交方式提交（服务端会记录补交标记）。确定继续吗？", {
+        okText: "确认补交",
+        danger: true
+      });
+      if (!ok) return;
+      await doSubmit({
+        forceRetry: true,
+        viaRetry: true
+      });
+    });
     if (autoSubmit) card.__submitPromise = doSubmit();
     return card;
   }
@@ -11493,7 +11524,7 @@
         mounted$4 = true;
     return root$4;
   }
-  var tpl$1 = '<div id="ykt-about-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>关于 YuketangStudio</h3>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <div class="about-note" style="border-left:4px solid #dc2626;background:#fff7ed;padding:10px 12px;margin:0 0 14px;">\n        <h4 style="margin-top:0;color:#b91c1c;">重要提醒</h4>\n        <p><strong>1. 自动作答免责声明：</strong>自动作答只是辅助，答案不保证正确，可能造成误提交；是否开启及使用后果由使用者自行承担，请谨慎开启。</p>\n        <p><strong>2. 考试功能并不稳定，谨慎使用。</strong>考试状态、题目读取和结果页可能随平台更新而变化，请以官方页面为准。</p>\n        <p><strong>3. 安卓端扫一扫目前不可用。</strong>需要扫码时请使用浏览器/其他可用方式，或等待后续修复。</p>\n      </div>\n\n      <h4>版本与更新</h4>\n      <div class="ykt-about-version">\n        <div class="ykt-about-ver-row">\n          <span class="ykt-about-cur">…</span>\n          <button id="ykt-about-check" type="button">检查更新</button>\n        </div>\n        <div id="ykt-about-status" class="ykt-about-status"></div>\n        <div id="ykt-about-actions" class="ykt-about-actions" style="display:none">\n          <button id="ykt-about-download" type="button">下载新版本</button>\n        </div>\n      </div>\n\n      <div id="ykt-about-channel">\n        <h4>更新渠道</h4>\n        <p>当前：<strong id="ykt-about-channel-label">稳定版</strong>\n          <button id="ykt-about-channel-toggle" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">切换到测试版</button>\n        </p>\n        <p style="opacity:.6;font-size:12px">测试版可能不稳定；只影响检查更新，不影响已安装版本。</p>\n      </div>\n\n      <h4>项目介绍</h4>\n      <p>YuketangStudio 是一个为雨课堂提供辅助功能的工具：PPT 提取导出、答题提醒、AI 解答、PPT 多轮对话。</p>\n\n      <h4>相关链接</h4>\n      <p>项目仓库：<a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">github.com/RayMorTwinkle/YuketangStudio</a></p>\n      <p>官方网站：<a href="https://app.raymor.top/yuketangstudio/" target="_blank" rel="noopener">app.raymor.top/yuketangstudio</a><button id="ykt-about-site-copy" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">复制官网发给朋友</button></p>\n      <p>讨论反馈 / 内测群：QQ 群 <strong>901466023</strong><button id="ykt-about-qq-copy" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">复制群号</button></p>\n      <p>安装：本脚本通过源码构建分发，未上架任何脚本市场，安装方式见仓库 README。</p>\n\n      <h4>致谢与反馈</h4>\n      <p>本项目基于 <a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">ZaytsevZY/yuketang-helper-auto</a> 重构而来。</p>\n      <p>问题反馈：<a href="https://github.com/RayMorTwinkle/YuketangStudio/issues" target="_blank" rel="noopener">GitHub Issues</a> · QQ 群 <strong>901466023</strong></p>\n      <p>⭐ 如果这个工具帮到了你，欢迎到 <a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">GitHub 点个 Star</a>，这是对作者最大的支持。</p>\n\n      <h4>功能说明</h4>\n      <div class="about-note">\n        <p><strong>云端模型</strong>：可能因供应商限流、升级或网络问题而不稳定。如果持续失败，可以在 QQ 群反馈给群主，并附上版本号与报错截图。</p>\n        <p><strong>补交功能</strong>：可以多次使用。但如果老师手动结束课堂，或者课程已经结束，补交通道会不可用。</p>\n        <p><strong>补交前</strong>：请确认当前课堂仍允许提交，避免错过最后一次补交机会。</p>\n      </div>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) AI 解答需要调用 LLM API，注意费用；</p>\n      <p>3) AI 答案不保证正确；</p>\n      <p>4) 自动作答有风险，谨慎开启；考试自动填入只写答案，不自动提交。</p>\n    </div>\n  </div>\n</div>\n';
+  var tpl$1 = '<div id="ykt-about-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>关于 YuketangStudio</h3>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <div class="about-note" style="border-left:4px solid #dc2626;background:#fff7ed;padding:10px 12px;margin:0 0 14px;">\n        <h4 style="margin-top:0;color:#b91c1c;">重要提醒</h4>\n        <p><strong>1. 自动作答免责声明：</strong>自动作答只是辅助，答案不保证正确，可能造成误提交；是否开启及使用后果由使用者自行承担，请谨慎开启。</p>\n        <p><strong>2. 考试功能并不稳定，谨慎使用。</strong>考试状态、题目读取和结果页可能随平台更新而变化，请以官方页面为准。</p>\n        <p><strong>3. 安卓端扫一扫目前不可用。</strong>需要扫码时请使用浏览器/其他可用方式，或等待后续修复。</p>\n      </div>\n\n      <h4>版本与更新</h4>\n      <div class="ykt-about-version">\n        <div class="ykt-about-ver-row">\n          <span class="ykt-about-cur">…</span>\n          <button id="ykt-about-check" type="button">检查更新</button>\n        </div>\n        <div id="ykt-about-status" class="ykt-about-status"></div>\n        <div id="ykt-about-actions" class="ykt-about-actions" style="display:none">\n          <button id="ykt-about-download" type="button">下载新版本</button>\n        </div>\n      </div>\n\n      <div id="ykt-about-channel">\n        <h4>更新渠道</h4>\n        <p>当前：<strong id="ykt-about-channel-label">稳定版</strong>\n          <button id="ykt-about-channel-toggle" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">切换到测试版</button>\n        </p>\n        <p style="opacity:.6;font-size:12px">测试版可能不稳定；只影响检查更新，不影响已安装版本。</p>\n      </div>\n\n      <h4>项目介绍</h4>\n      <p>YuketangStudio 是一个为雨课堂提供辅助功能的工具：PPT 提取导出、答题提醒、AI 解答、PPT 多轮对话。</p>\n\n      <h4>相关链接</h4>\n      <p>项目仓库：<a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">github.com/RayMorTwinkle/YuketangStudio</a></p>\n      <p>官方网站：<a href="https://app.raymor.top/yuketangstudio/" target="_blank" rel="noopener">app.raymor.top/yuketangstudio</a><button id="ykt-about-site-copy" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">复制官网发给朋友</button></p>\n      <p>讨论反馈 / 内测群：QQ 群 <strong>901466023</strong><button id="ykt-about-qq-copy" type="button" style="margin-left:6px;padding:1px 8px;font-size:12px;cursor:pointer">复制群号</button></p>\n      <p>安装：本脚本通过源码构建分发，未上架任何脚本市场，安装方式见仓库 README。</p>\n\n      <h4>致谢与反馈</h4>\n      <p>本项目基于 <a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">ZaytsevZY/yuketang-helper-auto</a> 重构而来。</p>\n      <p>问题反馈：<a href="https://github.com/RayMorTwinkle/YuketangStudio/issues" target="_blank" rel="noopener">GitHub Issues</a> · QQ 群 <strong>901466023</strong></p>\n      <p>⭐ 如果这个工具帮到了你，欢迎到 <a href="https://github.com/RayMorTwinkle/YuketangStudio" target="_blank" rel="noopener">GitHub 点个 Star</a>，这是对作者最大的支持。</p>\n\n      <h4>功能说明</h4>\n      <div class="about-note">\n        <p><strong>云端模型</strong>：可能因供应商限流、升级或网络问题而不稳定。如果持续失败，可以在 QQ 群反馈给群主，并附上版本号与报错截图。</p>\n        <p><strong>补交功能</strong>：没有下课且老师没有手动收题时才可以补交。补交按钮在「题目」页面的题目卡片里，AI 解答的答案卡片也会提供补交。</p>\n        <p><strong>补交次数</strong>：可以多次补交，后一次补交会覆盖前一次答案；每次补交前请确认当前课堂仍允许提交。</p>\n      </div>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) AI 解答需要调用 LLM API，注意费用；</p>\n      <p>3) AI 答案不保证正确；</p>\n      <p>4) 自动作答有风险，谨慎开启；考试自动填入只写答案，不自动提交。</p>\n    </div>\n  </div>\n</div>\n';
   /* global GM_info */
   // src/core/update-check.js
   // 更新检测：GET api.raymor.top/yuketangstudio/latest（svc 国内渠道元数据）
@@ -12547,162 +12578,6 @@
       details: details
     };
   }
-  // src/core/exam-consent.js
-  // 进行中考试 AI 自动填充的免责确认。
-  // 用户选择“永久记住”：同意一次后本机不再弹窗；每次同意状态上传到服务端（只传匿名元数据）。
-    const KEY$1 = "examAiConsent";
-  const QUEUE_KEY = "examAiConsentQueue";
-  const CONSENT_VERSION = 1;
-  const ENDPOINT = "https://api.raymor.top/yuketangstudio/exam-ai-consent";
-  function readRecord() {
-    const v = storage.get(KEY$1);
-    if (!v || typeof v !== "object" || v.accepted !== true) return null;
-    if (Number(v.version) !== CONSENT_VERSION) return null;
-    return v;
-  }
-  function saveRecord(record) {
-    storage.set(KEY$1, record);
-  }
-  function hasExamConsent() {
-    return !!readRecord();
-  }
-  function hash32(s) {
-    const str = String(s || "");
-    let h = 2166136261;
-    for (let i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return (h >>> 0).toString(16).padStart(8, "0");
-  }
-  function queueUpload(payload) {
-    const q = storage.get(QUEUE_KEY);
-    const arr = Array.isArray(q) ? q : [];
-    arr.push(payload);
-    storage.set(QUEUE_KEY, arr.slice(-20));
-  }
-  /** 上传“同意”元数据；失败进队列，不阻塞用户。 */  async function uploadExamConsent({mode: mode = "single", examId: examId = "", courseId: courseId = "", source: source = "exam-fill"} = {}) {
-    const payload = {
-      installId: getInstallId(),
-      platform: typeof window !== "undefined" && window.YktBridge ? "android" : "pc",
-      version: getVersion(),
-      mode: String(mode || "single"),
-      source: String(source || ""),
-      examIdHash: hash32(examId),
-      courseIdHash: hash32(courseId),
-      accepted: true,
-      ts: Date.now()
-    };
-    try {
-      await new Promise((resolve, reject) => {
-        gm.xhr({
-          method: "POST",
-          url: ENDPOINT,
-          headers: {
-            "Content-Type": "application/json"
-          },
-          data: JSON.stringify(payload),
-          timeout: 1e4,
-          onload: r => r.status >= 200 && r.status < 300 ? resolve() : reject(new Error("HTTP " + r.status)),
-          onerror: reject,
-          ontimeout: () => reject(new Error("上传超时"))
-        });
-      });
-      return {
-        ok: true,
-        payload: payload
-      };
-    } catch (e) {
-      log$1.warn("[exam-consent] upload failed, queued", e?.message || e);
-      queueUpload(payload);
-      return {
-        ok: false,
-        error: String(e?.message || e),
-        payload: payload
-      };
-    }
-  }
-  /** 重试队列（不阻塞）。 */  function flushExamConsentQueue() {
-    const q = storage.get(QUEUE_KEY);
-    const arr = Array.isArray(q) ? q : [];
-    if (!arr.length) return;
-    storage.set(QUEUE_KEY, []);
-    for (const payload of arr) try {
-      gm.xhr({
-        method: "POST",
-        url: ENDPOINT,
-        headers: {
-          "Content-Type": "application/json"
-        },
-        data: JSON.stringify(payload),
-        timeout: 1e4,
-        onload: r => {
-          if (!(r.status >= 200 && r.status < 300)) queueUpload(payload);
-        },
-        onerror: () => queueUpload(payload),
-        ontimeout: () => queueUpload(payload)
-      });
-    } catch {
-      queueUpload(payload);
-    }
-  }
-  function makeDialog() {
-    return new Promise(resolve => {
-      const mask = document.createElement("div");
-      mask.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.52);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;";
-      const box = document.createElement("div");
-      box.style.cssText = "width:520px;max-width:100%;background:#fff;border-radius:12px;padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.3);font:13px/1.65 system-ui,sans-serif;color:#111827;";
-      box.innerHTML = `\n      <div style="font-size:16px;font-weight:700;margin-bottom:8px;">⚠️ 进行中考试 AI 自动填充</div>\n      <div style="color:#374151;margin-bottom:10px;">\n        AI 只会把参考答案写入当前考试页面的答题控件，<b>不会点击提交按钮，也不会自动交卷</b>。\n        考试规则风险由你自行承担；请确认你有权这样做，并在提交前逐题核对。\n      </div>\n      <div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:8px;padding:9px 11px;margin-bottom:12px;">\n        首次同意后会永久记住，并上传“同意状态”到服务器（仅匿名安装 ID、版本、模式、时间、考试/课程 ID 哈希；不上传题目、答案、成绩）。\n      </div>\n      <label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0 14px;cursor:pointer;">\n        <input id="ykt-exam-consent-check" type="checkbox" style="margin-top:3px;width:16px;height:16px;flex:0 0 auto;">\n        <span>我已知晓风险并自行承担后果，同意 AI 自动填入考试答案。</span>\n      </label>\n      <div style="display:flex;gap:8px;justify-content:flex-end;">\n        <button id="ykt-exam-consent-no" style="padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;">仅展示答案</button>\n        <button id="ykt-exam-consent-yes" disabled style="padding:8px 14px;border:0;border-radius:8px;background:#1d63df;color:#fff;cursor:not-allowed;opacity:.5;">同意并继续</button>\n      </div>`;
-      mask.appendChild(box);
-      document.body.appendChild(mask);
-      const check = box.querySelector("#ykt-exam-consent-check");
-      const yes = box.querySelector("#ykt-exam-consent-yes");
-      const no = box.querySelector("#ykt-exam-consent-no");
-      const done = v => {
-        try {
-          mask.remove();
-        } catch {}
-        resolve(v);
-      };
-      check.addEventListener("change", () => {
-        yes.disabled = !check.checked;
-        yes.style.cursor = check.checked ? "pointer" : "not-allowed";
-        yes.style.opacity = check.checked ? "1" : ".5";
-      });
-      yes.addEventListener("click", () => {
-        if (!check.checked) return;
-        done(true);
-      });
-      no.addEventListener("click", () => done(false));
-      mask.addEventListener("click", e => {
-        if (e.target === mask) done(false);
-      });
-    });
-  }
-  /**
-   * 确保已获得考试自动填充同意。
-   * 首次同意后永久记住；上传失败只进队列，不阻塞填充。
-   */  async function ensureExamConsent({mode: mode = "single", examId: examId = "", courseId: courseId = "", source: source = "exam-fill"} = {}) {
-    if (hasExamConsent()) {
-      flushExamConsentQueue();
-      return true;
-    }
-    const ok = await makeDialog();
-    if (!ok) return false;
-    const record = {
-      accepted: true,
-      at: Date.now(),
-      version: CONSENT_VERSION
-    };
-    saveRecord(record);
-    void uploadExamConsent({
-      mode: mode,
-      examId: examId,
-      courseId: courseId,
-      source: source
-    });
-    return true;
-  }
   // src/ui/panels/assignments-panel.js
   // 工具箱「作业」tab：本课作业列表 + 当前试卷逐题预览/单题 AI + 本篇批量 AI（答案暂存，不交卷）
     let mounted$2 = false;
@@ -12724,6 +12599,9 @@
   let examPageLoadedId = "";
   function $$1(sel) {
     return root$2?.querySelector(sel);
+  }
+  function batchAnswerButton(count) {
+    return "";
   }
   function isExamPageHost() {
     try {
@@ -12864,7 +12742,7 @@
     const slides = viewData?.Slides || [];
     const rows = slides.map((s, i) => questionPreviewRow(s, viewData, i)).filter(Boolean).join("");
     const count = slides.filter(s => s?.Problem).length;
-    box.innerHTML = `\n    <div class="ap-qhead">\n      <button type="button" id="ykt-ap-back">← 返回作业列表</button>\n      <b>${escapeHtml(viewTitle || "当前试卷")}</b>\n      <span class="ap-head-meta">${count} 道题</span>\n      <button type="button" id="ykt-ap-batch-current" ${count ? "" : "disabled"}>批量解答本篇（${count} 题）</button>\n      ${viewAssignment?.oldId ? '<button type="button" id="ykt-ap-goto-submit">去交卷</button>' : ""}\n    </div>\n    <div id="ykt-ap-batch-results" class="ap-batch-results"></div>\n    <div class="quiz-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
+    box.innerHTML = `\n    <div class="ap-qhead">\n      <button type="button" id="ykt-ap-back">← 返回作业列表</button>\n      <b>${escapeHtml(viewTitle || "当前试卷")}</b>\n      <span class="ap-head-meta">${count} 道题</span>\n      ${batchAnswerButton()}\n      ${viewAssignment?.oldId ? '<button type="button" id="ykt-ap-goto-submit">去交卷</button>' : ""}\n    </div>\n    <div id="ykt-ap-batch-results" class="ap-batch-results"></div>\n    <div class="quiz-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
     hydrateQuizPreviews(box);
     $$1("#ykt-ap-back")?.addEventListener("click", showListView);
     $$1("#ykt-ap-batch-current")?.addEventListener("click", () => batchCurrentQuestions());
@@ -12962,7 +12840,7 @@
     if (!isExam && d.lateAllowed) head.push("允许迟交");
     const rows = (d.problems || []).map((q, i) => activeProblemCard(q, i, isExam)).join("");
     const desc = sanitizeHtml(d.descriptionHtml || "");
-    box.innerHTML = `\n    <div class="ap-qhead">\n      <button type="button" id="ykt-ap-back">← 返回作业列表</button>\n      <b>${escapeHtml(viewTitle || "详情")}</b>\n      <span class="ap-head-meta">${head.map(s => escapeHtml(String(s))).join(" · ")}</span>\n      <button type="button" id="ykt-ap-batch-current" ${(d.problems || []).length ? "" : "disabled"}>批量解答本篇（${(d.problems || []).length} 题）</button>\n    </div>\n    ${desc ? `<div class="ap-desc">${desc}</div>` : ""}\n    <div id="ykt-ap-batch-results" class="ap-batch-results"></div>\n    <div class="ap-active-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
+    box.innerHTML = `\n    <div class="ap-qhead">\n      <button type="button" id="ykt-ap-back">← 返回作业列表</button>\n      <b>${escapeHtml(viewTitle || "详情")}</b>\n      <span class="ap-head-meta">${head.map(s => escapeHtml(String(s))).join(" · ")}</span>\n      ${batchAnswerButton((d.problems || []).length)}\n    </div>\n    ${desc ? `<div class="ap-desc">${desc}</div>` : ""}\n    <div id="ykt-ap-batch-results" class="ap-batch-results"></div>\n    <div class="ap-active-list">${rows || '<div class="ap-empty">没有识别到题目</div>'}</div>`;
     $$1("#ykt-ap-back")?.addEventListener("click", showListView);
     $$1("#ykt-ap-batch-current")?.addEventListener("click", () => batchCurrentQuestions());
     injectActiveFont(d.fontUrl);
@@ -13077,33 +12955,6 @@
     const q = viewData?.problems?.[index];
     if (!q) return "";
     return captureProblemCard(q);
-  }
-  /** 考试页 DOM 题目截图（图片题/公式题/加密字体）。 */  async function captureExamElement(el) {
-    if (!el) return "";
-    try {
-      const box = document.createElement("div");
-      box.style.cssText = "position:fixed;left:-99999px;top:0;width:760px;background:#fff;padding:14px;font:13px/1.65 system-ui,sans-serif;color:#111;";
-      box.appendChild(el.cloneNode(true));
-      document.body.appendChild(box);
-      try {
-        try {
-          await (document.fonts?.ready);
-        } catch {/* ignore */}
-        const html2canvas = await ensureHtml2Canvas();
-        if (!html2canvas) return "";
-        const canvas = await html2canvas(box, {
-          backgroundColor: "#fff",
-          useCORS: true,
-          scale: 2
-        });
-        return canvas.toDataURL("image/jpeg", .9);
-      } finally {
-        box.remove();
-      }
-    } catch (e) {
-      log$1.warn("[assign] exam capture failed", e);
-      return "";
-    }
   }
   /** 新版作业/考试题目的 AI 解答（仅展示，不提交）。 */  async function aiForActiveProblem(index) {
     try {
@@ -13412,210 +13263,25 @@
       setBusy(false);
     }
   }
-  function currentExamContext() {
-    const ctx = getCourseContext();
-    const examPageId = currentExamPageId();
-    const target = list.find(a => Number(a.type) === 20 && (examPageId && String(a.leafTypeId) === String(examPageId) || ctx.newId && String(a.newId) === String(ctx.newId) || ctx.oldQuizId && String(a.oldId) === String(ctx.oldQuizId))) || null;
-    const byTitle = /考试|exam/i.test(String(document.title || ""));
-    const isExam = !!examPageId || ctx.kind === "exam" || !!target || !!ctx.oldQuizId && byTitle;
-    return {
-      isExam: isExam,
-      examId: examPageId || ctx.newId || ctx.oldQuizId || target?.newId || target?.oldId || target?.leafTypeId || "",
-      courseId: ctx.classId || cid,
-      target: target
-    };
-  }
   function syncExamFillButton() {
     const btn = $$1("#ykt-ap-exam-fill");
     if (!btn) return;
-    btn.style.display = currentExamContext().isExam ? "" : "none";
+    btn.style.display = "none";
   }
   /**
    * 进行中考试：AI 逐题生成答案并写入当前页控件，不点击提交。
    * 第一次使用前弹免责确认；同意后永久记住。
    */  async function fillCurrentExam({fromBatch: fromBatch = false} = {}) {
-    const ctx = currentExamContext();
-    if (!ctx.isExam) {
-      ui.toast?.("当前页面不是考试页", 2200);
-      return null;
-    }
-    const questions = collectExamQuestions(document);
-    if (!questions.length) {
-      ui.toast?.("未识别到考试题目控件；请确认考试页已加载，或使用「AI 解答」复制答案", 4e3);
-      return null;
-    }
-    const override = getOverride();
-    if (!override) {
-      ui.toast?.("请先在设置里配置 AI", 2500);
-      return null;
-    }
-    const ok = await ensureExamConsent({
-      mode: fromBatch ? "batch" : "single",
-      examId: ctx.examId,
-      courseId: ctx.courseId,
-      source: "exam-fill"
-    });
-    if (!ok) {
-      ui.toast?.("已取消自动填入；不会生成或提交答案", 3e3);
-      return null;
-    }
-    if (!fromBatch) setBusy(true);
-    const answers = [];
-    try {
-      for (let i = 0; i < questions.length; i++) {
-        const q = questions[i];
-        setStatus(`考试 AI 填入：第 ${i + 1}/${questions.length} 题…`);
-        const prompt = [ "这是一道正在进行的考试题。请给出最终答案。", "选择题只返回选项字母（多选用逗号分隔）；填空题只返回填空内容；不要解释，不要重复题目。", q.text ].join("\n");
-        try {
-          const imageDataUrl = await captureExamElement(q.element);
-          const userContent = [ {
-            type: "text",
-            text: prompt
-          } ];
-          if (imageDataUrl) userContent.push({
-            type: "image_url",
-            image_url: {
-              url: imageDataUrl
-            }
-          });
-          const res = await agnesChat({
-            messages: [ {
-              role: "system",
-              content: "你只输出考试题的最终答案，不输出过程或解释。选择题输出 A/B/C/D 字母，多选用逗号分隔。"
-            }, {
-              role: "user",
-              content: userContent
-            } ],
-            stream: false,
-            thinking: true,
-            override: override,
-            traceKind: "exam",
-            traceMode: "none"
-          });
-          answers.push(String(res.content || "").trim());
-        } catch (e) {
-          answers.push("");
-          log$1.warn("[assign] exam fill answer failed", i, e?.message || e);
-        }
-      }
-      const result = fillExamAnswers(answers, {
-        questions: questions
-      });
-      setStatus(`考试填入完成：${result.filled} 题已填，${result.skipped} 题跳过；未提交，请逐题核对。`);
-      ui.toast?.(`已填入 ${result.filled} 题，未提交；请核对后再手动交卷`, 4500);
-      return result;
-    } catch (e) {
-      setStatus("考试填入失败：" + (e?.message || e));
-      return null;
-    } finally {
-      if (!fromBatch) setBusy(false);
-    }
+    ui.toast?.("考试 AI 自动填入暂时关闭", 2600);
+    return null;
   }
   async function examFillCurrent() {
     if (busy$1) return;
     await fillCurrentExam();
   }
-  function appendBatchResult(index, ok, text, state = "") {
-    const box = $$1("#ykt-ap-batch-results");
-    if (!box) return;
-    const row = document.createElement("div");
-    row.className = `ap-batch-row ${ok ? "ok" : "bad"}`;
-    row.innerHTML = `<b>第 ${index} 题</b><span>${escapeHtml(text || "")}${state ? ` · ${escapeHtml(state)}` : ""}</span>`;
-    box.appendChild(row);
-  }
   /** 只处理当前打开的一篇作业/试卷，不跨作业；作业答案走暂存，不交卷。 */  async function batchCurrentQuestions() {
-    if (busy$1) return;
-    const isOld = Array.isArray(viewData?.Slides);
-    const items = isOld ? viewData.Slides.map((s, index) => s?.Problem ? {
-      slide: s,
-      index: index
-    } : null).filter(Boolean) : (viewData?.problems || []).map((q, index) => ({
-      q: q,
-      index: index
-    }));
-    if (!items.length) {
-      ui.toast?.("当前没有可解答的题目", 2200);
-      return;
-    }
-    const override = getOverride();
-    if (!override) {
-      ui.toast?.("请先在设置里配置 AI", 2500);
-      return;
-    }
-    const ok = await confirmDialog$1(`将依次解答本篇 ${items.length} 道题。\n作业答案只会暂存，不会交卷；请逐题核对后自行交卷。\n题目较多时耗时和费用会增加。`, {
-      okText: "开始解答",
-      danger: true
-    });
-    if (!ok) return;
-    setBusy(true);
-    const box = $$1("#ykt-ap-batch-results");
-    if (box) box.innerHTML = "";
-    let done = 0;
-    let staged = 0;
-    let failed = 0;
-    const baseSystem = String(ui.config.systemPromptAI || "").trim() || DEFAULT_SYSTEM_PROMPT_AI;
-    try {
-      for (let n = 0; n < items.length; n++) {
-        const item = items[n];
-        const displayIndex = isOld ? item.index + 1 : item.q?.index ?? item.index + 1;
-        setStatus(`正在解答第 ${displayIndex} 题（${n + 1}/${items.length}）…`);
-        try {
-          let imageDataUrl = "";
-          let task = null;
-          if (isOld) {
-            imageDataUrl = await quizQuestionDataUrl(viewData, item.index, 2);
-            task = buildAssignmentTask({
-              quizData: viewData,
-              index: item.index,
-              assignment: viewAssignment,
-              quizId: String(viewAssignment?.oldId || window.quizID || ""),
-              imageDataUrl: imageDataUrl
-            });
-          } else {
-            imageDataUrl = await captureProblemCard(item.q);
-            task = buildExerciseTask({
-              problem: item.q,
-              assignment: viewAssignment,
-              imageDataUrl: imageDataUrl
-            });
-          }
-          if (!task) throw new Error("题目信息不完整");
-          const run = await runAnswer(task, {
-            transport: task.target?.allowSubmit ? ui.config.regexToolCall ? "regex" : "tools" : "text",
-            baseSystem: baseSystem,
-            stream: false,
-            thinking: true,
-            override: override,
-            allowLegacyText: true,
-            traceKind: "assignment",
-            traceMode: "none"
-          });
-          if (!run.ok) throw run.error || new Error("AI 没有生成答案");
-          let state = "仅展示";
-          if (task.target?.kind === "quiz" && task.target?.allowSubmit) {
-            const submit = await submitAnswerTask(task, run.answer, {
-              runId: run.runId || ""
-            });
-            if (submit.route === "cache") {
-              staged++;
-              state = "已暂存";
-            } else state = submit.route;
-          }
-          done++;
-          appendBatchResult(displayIndex, true, displayAnswer(run.answer) || "已生成", state);
-        } catch (e) {
-          failed++;
-          appendBatchResult(displayIndex, false, e?.message || String(e), "失败");
-          log$1.warn("[assign] batch question failed", item.index, e);
-        }
-      }
-      setStatus(`本篇完成 ${done} 题${staged ? `，已暂存 ${staged} 题` : ""}${failed ? `，失败 ${failed} 题` : ""}；未交卷。`);
-      ui.toast?.(`已完成 ${done} 题${staged ? `，暂存 ${staged} 题` : ""}；请核对后自行交卷`, 4500);
-    } catch (e) {
-      setStatus("批量解答中断：" + (e?.message || e));
-    } finally {
-      setBusy(false);
-    }
+    ui.toast?.("批量解答暂时关闭", 2600);
+    return;
   }
   function mountAssignmentsPanel() {
     if (mounted$2) return root$2;

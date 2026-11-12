@@ -20,6 +20,8 @@ export function renderAnswerCard(parent, { task, answer, autoSubmit = false, run
   card.className = 'ykt-tool-card';
   const isQuiz = task?.target?.kind === 'quiz';
   const displayOnly = !task?.target?.allowSubmit || task?.target?.kind === 'display';
+  // 补交只对课堂实时题开放；作业/考试回顾没有课堂补交接口。
+  const canRetry = !autoSubmit && task?.target?.kind === 'classroom' && !!task?.target?.allowSubmit;
 
   const title = document.createElement('div');
   title.className = 'ykt-tool-title';
@@ -88,58 +90,99 @@ export function renderAnswerCard(parent, { task, answer, autoSubmit = false, run
     return card;
   }
 
+  const submitLabel = task.target.submitLabel || (isQuiz ? '暂存' : '提交');
   const btn = document.createElement('button');
   btn.className = 'ykt-tool-submit';
-  btn.textContent = autoSubmit ? '自动提交中…' : task.target.submitLabel || (isQuiz ? '暂存' : '提交');
+  btn.textContent = autoSubmit ? '自动提交中…' : submitLabel;
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'ykt-tool-secondary';
+  copyBtn.textContent = '复制答案';
+  copyBtn.addEventListener('click', copy);
+  if (!autoSubmit) bar.appendChild(copyBtn);
   bar.appendChild(btn);
+
+  const retryBtn = canRetry ? document.createElement('button') : null;
+  if (retryBtn) {
+    retryBtn.className = 'ykt-tool-retry';
+    retryBtn.textContent = '补交';
+    bar.appendChild(retryBtn);
+  }
+
   parent.appendChild(card);
 
-  const doSubmit = async () => {
-    if (btn.disabled) return null;
-    let forceRetry = false;
-    if (!autoSubmit) {
-      if (!isQuiz) {
-        const ok = await confirmDialog(`确认提交答案：${toDisplayAnswer(answer)}？`, { okText: '提交' });
-        if (!ok) return null;
-        const st = repo.problemStatus.get(String(task.target.problemId));
-        const offset = Number.isFinite(st?.clockOffset) ? st.clockOffset : 0;
-        const endTime = Number.isFinite(st?.endTime) ? st.endTime : task.target.endTime;
-        if (Number.isFinite(endTime) && (Date.now() + offset) >= endTime) {
-          const ok2 = await confirmDialog('这道题已超过截止时间，将以补交方式提交。确定继续吗？', { okText: '补交', danger: true });
-          if (!ok2) return null;
-          forceRetry = true;
-        }
+  let busy = false;
+
+  const setBusy = (on, mode = 'submit') => {
+    copyBtn.disabled = on;
+    btn.disabled = on;
+    if (retryBtn) retryBtn.disabled = on;
+    if (on) {
+      if (mode === 'retry') retryBtn.textContent = '补交中…';
+      else btn.textContent = autoSubmit ? '自动提交中…' : (isQuiz ? '暂存中…' : '提交中…');
+    } else {
+      btn.textContent = submitLabel;
+      if (retryBtn) retryBtn.textContent = '补交';
+    }
+  };
+
+  const doSubmit = async ({ forceRetry = false, viaRetry = false } = {}) => {
+    if (busy) return null;
+    let finalForceRetry = !!forceRetry;
+
+    if (!autoSubmit && !isQuiz && !viaRetry) {
+      const ok = await confirmDialog(`确认提交答案：${toDisplayAnswer(answer)}？`, { okText: '提交' });
+      if (!ok) return null;
+      const st = repo.problemStatus.get(String(task.target.problemId));
+      const offset = Number.isFinite(st?.clockOffset) ? st.clockOffset : 0;
+      const endTime = Number.isFinite(st?.endTime) ? st.endTime : task.target.endTime;
+      if (Number.isFinite(endTime) && (Date.now() + offset) >= endTime) {
+        const ok2 = await confirmDialog('这道题已超过截止时间，将以补交方式提交。确定继续吗？', { okText: '补交', danger: true });
+        if (!ok2) return null;
+        finalForceRetry = true;
       }
     }
-    btn.disabled = true;
-    btn.textContent = isQuiz ? '暂存中…' : '提交中…';
+
+    busy = true;
+    setBusy(true, viaRetry ? 'retry' : 'submit');
     stEl.textContent = '';
     try {
-      const r = await submitAnswerTask(task, answer, { forceRetry, runId });
+      const r = await submitAnswerTask(task, answer, { forceRetry: finalForceRetry, runId });
       card.classList.add('done');
       if (r.route === 'cache') {
-        btn.textContent = '已暂存';
         stEl.textContent = '✅ 已暂存（未交卷）';
         ui.toast?.('✅ 已暂存，未交卷', 2500);
       } else if (r.route === 'display') {
-        btn.textContent = '仅展示';
         stEl.textContent = '本题仅展示，不会提交';
+      } else if (r.route === 'retry') {
+        stEl.textContent = '✅ 补交成功（可再次补交，后一次覆盖前一次）';
+        ui.toast?.('✅ 补交成功', 2500);
       } else {
-        btn.textContent = '已提交';
-        stEl.textContent = r.route === 'retry' ? '✅ 补交成功' : '✅ 提交成功';
-        ui.toast?.(r.route === 'retry' ? '✅ 补交成功' : '✅ 提交成功', 2500);
+        stEl.textContent = '✅ 提交成功';
+        ui.toast?.('✅ 提交成功', 2500);
       }
       onSubmitted?.(r);
       return r;
     } catch (e) {
-      btn.disabled = false;
-      btn.textContent = isQuiz ? '重试暂存' : '重试提交';
-      stEl.textContent = `❌ ${isQuiz ? '暂存' : '提交'}失败：${e?.message || e}`;
+      stEl.textContent = `❌ ${viaRetry ? '补交' : (isQuiz ? '暂存' : '提交')}失败：${e?.message || e}`;
       return null;
+    } finally {
+      busy = false;
+      setBusy(false);
     }
   };
 
-  btn.addEventListener('click', doSubmit);
+  btn.addEventListener('click', () => doSubmit());
+  if (retryBtn) {
+    retryBtn.addEventListener('click', async () => {
+      const ok = await confirmDialog(
+        '将以补交方式提交（服务端会记录补交标记）。确定继续吗？',
+        { okText: '确认补交', danger: true },
+      );
+      if (!ok) return;
+      await doSubmit({ forceRetry: true, viaRetry: true });
+    });
+  }
   if (autoSubmit) card.__submitPromise = doSubmit();
   return card;
 }
