@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var bridge: YktBridge
+    private val nativeReplies = mutableMapOf<WebView, (String) -> Unit>()
     private var collectView: WebView? = null
     private var scriptAsset: String = ""
     private var shimAsset: String = ""
@@ -67,7 +68,7 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- 多标签 ----------
     private class Tab(val webView: WebView, var title: String = "新标签页") {
-        var fallbackInjected = false
+        var documentId = 0L
         var lastUrl: String = ""
         var recovering = false
     }
@@ -181,7 +182,8 @@ class MainActivity : AppCompatActivity() {
         bridge = YktBridge(this)
 
         env = Env.entries[envIndex.coerceIn(0, Env.entries.size - 1)]
-        shimAsset = assets.open("gm-shim.js").bufferedReader().use { it.readText() }
+        shimAsset = assets.open("native-bridge.js").bufferedReader().use { it.readText() } + "\n;\n" +
+            assets.open("gm-shim.js").bufferedReader().use { it.readText() }
         scriptAsset = assets.open("yuketangstudio.user.js").bufferedReader().use { it.readText() }
         docStartSupported = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         Log.i(TAG, "document-start 注入支持: $docStartSupported")
@@ -262,6 +264,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() { super.onPause(); CookieManager.getInstance().flush() }
 
     override fun onDestroy() {
+        nativeReplies.clear()
         stopUpdatePoll()
         runCatching { updateSheet?.dismiss() }
         updateSheet = null
@@ -314,6 +317,7 @@ class MainActivity : AppCompatActivity() {
     private fun closeTab(index: Int) {
         if (index !in tabs.indices) return
         val tab = tabs.removeAt(index)
+        nativeReplies.remove(tab.webView)
         binding.tabContainer.removeView(tab.webView)
         tab.webView.destroy()
         if (tabs.isEmpty()) { finish(); return }
@@ -392,25 +396,20 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             applyDesktopMode(this)
         }
-        wv.addJavascriptInterface(bridge, "YktBridge")
+        NativeBridgeSession.install(this, wv, bridge) { tab.documentId }
         // 明确使用重要渲染优先级；这是 WebView 的默认策略，写上便于审查和后续回退。
         if (Build.VERSION.SDK_INT >= 26) {
             runCatching { wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false) }
         }
 
-        val combined = shimAsset + "\n;\n" + scriptAsset
+        // Guard belongs to the document, so refresh/navigation can inject again safely.
+        val combined = "(function(){if(window.__yksShellInjected)return;window.__yksShellInjected=true;\n" +
+            shimAsset + "\n;\n" + scriptAsset + "\n})();"
         if (docStartSupported) {
             try {
                 WebViewCompat.addDocumentStartJavaScript(
                     wv, combined,
-                    setOf(
-                        "https://changjiang.yuketang.cn",
-                        "https://www.yuketang.cn",
-                        "https://pro.yuketang.cn",
-                        "https://changjiang-exam.yuketang.cn",
-                        "https://tsinghua-exam.yuketang.cn",
-                        "https://examination.xuetangx.com",
-                    ),
+                    BridgePolicy.origins,
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "addDocumentStartJavaScript 失败", e)
@@ -446,19 +445,20 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                tab.documentId++
+                nativeReplies.remove(view)
                 if (!url.isNullOrBlank()) tab.lastUrl = url
                 BackgroundRuntimeService.reportRendererState(this@MainActivity, "responsive")
-                if (!docStartSupported && url != null && isYuketang(url) && !tab.fallbackInjected) {
-                    tab.fallbackInjected = true
-                    view.evaluateJavascript(combined, null)
-                    Log.i(TAG, "evaluateJavascript 降级注入: $url")
-                }
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 if (!url.isNullOrBlank()) tab.lastUrl = url
                 BackgroundRuntimeService.reportRendererState(this@MainActivity, "responsive")
                 CookieManager.getInstance().flush()
+                // Each full navigation has a new JS world. The scripts guard duplicate mounts.
+                if (!docStartSupported && url != null && BridgePolicy.allows(url)) {
+                    view.evaluateJavascript(combined, null)
+                }
                 // 桌面端固定 1440px 视口；双指缩放由 WebSettings 支持
                 if (desktopMode) {
                     view.evaluateJavascript(
@@ -573,6 +573,7 @@ class MainActivity : AppCompatActivity() {
         try {
             binding.tabContainer.removeView(tab.webView)
             tabs.removeAt(index)
+            nativeReplies.remove(tab.webView)
             tab.webView.destroy()
 
             val wv = WebView(this)
@@ -1709,8 +1710,8 @@ class MainActivity : AppCompatActivity() {
                 isYuketangQr(raw) -> dispatchYktScan(raw)
                 // 其他 http 链接也直接打开（可能是班级邀请等）
                 raw.startsWith("http") -> {
-                    activeWebView?.loadUrl(raw)
-                    status("打开链接")
+                    handleNavigation(raw)
+                    status("已在浏览器打开链接")
                 }
                 else -> {
                     (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
@@ -1723,7 +1724,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 判断是否为雨课堂二维码（yuketang.cn 域下的码） */
     private fun isYuketangQr(raw: String): Boolean {
-        return raw.contains("yuketang.cn") && raw.startsWith("http")
+        return BridgePolicy.allows(raw)
     }
 
     /** 调 app 的扫描分发 API：POST /api/v3/app/scan {url} → {flow,type,value} → 按 type 分发 */
@@ -2794,6 +2795,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun openCollectPage(url: String) {
+        if (!BridgePolicy.allows(url)) return
         runOnUiThread {
             if (collectView == null) {
                 val wv = WebView(this)
@@ -2813,23 +2815,23 @@ class MainActivity : AppCompatActivity() {
 
     fun closeCollectPage() {
         runOnUiThread {
-            collectView?.let { it.stopLoading(); it.destroy() }
+            collectView?.let { nativeReplies.remove(it); it.stopLoading(); it.destroy() }
             binding.collectContainer.removeAllViews()
             binding.collectContainer.visibility = View.GONE
             collectView = null
         }
     }
 
-    fun broadcastValue(name: String, json: String?) {
-        evalOnAll("window.__yktBridgeValue && window.__yktBridgeValue(${JSONObject.quote(name)}, ${JSONObject.quote(json)})")
+    fun registerNativeReply(view: WebView, send: (String) -> Unit) {
+        nativeReplies[view] = send
     }
 
-    fun evalOnCollectAndMain(js: String) = evalOnAll(js)
-
-    fun evalOnAll(js: String) {
+    fun broadcastValue(name: String, json: String?) {
+        val message = JSONObject().put("event", "value").put("name", name)
+            .put("json", json ?: JSONObject.NULL).toString()
         runOnUiThread {
-            runCatching { activeWebView?.evaluateJavascript(js, null) }
-            runCatching { collectView?.evaluateJavascript(js, null) }
+            // Reply proxies are document-bound; navigation cannot redirect secrets to a new origin.
+            nativeReplies.values.toList().forEach { send -> runCatching { send(message) } }
         }
     }
 
@@ -2878,7 +2880,7 @@ class MainActivity : AppCompatActivity() {
     }.getOrDefault(false)
 
     private fun handleNavigation(url: String): Boolean {
-        if (isYuketang(url) || url.startsWith("about:")) return false
+        if (BridgePolicy.allows(url) || url == "about:blank") return false
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         return true
     }

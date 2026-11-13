@@ -392,25 +392,39 @@ function gmXhrStream(url, apiKey, body, opts, _timeoutMs) {
     // 给 120s 兜底，真正的首字/空闲判断仍由看门狗负责。
     let watchdog = 0;
     let settled = false;
+    let handle;
+    const onAbort = () => {
+      finish(reject, Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      try { handle?.abort?.(); } catch {}
+    };
     const arm = (ms, msg) => {
       clearTimeout(watchdog);
       watchdog = setTimeout(() => {
         if (settled) return;
-        settled = true;
+        finish(reject, Object.assign(new Error(msg), { name: 'AbortError' }));
         try { handle?.abort?.(); } catch {}
-        reject(Object.assign(new Error(msg), { name: 'AbortError' }));
       }, ms);
     };
-    const finish = (fn, v) => { if (settled) return; settled = true; clearTimeout(watchdog); clearWait(); fn(v); };
+    const finish = (fn, v) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(watchdog);
+      clearWait();
+      opts.signal?.removeEventListener('abort', onAbort);
+      fn(v);
+    };
 
+    if (opts.signal?.aborted) { onAbort(); return; }
+    opts.signal?.addEventListener('abort', onAbort, { once: true });
     arm(30000, '等待超时，请重试');
-    const handle = gm.xhr({
+    try { handle = gm.xhr({
       method: 'POST',
       url,
       timeout: 120000,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       data: JSON.stringify(body),
       onprogress: (res) => {
+        if (settled) return;
         clearWait();
         const text = res.responseText || '';
         const chunk = text.slice(seen);
@@ -419,6 +433,7 @@ function gmXhrStream(url, apiKey, body, opts, _timeoutMs) {
         feed(chunk);
       },
       onload: (res) => {
+        if (settled) return;
         clearWait();
         if (res.status !== 200) return finish(reject, new Error(`HTTP ${res.status}: ${(res.responseText || '').slice(0, 200)}`));
         // 兜底：progress 可能漏最后一段（补个 \n 把半行 data: 喂完）
@@ -432,31 +447,48 @@ function gmXhrStream(url, apiKey, body, opts, _timeoutMs) {
       },
       onerror: () => finish(reject, new Error('网络错误（GM_xhr）')),
       ontimeout: () => finish(reject, new Error('请求超时（GM_xhr）')),
-    });
+      onabort: () => finish(reject, Object.assign(new Error('aborted'), { name: 'AbortError' })),
+    }); } catch (e) { finish(reject, e); }
   });
 }
 
 function gmXhrOnce(url, apiKey, body, timeoutMs, opts) {
   return new Promise((resolve, reject) => {
     const clearWait = armWaitTimers(opts);
-    gm.xhr({
+    let handle;
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearWait();
+      opts.signal?.removeEventListener('abort', onAbort);
+      fn(value);
+    };
+    const onAbort = () => {
+      finish(reject, Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      try { handle?.abort?.(); } catch {}
+    };
+    if (opts.signal?.aborted) { onAbort(); return; }
+    opts.signal?.addEventListener('abort', onAbort, { once: true });
+    try { handle = gm.xhr({
       method: 'POST',
       url,
       timeout: timeoutMs,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       data: JSON.stringify(body),
       onload: (res) => {
-        clearWait();
-        if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || '').slice(0, 200)}`));
+        if (settled) return;
+        if (res.status !== 200) return finish(reject, new Error(`HTTP ${res.status}: ${(res.responseText || '').slice(0, 200)}`));
         try {
           const data = JSON.parse(res.responseText);
           const m = data?.choices?.[0]?.message || {};
-          resolve({ content: m.content || '', reasoning: m.reasoning_content || m.reasoning || '', toolCalls: m.tool_calls, usage: data.usage });
-        } catch (e) { reject(new Error('响应解析失败: ' + e.message)); }
+          finish(resolve, { content: m.content || '', reasoning: m.reasoning_content || m.reasoning || '', toolCalls: m.tool_calls, usage: data.usage });
+        } catch (e) { finish(reject, new Error('响应解析失败: ' + e.message)); }
       },
-      onerror: () => { clearWait(); reject(new Error('网络错误')); },
-      ontimeout: () => { clearWait(); reject(new Error('请求超时')); },
-    });
+      onerror: () => finish(reject, new Error('网络错误')),
+      ontimeout: () => finish(reject, new Error('请求超时')),
+      onabort: () => finish(reject, Object.assign(new Error('aborted'), { name: 'AbortError' })),
+    }); } catch (e) { finish(reject, e); }
   });
 }
 

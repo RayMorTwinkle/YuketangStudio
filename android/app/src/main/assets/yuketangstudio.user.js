@@ -857,12 +857,10 @@
   }
   const K_MIGRATED = "telemetry.defaultOnMigrated";
   /**
-   * 一次性迁移：旧版本开关默认关，很多用户从未动过 → 本版统一打开。
-   * 只跑一次；用户之后仍可在设置里手动关闭（关掉后不会再被强制打开）。
+   * 兼容旧入口：保留所有已有选择，仅记录迁移完成。缺省值由 enabled() 决定。
    */  function migrateDefaultOn() {
     if (storage.get(K_MIGRATED)) return false;
     storage.set(K_MIGRATED, true);
-    storage.set(K_ENABLED, true);
     return true;
   }
   const K_LAST_PING = "telemetry.lastPingAt";
@@ -1938,17 +1936,25 @@
       // 给 120s 兜底，真正的首字/空闲判断仍由看门狗负责。
             let watchdog = 0;
       let settled = false;
+      let handle;
+      const onAbort = () => {
+        finish(reject, Object.assign(new Error("aborted"), {
+          name: "AbortError"
+        }));
+        try {
+          handle?.abort?.();
+        } catch {}
+      };
       const arm = (ms, msg) => {
         clearTimeout(watchdog);
         watchdog = setTimeout(() => {
           if (settled) return;
-          settled = true;
+          finish(reject, Object.assign(new Error(msg), {
+            name: "AbortError"
+          }));
           try {
             handle?.abort?.();
           } catch {}
-          reject(Object.assign(new Error(msg), {
-            name: "AbortError"
-          }));
         }, ms);
       };
       const finish = (fn, v) => {
@@ -1956,80 +1962,122 @@
         settled = true;
         clearTimeout(watchdog);
         clearWait();
+        opts.signal?.removeEventListener("abort", onAbort);
         fn(v);
       };
-      arm(3e4, "等待超时，请重试");
-      const handle = gm.xhr({
-        method: "POST",
-        url: url,
-        timeout: 12e4,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        data: JSON.stringify(body),
-        onprogress: res => {
-          clearWait();
-          const text = res.responseText || "";
-          const chunk = text.slice(seen);
-          seen = text.length;
-          if (chunk) arm(15e3, "输出超时（15s 无新数据）");
-          feed(chunk);
-        },
-        onload: res => {
-          clearWait();
-          if (res.status !== 200) return finish(reject, new Error(`HTTP ${res.status}: ${(res.responseText || "").slice(0, 200)}`));
-          // 兜底：progress 可能漏最后一段（补个 \n 把半行 data: 喂完）
-                    const text = res.responseText || "";
-          feed(text.slice(seen) + "\n");
-          if (!sawDone && !acc.finishReason) {
-            acc.truncated = true;
-            dlog("GM_xhr stream ended without [DONE]/finish_reason — truncated");
-          }
-          finish(resolve, acc);
-        },
-        onerror: () => finish(reject, new Error("网络错误（GM_xhr）")),
-        ontimeout: () => finish(reject, new Error("请求超时（GM_xhr）"))
+      if (opts.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      opts.signal?.addEventListener("abort", onAbort, {
+        once: true
       });
+      arm(3e4, "等待超时，请重试");
+      try {
+        handle = gm.xhr({
+          method: "POST",
+          url: url,
+          timeout: 12e4,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`
+          },
+          data: JSON.stringify(body),
+          onprogress: res => {
+            if (settled) return;
+            clearWait();
+            const text = res.responseText || "";
+            const chunk = text.slice(seen);
+            seen = text.length;
+            if (chunk) arm(15e3, "输出超时（15s 无新数据）");
+            feed(chunk);
+          },
+          onload: res => {
+            if (settled) return;
+            clearWait();
+            if (res.status !== 200) return finish(reject, new Error(`HTTP ${res.status}: ${(res.responseText || "").slice(0, 200)}`));
+            // 兜底：progress 可能漏最后一段（补个 \n 把半行 data: 喂完）
+                        const text = res.responseText || "";
+            feed(text.slice(seen) + "\n");
+            if (!sawDone && !acc.finishReason) {
+              acc.truncated = true;
+              dlog("GM_xhr stream ended without [DONE]/finish_reason — truncated");
+            }
+            finish(resolve, acc);
+          },
+          onerror: () => finish(reject, new Error("网络错误（GM_xhr）")),
+          ontimeout: () => finish(reject, new Error("请求超时（GM_xhr）")),
+          onabort: () => finish(reject, Object.assign(new Error("aborted"), {
+            name: "AbortError"
+          }))
+        });
+      } catch (e) {
+        finish(reject, e);
+      }
     });
   }
   function gmXhrOnce(url, apiKey, body, timeoutMs, opts) {
     return new Promise((resolve, reject) => {
       const clearWait = armWaitTimers(opts);
-      gm.xhr({
-        method: "POST",
-        url: url,
-        timeout: timeoutMs,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        data: JSON.stringify(body),
-        onload: res => {
-          clearWait();
-          if (res.status !== 200) return reject(new Error(`HTTP ${res.status}: ${(res.responseText || "").slice(0, 200)}`));
-          try {
-            const data = JSON.parse(res.responseText);
-            const m = data?.choices?.[0]?.message || {};
-            resolve({
-              content: m.content || "",
-              reasoning: m.reasoning_content || m.reasoning || "",
-              toolCalls: m.tool_calls,
-              usage: data.usage
-            });
-          } catch (e) {
-            reject(new Error("响应解析失败: " + e.message));
-          }
-        },
-        onerror: () => {
-          clearWait();
-          reject(new Error("网络错误"));
-        },
-        ontimeout: () => {
-          clearWait();
-          reject(new Error("请求超时"));
-        }
+      let handle;
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearWait();
+        opts.signal?.removeEventListener("abort", onAbort);
+        fn(value);
+      };
+      const onAbort = () => {
+        finish(reject, Object.assign(new Error("aborted"), {
+          name: "AbortError"
+        }));
+        try {
+          handle?.abort?.();
+        } catch {}
+      };
+      if (opts.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      opts.signal?.addEventListener("abort", onAbort, {
+        once: true
       });
+      try {
+        handle = gm.xhr({
+          method: "POST",
+          url: url,
+          timeout: timeoutMs,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`
+          },
+          data: JSON.stringify(body),
+          onload: res => {
+            if (settled) return;
+            if (res.status !== 200) return finish(reject, new Error(`HTTP ${res.status}: ${(res.responseText || "").slice(0, 200)}`));
+            try {
+              const data = JSON.parse(res.responseText);
+              const m = data?.choices?.[0]?.message || {};
+              finish(resolve, {
+                content: m.content || "",
+                reasoning: m.reasoning_content || m.reasoning || "",
+                toolCalls: m.tool_calls,
+                usage: data.usage
+              });
+            } catch (e) {
+              finish(reject, new Error("响应解析失败: " + e.message));
+            }
+          },
+          onerror: () => finish(reject, new Error("网络错误")),
+          ontimeout: () => finish(reject, new Error("请求超时")),
+          onabort: () => finish(reject, Object.assign(new Error("aborted"), {
+            name: "AbortError"
+          }))
+        });
+      } catch (e) {
+        finish(reject, e);
+      }
     });
   }
   // src/ui/slide-source.js
@@ -3700,6 +3748,13 @@
       targetInfo: targetInfo
     });
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (policy.signal?.aborted) return {
+        ok: false,
+        error: new AnswerError(ERROR.ABORTED, "已取消"),
+        transport: transport,
+        attempts: attempts,
+        runId: runId
+      };
       attempts = attempt;
       policy.onAttempt?.({
         attempt: attempt,
@@ -3748,6 +3803,9 @@
           onDelta: policy.onDelta,
           onReasoning: policy.onReasoning,
           onWait: policy.onWait
+        });
+        if (policy.signal?.aborted) throw Object.assign(new Error("aborted"), {
+          name: "AbortError"
         });
       } catch (e) {
         // 端点不支持工具：切到 regex 契约并重建 prompt（不消耗重试次数）
@@ -4666,9 +4724,9 @@
     } catch {/* ignore */}
     return null;
   }
-  function readNativeState() {
+  async function readNativeState() {
     try {
-      const raw = bridge()?.getBackgroundRuntimeState?.();
+      const raw = await (bridge()?.getBackgroundRuntimeState?.());
       if (!raw) return null;
       return typeof raw === "string" ? JSON.parse(raw) : raw;
     } catch (e) {
@@ -4676,8 +4734,16 @@
       return null;
     }
   }
+  let nativeRefresh = null;
   function refreshNativeState() {
-    const native = readNativeState();
+    if (nativeRefresh) return nativeRefresh;
+    nativeRefresh = refreshNativeStateOnce().finally(() => {
+      nativeRefresh = null;
+    });
+    return nativeRefresh;
+  }
+  async function refreshNativeStateOnce() {
+    const native = await readNativeState();
     if (!native) return state;
     state.native = native;
     state.enabled = !!native.enabled;
@@ -4688,7 +4754,7 @@
     if (typeof native.lastUnlockAt === "number") state.lastUnlockAt = native.lastUnlockAt;
     if (typeof native.lastEventAt === "number") state.lastEventAt = native.lastEventAt;
     try {
-      state.batteryIgnored = bridge()?.isBatteryOptimizationIgnored?.() ?? null;
+      state.batteryIgnored = await (bridge()?.isBatteryOptimizationIgnored?.()) ?? null;
     } catch {
       state.batteryIgnored = null;
     }
@@ -4786,14 +4852,7 @@
     }
     started = true;
     state.startedAt = Date.now();
-    const native = readNativeState();
-    state.enabled = !!native?.enabled;
-    state.strong = !!native?.strong;
-    try {
-      state.batteryIgnored = bridge()?.isBatteryOptimizationIgnored?.() ?? null;
-    } catch {
-      state.batteryIgnored = null;
-    }
+    refreshNativeState();
     // 后台服务由 Android 外壳拥有并在冷启动时恢复；脚本只上报心跳，不主动启动服务。
         document.addEventListener("visibilitychange", () => {
       state.lastVisibilityChangeAt = Date.now();
@@ -8351,6 +8410,16 @@
   // src/core/problem-timing.js
   // 题目时间唯一入口：服务端可能给秒级或毫秒级时间戳，统一在这里归一化。
   // 所有倒计时/过期判断都从这里取，避免 actions / active-problems / 通知弹窗各自算一套。
+    let clockOffset = 0;
+  /** 仅用新鲜 API 响应的 HTTP Date 校时；事件时间戳不可用作当前时间。 */  function observeServerClock(dateHeader, sentAt, receivedAt = Date.now()) {
+    const server = Date.parse(dateHeader);
+    const rtt = receivedAt - sentAt;
+    if (!Number.isFinite(server) || !Number.isFinite(rtt) || rtt < 0 || rtt > 5e3) return;
+    clockOffset = server - (sentAt + receivedAt) / 2;
+  }
+  function getServerClockOffset() {
+    return clockOffset;
+  }
   /** 秒级/毫秒级时间戳 → 毫秒；非法/空 → null */  function normalizeTimestamp(value) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return null;
@@ -15185,6 +15254,14 @@
       }
       open(method, url, async, user, password) {
         const parsed = new URL(url, location.href);
+        const sentAt = Date.now();
+        if (parsed.origin === location.origin && parsed.pathname.startsWith("/api/")) this.addEventListener("load", () => {
+          try {
+            if (this.status >= 200 && this.status < 300 && !Number(this.getResponseHeader("Age"))) observeServerClock(this.getResponseHeader("Date"), sentAt);
+          } catch {/* 没有可用服务器时间时按本地时间判断 */}
+        }, {
+          once: true
+        });
         for (const h of this.constructor.handlers) h(this, method, parsed);
         // 透传全部参数——吃掉 user/password 会让依赖基本认证的 XHR 改变语义
                 return super.open(method, url, async ?? true, user, password);
@@ -15687,6 +15764,20 @@
   // ---------------- 自动作答（AI 面板 + 工具） ----------------
   // 多题同时解锁时串行执行，避免抢同一条 AI 流
     let _autoAnswerChain = Promise.resolve();
+  let _autoAnswerEpoch = 0;
+  const _autoControllers = new Set;
+  function cancelAutoAnswers() {
+    _autoAnswerEpoch++;
+    repo.problemStatus.forEach(status => {
+      status.autoAnswerTime = null;
+    });
+    for (const ctrl of _autoControllers) ctrl.abort();
+  }
+  function checkAutoAnswer(epoch, signal) {
+    if (!ui.config.autoAnswer || epoch !== _autoAnswerEpoch || signal?.aborted) throw Object.assign(new Error("自动作答已停止"), {
+      name: "AbortError"
+    });
+  }
   function enqueueAutoAnswer(fn) {
     const run = _autoAnswerChain.then(fn, fn);
     _autoAnswerChain = run.catch(() => {});
@@ -15710,6 +15801,8 @@
    * - 成功 → 唯一提交入口 submitAnswerTask
    * - 失败 → 不猜答案、不误提交；没有 API Key 时才走本地默认答案
    */  async function handleAutoAnswerInternal(problem) {
+    if (!ui.config.autoAnswer) return;
+    const epoch = _autoAnswerEpoch;
     const status = repo.problemStatus.get(String(problem.problemId));
     if (!status || status.answering || problem.result) {
       log$1.dbg("[AutoAnswer] 跳过：", {
@@ -15759,6 +15852,10 @@
       ui.toast("已按设置跳过填空题", 2200);
       return;
     }
+    if (!ui.config.autoAnswer || epoch !== _autoAnswerEpoch) return;
+    const controller = new AbortController;
+    _autoControllers.add(controller);
+    const check = () => checkAutoAnswer(epoch, controller.signal);
     status.answering = true;
     recordAuto("auto_answer_started", {
       problemId: String(problem.problemId || ""),
@@ -15786,6 +15883,7 @@
         }
         const parsed = makeDefaultAnswer(problem);
         log$1.dbg("[雨课堂助手][WARN][AutoAnswer] 无 API Key，使用本地默认答案:", JSON.stringify(parsed));
+        check();
         await submitAnswer(problem, parsed, {
           startTime: status.startTime,
           endTime: status.endTime,
@@ -15803,11 +15901,13 @@
       }
       ui.toast("AI 正在分析题目...", 2e3);
       const r = await enqueueAutoAnswer(async () => {
+        check();
         const slide = status.slideId ? repo.slides.get(String(status.slideId)) : null;
         let image = problem.__imageDataUrl || "";
         if (!image && status.slideId) try {
           image = await captureSlideImage(String(status.slideId)) || "";
         } catch {/* ignore */}
+        check();
         const task = buildClassroomTask({
           problem: problem,
           slide: slide,
@@ -15824,8 +15924,10 @@
           autoSubmit: true,
           override: getOverride() || void 0,
           stream: false,
+          signal: controller.signal,
           allowLegacyText: false
         });
+        check();
         if (!run.ok) return {
           run: run,
           task: task
@@ -15860,6 +15962,7 @@
       });
       ui.toast(`自动作答失败：${err?.message || "模型未给出可提交的答案"}`, 4e3);
     } catch (e) {
+      if (e?.name === "AbortError") return;
       log$1.err("[雨课堂助手][ERR][AutoAnswer] 失败:", e);
       recordAuto("auto_answer_error", {
         ok: false,
@@ -15870,6 +15973,7 @@
       log$1.err("[雨课堂助手][ERR][AutoAnswer] 错误堆栈:", e.stack);
       ui.toast(`自动作答失败: ${e.message}`, 4e3);
     } finally {
+      _autoControllers.delete(controller);
       status.answering = false;
     }
   }
@@ -15942,8 +16046,8 @@
       // 服务端 dt 可能是秒或毫秒；limit 是秒。统一在这里归一化。
             const dt = normalizeTimestamp(data.dt) ?? Date.now();
       const limitS = Number(data.limit);
-      // clockOffset = 服务端时钟 - 本地时钟：endTime 基于服务端时间轴，判过期时必须换算
-            const clockOffset = dt - Date.now();
+      // dt 是事件发生时间，历史 timeline / 重放不能用于校准当前时钟。
+            const clockOffset = getServerClockOffset();
       const prev = repo.problemStatus.get(String(data.prob));
       const status = {
         presentationId: data.pres,
@@ -16070,7 +16174,14 @@
     startAutoAnswerLoop() {
       if (_autoLoopStarted) return;
       _autoLoopStarted = true;
+      window.addEventListener("ykt:config:changed", () => {
+        if (!ui.config.autoAnswer) cancelAutoAnswers();
+      });
       setInterval(() => {
+        if (!ui.config.autoAnswer) {
+          cancelAutoAnswers();
+          return;
+        }
         const now = Date.now();
         repo.problemStatus.forEach((status, pid) => {
           if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
@@ -16951,6 +17062,11 @@
       },
       /** 读取答题链路调试日志 */
       getAnswerLog: getAnswerLog,
+      setAutoAnswer(enabled) {
+        ui.config.autoAnswer = !!enabled;
+        ui.config.autoAnswerAgreementAccepted = true;
+        ui.saveConfig();
+      },
       /** 走真实自动作答入口（actions.handleAutoAnswer，headless） */
       async askAutoAction(problemId) {
         const pid = problemId ?? [ ...repo.problems.keys() ].find(k => String(k).startsWith("91"));
@@ -17173,7 +17289,7 @@
         }, 500);
       } else log$1.dbg("[mount] iframe 内跳过 UI 挂载:", window.location.pathname);
     });
-    // 遥测：旧版默认关 → 0.6.2 一次性打开；每次启动上报一次（60s 内合并）
+    // 遥测：保留已有选择；启动上报（60s 内合并），关闭时不发请求。
         try {
       migrateDefaultOn();
       pingOnStartup();

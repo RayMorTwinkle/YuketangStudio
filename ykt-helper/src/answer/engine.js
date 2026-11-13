@@ -184,6 +184,7 @@ export async function runAnswer(task, policy = {}, deps = {}) {
   });
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (policy.signal?.aborted) return { ok: false, error: new AnswerError(ERROR.ABORTED, '已取消'), transport, attempts, runId };
     attempts = attempt;
     policy.onAttempt?.({ attempt, transport });
     telemetry.trace({
@@ -231,6 +232,7 @@ export async function runAnswer(task, policy = {}, deps = {}) {
         onReasoning: policy.onReasoning,
         onWait: policy.onWait,
       });
+      if (policy.signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
     } catch (e) {
       // 端点不支持工具：切到 regex 契约并重建 prompt（不消耗重试次数）
       if (transport === 'tools' && !degraded && isToolUnsupportedError(e)) {

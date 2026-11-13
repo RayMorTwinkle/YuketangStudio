@@ -39,9 +39,9 @@ export function hasAndroidRuntime() {
   return !!bridge();
 }
 
-function readNativeState() {
+async function readNativeState() {
   try {
-    const raw = bridge()?.getBackgroundRuntimeState?.();
+    const raw = await bridge()?.getBackgroundRuntimeState?.();
     if (!raw) return null;
     return typeof raw === 'string' ? JSON.parse(raw) : raw;
   } catch (e) {
@@ -50,8 +50,15 @@ function readNativeState() {
   }
 }
 
+let nativeRefresh = null;
 export function refreshNativeState() {
-  const native = readNativeState();
+  if (nativeRefresh) return nativeRefresh;
+  nativeRefresh = refreshNativeStateOnce().finally(() => { nativeRefresh = null; });
+  return nativeRefresh;
+}
+
+async function refreshNativeStateOnce() {
+  const native = await readNativeState();
   if (!native) return state;
   state.native = native;
   state.enabled = !!native.enabled;
@@ -62,7 +69,7 @@ export function refreshNativeState() {
   if (typeof native.lastUnlockAt === 'number') state.lastUnlockAt = native.lastUnlockAt;
   if (typeof native.lastEventAt === 'number') state.lastEventAt = native.lastEventAt;
   try {
-    state.batteryIgnored = bridge()?.isBatteryOptimizationIgnored?.() ?? null;
+    state.batteryIgnored = await bridge()?.isBatteryOptimizationIgnored?.() ?? null;
   } catch { state.batteryIgnored = null; }
   return state;
 }
@@ -158,12 +165,7 @@ export function initRuntimeMonitor() {
   try { if (window.self !== window.top) return; } catch { return; }
   started = true;
   state.startedAt = Date.now();
-  const native = readNativeState();
-  state.enabled = !!native?.enabled;
-  state.strong = !!native?.strong;
-  try {
-    state.batteryIgnored = bridge()?.isBatteryOptimizationIgnored?.() ?? null;
-  } catch { state.batteryIgnored = null; }
+  refreshNativeState();
   // 后台服务由 Android 外壳拥有并在冷启动时恢复；脚本只上报心跳，不主动启动服务。
 
   document.addEventListener('visibilitychange', () => {

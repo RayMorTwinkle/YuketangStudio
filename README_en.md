@@ -34,7 +34,7 @@ Yuketang's native classroom experience has three rough edges:
 
 **YuketangStudio fills these gaps with a single Tampermonkey userscript**: it hooks the page's own WebSocket and XHR traffic to capture slides and problems, pairs them with your own LLM, and sends **the stem text plus a slide screenshot** to the model. It then uses jsPDF to export the whole deck as a landscape PDF whose page size exactly matches each image.
 
-> **Privacy promise**: the script uploads nothing to any third-party server. Slides and problems live only in page memory, `GM_*` private storage and IndexedDB; AI requests go directly from your API key to the provider you configured.
+> **Data and privacy**: Courseware and configuration are stored locally. Custom AI requests go directly to your configured provider; cloud profiles use the `api.raymor.top` proxy. Basic usage statistics are enabled by default and send an installation ID, platform, version and call statistics to that server. You can disable them in Settings; upgrades preserve your choice. Enhanced telemetry is off by default; enabling it uploads question text, AI requests/responses and submission diagnostics. Clicking Diagnostics uploads a report that may include a question image. API keys are excluded from telemetry and diagnostic reports.
 
 ---
 
@@ -379,10 +379,10 @@ A: Deliberately so — page size equals the source image size, so landscape imag
 
 ## ⚠️ Notes
 
-- **Data stays local**: the script reads/writes the Yuketang page context and browser-local storage; a Yuketang frontend upgrade may change page structure or storage format, requiring the adapters to be updated accordingly.
+- **Local integration**: the script reads/writes the Yuketang page context and browser-local storage; a Yuketang frontend upgrade may change page structure or storage format, requiring the adapters to be updated accordingly.
 - **Auto-answer**: off by default. When enabled it submits the AI answer after a delay (default base 3s + random 0–2s) — **the AI can be wrong**, so verify it yourself. With no API key configured it skips by default ("better to miss than to mis-answer"). Consequences of using automation are the user's responsibility.
 - **Academic integrity**: this tool is for personal study reference; think independently and do not use it for exam cheating or other academic misconduct (see the LICENSE terms).
-- **Privacy**: API keys are stored locally; question content is sent to your configured model provider only when you trigger AI yourself, with no intermediary server.
+- **Privacy**: API keys are stored locally. Manual or automatic AI runs send questions to the selected provider; cloud profiles use a proxy. See Data and privacy above for statistics and diagnostic uploads and their controls.
 - **CDN dependency**: rich rendering plus jsPDF/MathJax load from CDNs, so those capabilities are unavailable offline.
 
 ---

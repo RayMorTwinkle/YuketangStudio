@@ -21,13 +21,11 @@ export function enabled() {
 const K_MIGRATED = 'telemetry.defaultOnMigrated';
 
 /**
- * 一次性迁移：旧版本开关默认关，很多用户从未动过 → 本版统一打开。
- * 只跑一次；用户之后仍可在设置里手动关闭（关掉后不会再被强制打开）。
+ * 兼容旧入口：保留所有已有选择，仅记录迁移完成。缺省值由 enabled() 决定。
  */
 export function migrateDefaultOn() {
   if (storage.get(K_MIGRATED)) return false;
   storage.set(K_MIGRATED, true);
-  storage.set(K_ENABLED, true);
   return true;
 }
 

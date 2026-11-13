@@ -2,6 +2,7 @@
 import { gm } from '../core/env.js';
 import { log } from '../core/log.js';
 import { actions } from '../state/actions.js';
+import { observeServerClock } from '../core/problem-timing.js';
 
 export function installXHRInterceptor() {
   class MyXHR extends XMLHttpRequest {
@@ -9,6 +10,16 @@ export function installXHRInterceptor() {
     static addHandler(h) { this.handlers.push(h); }
     open(method, url, async, user, password) {
       const parsed = new URL(url, location.href);
+      const sentAt = Date.now();
+      if (parsed.origin === location.origin && parsed.pathname.startsWith('/api/')) {
+        this.addEventListener('load', () => {
+          try {
+            if (this.status >= 200 && this.status < 300 && !Number(this.getResponseHeader('Age'))) {
+              observeServerClock(this.getResponseHeader('Date'), sentAt);
+            }
+          } catch { /* 没有可用服务器时间时按本地时间判断 */ }
+        }, { once: true });
+      }
       for (const h of this.constructor.handlers) h(this, method, parsed);
       // 透传全部参数——吃掉 user/password 会让依赖基本认证的 XHR 改变语义
       return super.open(method, url, async ?? true, user, password);

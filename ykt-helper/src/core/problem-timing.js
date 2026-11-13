@@ -2,6 +2,17 @@
 // 题目时间唯一入口：服务端可能给秒级或毫秒级时间戳，统一在这里归一化。
 // 所有倒计时/过期判断都从这里取，避免 actions / active-problems / 通知弹窗各自算一套。
 
+let clockOffset = 0;
+/** 仅用新鲜 API 响应的 HTTP Date 校时；事件时间戳不可用作当前时间。 */
+export function observeServerClock(dateHeader, sentAt, receivedAt = Date.now()) {
+  const server = Date.parse(dateHeader);
+  const rtt = receivedAt - sentAt;
+  if (!Number.isFinite(server) || !Number.isFinite(rtt) || rtt < 0 || rtt > 5000) return;
+  clockOffset = server - (sentAt + receivedAt) / 2;
+}
+
+export function getServerClockOffset() { return clockOffset; }
+
 /** 秒级/毫秒级时间戳 → 毫秒；非法/空 → null */
 export function normalizeTimestamp(value) {
   const n = Number(value);

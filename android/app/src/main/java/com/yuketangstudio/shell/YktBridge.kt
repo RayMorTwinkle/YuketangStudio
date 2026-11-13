@@ -10,7 +10,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
@@ -20,13 +19,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 注入页面的 Kotlin 桥：window.YktBridge。
+ * 原生实现，由 NativeBridgeSession 验证来源后调用，不直接暴露给页面。
  * - sharedSet/Get/Delete：跨 WebView 的键值共享（收集页写 → 主页面 GM_getValue 读/监听回调）
  * - openCollect/closeCollect：隐藏收集页 WebView 生命周期
  * - downloadStart/Chunk/End：blob/data 下载 → base64 分块 → MediaStore Downloads
- * - fetchBinary：GM_xmlhttpRequest 的 CORS 兜底（不带页面 cookie 的原生 GET）
+ * - fetchRequest：可取消的原生网络请求，通过消息通道返回发起页面
  * - notify：系统通知（Android 13+ 需要 POST_NOTIFICATIONS，MainActivity 里申请）
  */
 class YktBridge(private val activity: MainActivity) {
@@ -35,69 +35,65 @@ class YktBridge(private val activity: MainActivity) {
     private val shared = ConcurrentHashMap<String, String>()
     private val downloads = ConcurrentHashMap<String, FileOutputStream>()
 
+    private val requests = ConcurrentHashMap<String, AtomicBoolean>()
+    private val connections = ConcurrentHashMap<String, HttpURLConnection>()
+
+    fun cancelRequest(id: String) {
+        requests[id]?.set(true)
+        connections.remove(id)?.let { io.execute { it.disconnect() } }
+    }
+
+    fun sharedSnapshot(): JSONObject = JSONObject(shared.toMap())
+
     // ---------- 共享键值 ----------
-    @JavascriptInterface
     fun sharedSet(name: String, json: String) {
         shared[name] = json
         activity.broadcastValue(name, json)
     }
 
-    @JavascriptInterface
     fun sharedGet(name: String): String? = shared[name]
 
-    @JavascriptInterface
     fun sharedDelete(name: String) {
         shared.remove(name)
         activity.broadcastValue(name, null)
     }
 
     // ---------- 后台运行 ----------
-    @JavascriptInterface
     fun startBackgroundRuntime(strong: Boolean): Boolean =
         BackgroundRuntimeService.start(activity, strong)
 
-    @JavascriptInterface
     fun stopBackgroundRuntime() {
         BackgroundRuntimeService.stop(activity)
     }
 
-    @JavascriptInterface
     fun setBackgroundRuntimeStrong(strong: Boolean) {
         BackgroundRuntimeService.setStrong(activity, strong)
     }
 
-    @JavascriptInterface
     fun getBackgroundRuntimeState(): String =
         BackgroundRuntimeService.snapshot(activity)
 
-    @JavascriptInterface
     fun reportRuntime(payload: String) {
         BackgroundRuntimeService.update(activity, payload)
     }
 
-    @JavascriptInterface
     fun isBatteryOptimizationIgnored(): Boolean =
         activity.isIgnoringBatteryOptimizations()
 
-    @JavascriptInterface
     fun requestBatteryOptimization(): Boolean =
         activity.requestIgnoreBatteryOptimizations()
 
     // ---------- 收集页 ----------
-    @JavascriptInterface
     fun openCollect(url: String) = activity.openCollectPage(url)
 
-    @JavascriptInterface
     fun closeCollect() = activity.closeCollectPage()
 
     // ---------- 原生关于与更新 ----------
-    @JavascriptInterface
     fun openAboutAndUpdate() = activity.openAboutAndUpdate()
 
     // ---------- 剪贴板 ----------
     // WebView 里 navigator.clipboard / execCommand 在部分机型不可用；
     // 诊断 ID 需要可靠复制，直接走原生剪贴板。
-    @JavascriptInterface
     fun copyText(text: String) {
         try {
             activity.runOnUiThread {
@@ -111,7 +107,6 @@ class YktBridge(private val activity: MainActivity) {
     }
 
     // ---------- 通知 ----------
-    @JavascriptInterface
     fun notify(title: String, text: String, image: String, action: String) {
         // 自动检查策略：彻底关闭 / 暂停期 / 跳过版本期间，更新通知直接丢弃（其它通知不受影响）
         if (action == "check_update") {
@@ -157,10 +152,10 @@ class YktBridge(private val activity: MainActivity) {
     }
 
     // ---------- 分块下载 ----------
-    // downloadStart 必须同步开流：JS 侧紧接着就发 downloadChunk，@JavascriptInterface
-    // 在 JS 线程上按序执行，同步 open 才能保证首 chunk 不会因「流还没建好」被静默丢弃
-    @JavascriptInterface
+    // 消息通道按序派发 downloadStart / Chunk / End；start 同步开流
+    // 同步 open 保证首 chunk 不会因「流还没建好」被静默丢弃
     fun downloadStart(job: String, filename: String) {
+        require(Regex("^[A-Za-z0-9_]{1,80}$").matches(job))
         try {
             val safe = filename.replace(Regex("[\\\\/:*?\"<>|]"), "_")
             val file = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "$job.part")
@@ -173,7 +168,6 @@ class YktBridge(private val activity: MainActivity) {
 
     private val fileJobNames = ConcurrentHashMap<String, String>()
 
-    @JavascriptInterface
     fun downloadChunk(job: String, base64: String) {
         try {
             downloads[job]?.write(Base64.decode(base64, Base64.DEFAULT))
@@ -182,8 +176,8 @@ class YktBridge(private val activity: MainActivity) {
         }
     }
 
-    @JavascriptInterface
     fun downloadEnd(job: String) {
+        require(Regex("^[A-Za-z0-9_]{1,80}$").matches(job))
         io.execute {
             try {
                 downloads.remove(job)?.close()
@@ -284,34 +278,6 @@ class YktBridge(private val activity: MainActivity) {
     }
 
     // ---------- 原生网络兜底 ----------
-    @JavascriptInterface
-    fun fetchBinary(url: String, callbackId: String) {
-        if (!Regex("^[A-Za-z0-9_]{1,64}$").matches(callbackId)) return
-        io.execute {
-            var conn: HttpURLConnection? = null
-            try {
-                conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 15000
-                    readTimeout = 30000
-                    instanceFollowRedirects = true
-                }
-                val code = conn.responseCode
-                val bytes = (if (code in 200..299) conn.inputStream else conn.errorStream)?.readBytes() ?: ByteArray(0)
-                val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                val ok = code in 200..299
-                activity.evalOnAll(
-                    "window['$callbackId']($ok,$code,${JSONObject.quote(b64)},${JSONObject.quote("")})"
-                )
-            } catch (e: Exception) {
-                activity.evalOnAll(
-                    "window['$callbackId'](false,0,null,${JSONObject.quote(e.message ?: "error")})"
-                )
-            } finally {
-                conn?.disconnect()
-            }
-        }
-    }
-
     /**
      * GM_xmlhttpRequest 的 CORS 兜底（支持任意 method / headers / body）：
      * Ark 等上游的预检不允许 Authorization 头，页面 fetch 会被拦截，
@@ -335,9 +301,9 @@ class YktBridge(private val activity: MainActivity) {
         )
     }.getOrDefault(false)
 
-    @JavascriptInterface
-    fun fetchRequest(method: String, url: String, headersJson: String, body: String, binary: Boolean, callbackId: String) {
-        if (!Regex("^[A-Za-z0-9_]{1,64}$").matches(callbackId)) return
+    fun fetchRequest(method: String, url: String, headersJson: String, body: String, binary: Boolean, requestId: String, reply: (Any?) -> Unit) {
+        val cancelled = AtomicBoolean(false)
+        requests[requestId] = cancelled
         io.execute {
             var currentUrl = url
             var currentMethod = method.uppercase()
@@ -361,6 +327,7 @@ class YktBridge(private val activity: MainActivity) {
                 var bytes = ByteArray(0)
                 var hops = 0
                 while (true) {
+                    if (cancelled.get()) return@execute
                     val c = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
                         requestMethod = currentMethod
                         connectTimeout = 15000
@@ -369,6 +336,8 @@ class YktBridge(private val activity: MainActivity) {
                         doInput = true
                     }
                     conn = c
+                    connections[requestId] = c
+                    if (cancelled.get()) return@execute
                     val sameHost = runCatching { URL(currentUrl).host == initialHost }.getOrDefault(false)
                     // 只允许初始域和当前域都属于 Yuketang 登录域时才带 Cookie，
                     // 防止任意第三方 URL 借原生桥读取登录态。
@@ -421,21 +390,20 @@ class YktBridge(private val activity: MainActivity) {
                     }
                     c.disconnect()
                 }
-                if (binary) {
-                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    activity.evalOnAll("window['$callbackId'] && window['$callbackId'](true,$code,${JSONObject.quote(b64)},'')")
-                } else {
-                    val text = String(bytes, Charsets.UTF_8)
-                    activity.evalOnAll("window['$callbackId'] && window['$callbackId'](true,$code,${JSONObject.quote(text)},'')")
+                if (!cancelled.get()) {
+                    val result = if (binary) Base64.encodeToString(bytes, Base64.NO_WRAP) else String(bytes, Charsets.UTF_8)
+                    reply(JSONObject().put("ok", true).put("status", code).put("body", result))
                 }
             } catch (e: Exception) {
-                activity.evalOnAll("window['$callbackId'] && window['$callbackId'](false,0,'',${JSONObject.quote(e.message ?: "error")})")
+                if (!cancelled.get()) reply(JSONObject().put("ok", false).put("status", 0)
+                    .put("error", e.message ?: "error"))
             } finally {
+                requests.remove(requestId, cancelled)
+                connections.remove(requestId)
                 conn?.disconnect()
             }
         }
     }
 
-    @JavascriptInterface
     fun log(msg: String) = activity.log(msg)
 }

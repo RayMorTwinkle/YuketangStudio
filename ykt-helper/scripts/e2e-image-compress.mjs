@@ -4,12 +4,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const DIST = '/Users/Ray/Desktop/AI工作台/YuketangStudio-main/ykt-helper/dist/YuketangStudio-latest.user.js';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+const ROOT = globalThis.__YKS_ROOT__ || process.env.YKS_ROOT || fileURLToPath(new URL('../', import.meta.url));
+const DIST = resolve(ROOT, 'dist/YuketangStudio-latest.user.js');
 const SRC = await readFile(DIST, 'utf8');
-const task = await taskSpace('yks-imgcors');
+const task = await taskSpace('yks-repair-regressions');
 const page = task.page('p1');
-await page.goto('https://example.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+await page.goto(globalThis.__YKS_FIXTURE_URL__ || 'http://127.0.0.1:8765/?ykt_test=1', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
 await page.evaluate(() => {
+  localStorage.setItem('ykt-helper:telemetry.enabled', 'false');
   localStorage.setItem('ykt:test-mode', '1');
   localStorage.setItem('ykt-helper:onboarding.version', '1');
   sessionStorage.setItem('__ykt_helper_auto_reload_once__', '1');

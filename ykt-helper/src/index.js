@@ -169,7 +169,7 @@ function whenBodyReady(fn) {
     }
   });
 
-  // 遥测：旧版默认关 → 0.6.2 一次性打开；每次启动上报一次（60s 内合并）
+  // 遥测：保留已有选择；启动上报（60s 内合并），关闭时不发请求。
   try { telemetry.migrateDefaultOn(); telemetry.pingOnStartup(); } catch {}
 
   // 每次使用自动检查更新（15min 节流，失败静默）

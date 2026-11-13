@@ -1,6 +1,6 @@
 // YuketangStudio Android WebView 壳的 GM_* API shim。
 // 在 user.js 之前以 document-start 注入，把油猴 API 映射到：
-//   localStorage / fetch / YktBridge（Kotlin addJavascriptInterface）
+//   localStorage / fetch / YktBridge（按来源限制的原生消息通道）
 // 只实现脚本实际用到的 API；未实现的留 undefined，让脚本走自己的兜底路径。
 (function () {
   'use strict';
@@ -92,84 +92,69 @@
   // ---------- 跨域请求 ----------
   window.GM_xmlhttpRequest = function (opt) {
     opt = opt || {};
-    var method = opt.method || 'GET';
-    var url = opt.url;
-    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    var timer = opt.timeout ? setTimeout(function () { try { ctrl && ctrl.abort(); } catch (e) {} }, opt.timeout) : null;
-    var headers = opt.headers || {};
-    return fetch(url, {
-      method: method,
-      headers: headers,
-      // same-origin：雨课堂 API 走同源带 cookie；跨域（如 api.raymor.top 验码）
-      // 不带 cookie——'include' + ACAO:* 会触发 CORS 预检拦截，2026-10-17 实测
-      credentials: 'same-origin',
-      body: opt.data,
-      signal: ctrl ? ctrl.signal : undefined,
-    }).then(function (res) {
+    var ctrl = new AbortController();
+    var settled = false;
+    var nativeHandle = null;
+    var callbackId = null;
+    var timer = null;
+    function finish(kind, value) {
+      if (settled) return;
+      settled = true;
       if (timer) clearTimeout(timer);
+      if (callbackId) delete window[callbackId];
+      if (opt[kind]) opt[kind](value);
+    }
+    function stop(kind) {
+      if (settled) return;
+      try { finish(kind, { status: 0 }); }
+      finally {
+        ctrl.abort();
+        if (nativeHandle && nativeHandle.abort) nativeHandle.abort();
+      }
+    }
+    if (opt.timeout) timer = setTimeout(function () { stop('ontimeout'); }, opt.timeout);
+    fetch(opt.url, {
+      method: opt.method || 'GET', headers: opt.headers || {},
+      credentials: 'same-origin', body: opt.data, signal: ctrl.signal,
+    }).then(function (res) {
       var rt = opt.responseType;
-      var read;
-      if (rt === 'blob') read = res.blob();
-      else if (rt === 'arraybuffer') read = res.arrayBuffer();
-      else if (rt === 'json') read = res.json();
-      else read = res.text();
+      var read = rt === 'blob' ? res.blob() : rt === 'arraybuffer' ? res.arrayBuffer()
+        : rt === 'json' ? res.json() : res.text();
       return read.then(function (body) {
         var hdrs = {};
-        try { res.headers.forEach(function (v, k) { hdrs[k] = v; }); } catch (e) {}
-        opt.onload && opt.onload({
-          status: res.status, statusText: res.statusText,
+        res.headers.forEach(function (v, k) { hdrs[k] = v; });
+        finish('onload', { status: res.status, statusText: res.statusText,
           response: body, responseText: typeof body === 'string' ? body : '',
-          responseHeaders: hdrs, readyState: 4,
-        });
+          responseHeaders: hdrs, readyState: 4 });
       });
     }).catch(function (err) {
-      if (timer) clearTimeout(timer);
-      // fetch 失败（CORS/预检）→ 原生 HTTP 兜底：支持 POST + 自定义头 + 二进制
-      if (bridge() && bridge().fetchRequest) {
-        var cbId2 = '__yktFetchCb' + Math.random().toString(36).slice(2);
-        var binary = opt.responseType === 'blob' || opt.responseType === 'arraybuffer';
-        window[cbId2] = function (ok, status, body, errMsg) {
-          delete window[cbId2];
-          if (!ok) { opt.onerror && opt.onerror({ status: status || 0, error: errMsg || 'native fetch failed' }); return; }
-          var resp = body;
-          if (binary) {
-            try {
-              var bin = atob(body);
-              var bytes = new Uint8Array(bin.length);
-              for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-              resp = opt.responseType === 'arraybuffer' ? bytes.buffer : new Blob([bytes]);
-            } catch (e) { opt.onerror && opt.onerror({ status: 0, error: String(e) }); return; }
-          }
-          opt.onload && opt.onload({ status: status, statusText: '', response: resp, responseText: binary ? '' : body, responseHeaders: {}, readyState: 4 });
-        };
+      if (settled) return;
+      if (err && err.name === 'AbortError') { finish('onabort', { status: 0 }); return; }
+      if (!bridge() || !bridge().fetchRequest) {
+        finish('onerror', { status: 0, error: String(err) });
+        return;
+      }
+      callbackId = '__yktFetchCb' + Math.random().toString(36).slice(2);
+      var binary = opt.responseType === 'blob' || opt.responseType === 'arraybuffer';
+      window[callbackId] = function (ok, status, body, errMsg) {
+        if (settled) return;
+        if (!ok) { finish('onerror', { status: status || 0, error: errMsg }); return; }
         try {
-          bridge().fetchRequest(method, url, JSON.stringify(headers), opt.data || '', binary, cbId2);
-          return;
-        } catch (e) {}
-      }
-      // 旧 GET 兜底（保留兼容）
-      if (bridge() && bridge().fetchBinary) {
-        var cbId = '__yktFetchCb' + Math.random().toString(36).slice(2);
-        window[cbId] = function (ok, status, b64, errMsg) {
-          delete window[cbId];
-          if (!ok) { opt.onerror && opt.onerror({ status: status || 0, error: errMsg || 'native fetch failed' }); return; }
-          try {
-            var bin = atob(b64);
-            var bytes = new Uint8Array(bin.length);
-            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-            var body = opt.responseType === 'arraybuffer' ? bytes.buffer : new Blob([bytes]);
-            // responseText 之前恒为 ''——tryCloudUnlock 解析空 JSON 当失败
-            opt.onload && opt.onload({ status: status, statusText: '', response: body, responseText: bin, responseHeaders: {}, readyState: 4 });
-          } catch (e) {
-            opt.onerror && opt.onerror({ status: 0, error: String(e) });
-          }
-        };
-        try { bridge().fetchBinary(url, cbId); return; } catch (e) {}
-      }
-      var isTimeout = err && err.name === 'AbortError';
-      if (isTimeout && opt.ontimeout) opt.ontimeout({});
-      else opt.onerror && opt.onerror({ status: 0, error: String(err) });
+          var response = body;
+          if (binary) {
+            var bytes = Uint8Array.from(atob(body), function (ch) { return ch.charCodeAt(0); });
+            response = opt.responseType === 'arraybuffer' ? bytes.buffer : new Blob([bytes]);
+          } else if (opt.responseType === 'json') response = JSON.parse(body);
+          finish('onload', { status: status, statusText: '', response: response,
+            responseText: binary ? '' : body, responseHeaders: {}, readyState: 4 });
+        } catch (e) { finish('onerror', { status: 0, error: String(e) }); }
+      };
+      try {
+        nativeHandle = bridge().fetchRequest(opt.method || 'GET', opt.url,
+          JSON.stringify(opt.headers || {}), opt.data || '', binary, callbackId);
+      } catch (e) { finish('onerror', { status: 0, error: String(e) }); }
     });
+    return { abort: function () { stop('onabort'); } };
   };
 
   // ---------- 通知 ----------

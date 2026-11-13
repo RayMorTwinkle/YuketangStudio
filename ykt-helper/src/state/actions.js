@@ -17,7 +17,7 @@ import { submitAnswerTask } from '../answer/submit.js';
 import { displayAnswer } from '../answer/model.js';
 import { getOverride } from '../ui/panels/ai.js';
 import { captureSlideImage } from '../capture/screenshoot.js';
-import { normalizeTimestamp, deadlineFromLimit, isDeadlineReached } from '../core/problem-timing.js';
+import { normalizeTimestamp, deadlineFromLimit, isDeadlineReached, getServerClockOffset } from '../core/problem-timing.js';
 import { answerLog } from '../answer/debug.js';
 import { ensureAutoAnswerAgreement } from '../ui/auto-answer-agreement.js';
 import { trace } from '../core/telemetry.js';
@@ -80,6 +80,18 @@ export function hasActiveAIProfile(aiCfg) {
 
 // 多题同时解锁时串行执行，避免抢同一条 AI 流
 let _autoAnswerChain = Promise.resolve();
+let _autoAnswerEpoch = 0;
+const _autoControllers = new Set();
+function cancelAutoAnswers() {
+  _autoAnswerEpoch++;
+  repo.problemStatus.forEach(status => { status.autoAnswerTime = null; });
+  for (const ctrl of _autoControllers) ctrl.abort();
+}
+function checkAutoAnswer(epoch, signal) {
+  if (!ui.config.autoAnswer || epoch !== _autoAnswerEpoch || signal?.aborted) {
+    throw Object.assign(new Error('自动作答已停止'), { name: 'AbortError' });
+  }
+}
 function enqueueAutoAnswer(fn) {
   const run = _autoAnswerChain.then(fn, fn);
   _autoAnswerChain = run.catch(() => {});
@@ -105,6 +117,8 @@ function recordAuto(event, data = {}) {
  * - 失败 → 不猜答案、不误提交；没有 API Key 时才走本地默认答案
  */
 async function handleAutoAnswerInternal(problem) {
+  if (!ui.config.autoAnswer) return;
+  const epoch = _autoAnswerEpoch;
   const status = repo.problemStatus.get(String(problem.problemId));
   if (!status || status.answering || problem.result) {
     log.dbg('[AutoAnswer] 跳过：', {
@@ -158,6 +172,10 @@ async function handleAutoAnswerInternal(problem) {
     return;
   }
 
+  if (!ui.config.autoAnswer || epoch !== _autoAnswerEpoch) return;
+  const controller = new AbortController();
+  _autoControllers.add(controller);
+  const check = () => checkAutoAnswer(epoch, controller.signal);
   status.answering = true;
   recordAuto('auto_answer_started', {
     problemId: String(problem.problemId || ''),
@@ -187,6 +205,7 @@ async function handleAutoAnswerInternal(problem) {
       const parsed = makeDefaultAnswer(problem);
       log.dbg('[雨课堂助手][WARN][AutoAnswer] 无 API Key，使用本地默认答案:', JSON.stringify(parsed));
 
+      check();
       await submitAnswer(problem, parsed, {
         startTime: status.startTime,
         endTime: status.endTime,
@@ -207,11 +226,13 @@ async function handleAutoAnswerInternal(problem) {
 
     ui.toast('AI 正在分析题目...', 2000);
     const r = await enqueueAutoAnswer(async () => {
+      check();
       const slide = status.slideId ? repo.slides.get(String(status.slideId)) : null;
       let image = problem.__imageDataUrl || '';
       if (!image && status.slideId) {
         try { image = await captureSlideImage(String(status.slideId)) || ''; } catch { /* ignore */ }
       }
+      check();
       const task = buildClassroomTask({
         problem,
         slide,
@@ -228,8 +249,10 @@ async function handleAutoAnswerInternal(problem) {
         autoSubmit: true,
         override: getOverride() || undefined,
         stream: false,
+        signal: controller.signal,
         allowLegacyText: false,
       });
+      check();
       if (!run.ok) return { run, task };
       const submitted = await submitAnswerTask(task, run.answer, { runId: run.runId });
       return { run, task, submitted };
@@ -255,6 +278,7 @@ async function handleAutoAnswerInternal(problem) {
     });
     ui.toast(`自动作答失败：${err?.message || '模型未给出可提交的答案'}`, 4000);
   } catch (e) {
+    if (e?.name === 'AbortError') return;
     log.err('[雨课堂助手][ERR][AutoAnswer] 失败:', e);
     recordAuto('auto_answer_error', {
       ok: false,
@@ -265,6 +289,7 @@ async function handleAutoAnswerInternal(problem) {
     log.err('[雨课堂助手][ERR][AutoAnswer] 错误堆栈:', e.stack);
     ui.toast(`自动作答失败: ${e.message}`, 4000);
   } finally {
+    _autoControllers.delete(controller);
     status.answering = false;
   }
 }
@@ -334,8 +359,8 @@ export const actions = {
     // 服务端 dt 可能是秒或毫秒；limit 是秒。统一在这里归一化。
     const dt = normalizeTimestamp(data.dt) ?? Date.now();
     const limitS = Number(data.limit);
-    // clockOffset = 服务端时钟 - 本地时钟：endTime 基于服务端时间轴，判过期时必须换算
-    const clockOffset = dt - Date.now();
+    // dt 是事件发生时间，历史 timeline / 重放不能用于校准当前时钟。
+    const clockOffset = getServerClockOffset();
     const prev = repo.problemStatus.get(String(data.prob));
     const status = {
       presentationId: data.pres,
@@ -474,8 +499,12 @@ export const actions = {
     startAutoAnswerLoop() {
     if (_autoLoopStarted) return;
     _autoLoopStarted = true;
+    window.addEventListener('ykt:config:changed', () => {
+      if (!ui.config.autoAnswer) cancelAutoAnswers();
+    });
 
     setInterval(() => {
+      if (!ui.config.autoAnswer) { cancelAutoAnswers(); return; }
       const now = Date.now();
       repo.problemStatus.forEach((status, pid) => {
         if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {

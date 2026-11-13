@@ -293,6 +293,12 @@ export function installTestHooks() {
     /** 读取答题链路调试日志 */
     getAnswerLog,
 
+    setAutoAnswer(enabled) {
+      ui.config.autoAnswer = !!enabled;
+      ui.config.autoAnswerAgreementAccepted = true;
+      ui.saveConfig();
+    },
+
     /** 走真实自动作答入口（actions.handleAutoAnswer，headless） */
     async askAutoAction(problemId) {
       const pid = problemId ?? [...repo.problems.keys()].find(k => String(k).startsWith('91'));

@@ -7,10 +7,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// ego 的 nodejs（stdin 模式）会清洗自定义 env 且 cwd=/，但保留 PWD（npm 调用目录）。
-// 依次尝试：ykt-helper 根 → 仓库根，兼容从任意一层 npm run。
-const ROOT = process.env.YKS_ROOT || '/Users/Ray/Desktop/AI工作台/YuketangStudio-main/ykt-helper';
+// npm 的 launcher 将绝对路径传入 stdin；直接 node 运行时按文件位置解析。
+const ROOT = globalThis.__YKS_ROOT__ || process.env.YKS_ROOT || fileURLToPath(new URL('../', import.meta.url));
 const CANDIDATES = [
   resolve(ROOT, 'dist/YuketangStudio-latest.user.js'),
   resolve(ROOT, 'ykt-helper/dist/YuketangStudio-latest.user.js'),
@@ -26,14 +26,17 @@ async function okAsync(name, fn) {
   catch (e) { fail++; console.error('  ❌', name, '\n    ', e?.message || e); }
 }
 
-async function setup(space, { regex = false } = {}) {
-  const task = await taskSpace(space);
+const task = await taskSpace('yks-repair-regressions');
+console.log({ spaceId: task.spaceId });
+async function setup(_space, { regex = false } = {}) {
   const page = task.page('p1');
-  await page.goto('https://changjiang.yuketang.cn/m/v2', { waitUntil: 'domcontentloaded' });
+  await page.goto(globalThis.__YKS_FIXTURE_URL__ || 'http://127.0.0.1:8765/?ykt_test=1', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
   await page.evaluate(() => {
     ['ykt-helper-toolbar', 'ykt-shell-panel', 'ykt-ai-answer-panel', 'ykt-onboarding'].forEach((id) => document.getElementById(id)?.remove());
     document.querySelectorAll('.ykt-panel,.ykt-problem-notify,.ykt-onboarding').forEach((e) => e.remove());
+    sessionStorage.setItem('__ykt_helper_auto_reload_once__', '1');
+    localStorage.setItem('ykt-helper:telemetry.enabled', 'false');
     localStorage.setItem('ykt:test-mode', '1');
     localStorage.setItem('ykt-helper:onboarding.version', '1');
     localStorage.setItem('ykt-helper:config', JSON.stringify({
@@ -238,6 +241,7 @@ await okAsync('自动作答：合法工具调用 → status.done=true', async ()
     const T = window.__yktTest; T.reset(); T.clearUI();
     const pid = T.injectProblem(1, { body: '1+1=?', options: [{ key: 'A', value: '1' }, { key: 'B', value: '2' }] });
     T.mockSubmit('ok'); T.mockTool({ answers: ['B'] });
+    T.setAutoAnswer(true);
     await T.askAutoAction(pid);
     return T.getAutoState(pid);
   });
@@ -249,6 +253,7 @@ await okAsync('自动作答：非法答案 → 不提交（status.done 不为 tr
     const T = window.__yktTest; T.reset(); T.clearUI();
     const pid = T.injectProblem(1, { body: '非法', options: [{ key: 'A', value: '' }, { key: 'B', value: '' }] });
     T.mockSubmit('ok'); T.mockTool({ answers: ['×'] });
+    T.setAutoAnswer(true);
     await T.askAutoAction(pid);
     return T.getAutoState(pid);
   });
@@ -260,10 +265,25 @@ await okAsync('自动作答：端点不支持 tools → 不猜文本、不提交
     const T = window.__yktTest; T.reset(); T.clearUI();
     const pid = T.injectProblem(1, { body: '不支持工具', options: [{ key: 'A', value: '1' }, { key: 'B', value: '2' }] });
     T.mockSubmit('ok'); T.mockNoTools('答案: A');
+    T.setAutoAnswer(true);
     await T.askAutoAction(pid);
     return T.getAutoState(pid);
   });
   assert.notEqual(r.status.done, true);
+});
+
+await okAsync('关闭工具栏自动作答后，排队题目不会提交', async () => {
+  const r = await toolsPage.evaluate(async () => {
+    const T = window.__yktTest; T.reset(); T.clearUI(); T.setAutoAnswer(true);
+    const pid = T.injectProblem(1, { body: '取消测试' });
+    T.mockSubmit('ok'); T.mockTool({ answers: ['A'] });
+    T.unlockProblem(pid, { dt: Date.now(), limit: 60 });
+    document.getElementById('ykt-btn-auto-answer').click();
+    await new Promise(resolve => setTimeout(resolve, 5500));
+    return T.getAutoState(pid);
+  });
+  assert.notEqual(r.status.done, true);
+  assert.equal(r.status.autoAnswerTime, null);
 });
 
 console.log('== 题目列表 / 展示-only ==');
