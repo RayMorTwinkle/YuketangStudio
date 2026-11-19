@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YuketangStudio 雨课堂助手
 // @namespace    https://github.com/RayMorTwinkle/YuketangStudio
-// @version      0.9.16
+// @version      0.9.17
 // @updateURL    https://api.raymor.top/yuketangstudio/dl/userscript
 // @downloadURL  https://api.raymor.top/yuketangstudio/dl/userscript
 // @description  课堂习题提醒、AI解答（思考/图片/流式）、PPT提取与多轮对话、历史课件归档、班级课件下载、刷课
@@ -911,7 +911,7 @@
   function version() {
     try {
       // 构建时 rollup replace 注入；Android WebView 没有 GM_info 也能拿到真实版本
-      if (typeof "0.9.16" !== "undefined" && "0.9.16") return String("0.9.16");
+      if (typeof "0.9.17" !== "undefined" && "0.9.17") return String("0.9.17");
     } catch {/* ignore */}
     try {
       const gi = typeof GM_info !== "undefined" ? GM_info : null;
@@ -4776,7 +4776,7 @@
       timerLagMs: state.timerLagMs,
       lessonId: String(repo.currentLessonId || ""),
       page: location.pathname,
-      scriptVersion: String("0.9.16"),
+      scriptVersion: String("0.9.17"),
       autoAnswer: !!cfg.autoAnswer,
       autoJoin: !!cfg.autoJoinEnabled,
       autoAnswerOnAutoJoin: !!cfg.autoAnswerOnAutoJoin,
@@ -11655,7 +11655,7 @@
       if (gi?.script?.version) return gi.script.version;
     } catch {}
     try {
-      return "0.9.16";
+      return "0.9.17";
     } catch {}
     return "0.0.0";
   }
@@ -11830,8 +11830,8 @@
   function mountAboutPanel() {
     if (mounted$3) return root$3;
     const host = document.createElement("div");
-    // "0.9.16" 由 rollup 从 package.json 替换（版本号单一来源）
-        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.16"}<`);
+    // "0.9.17" 由 rollup 从 package.json 替换（版本号单一来源）
+        host.innerHTML = tpl$1.replace('class="ykt-about-cur">…<', `class="ykt-about-cur">当前版本 v${"0.9.17"}<`);
     document.body.appendChild(host.firstElementChild);
     root$3 = document.getElementById("ykt-about-panel");
     const $btn = root$3.querySelector("#ykt-about-check");
