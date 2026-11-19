@@ -179,17 +179,8 @@ export const ui = {
           if (notifyNow - t > 60_000) _recentProblemNotices.delete(k);
         }
       }
-      // 1) 原生通知（如果可用，备用，不阻碍自定义弹窗）
-      try {
-        this.nativeNotify?.({
-          title: '雨课堂习题提示',
-          text: this.getProblemDetail(problem),
-          image: slide?.thumbnail || null,
-          timeout: Math.max(2000, +this.config.notifyPopupDuration || 5000),
-        });
-      } catch {}
-
-      // 2) 自定义悬浮弹窗
+      // 题目提醒统一使用自定义悬浮弹窗。
+      // 不再同时调用 nativeNotify，否则系统通知 + 自定义弹窗会出现两个提醒。
       const wrapper = document.createElement('div');
       wrapper.className = 'ykt-problem-notify';
       const narrow = (() => {
